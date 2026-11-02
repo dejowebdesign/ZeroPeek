@@ -190,7 +190,8 @@ function stringList(
 }
 
 /** The shared header fields (prompt, time limit, points). */
-function commonFields(question: Question, onChange: (next: Question) => void): HTMLElement {
+function commonFields(get: () => Question, onChange: (next: Question) => void): HTMLElement {
+  const question = get();
   const timeSelect = el(
     'select',
     { class: 'input' },
@@ -203,7 +204,7 @@ function commonFields(question: Question, onChange: (next: Question) => void): H
     ),
   );
   timeSelect.addEventListener('change', () =>
-    onChange({ ...question, timeLimit: Number(timeSelect.value) }),
+    onChange({ ...get(), timeLimit: Number(timeSelect.value) }),
   );
 
   const pointsSelect = el(
@@ -218,7 +219,7 @@ function commonFields(question: Question, onChange: (next: Question) => void): H
     ),
   );
   pointsSelect.addEventListener('change', () =>
-    onChange({ ...question, points: pointsSelect.value as PointsMode }),
+    onChange({ ...get(), points: pointsSelect.value as PointsMode }),
   );
 
   return el(
@@ -226,7 +227,7 @@ function commonFields(question: Question, onChange: (next: Question) => void): H
     { class: 'grid grid--3' },
     field(
       'Prompt',
-      textInput(question.text, (text) => onChange({ ...question, text }), {
+      textInput(question.text, (text) => onChange({ ...get(), text }), {
         maxlength: QUESTION_TEXT_MAX,
         placeholder: 'Your question',
       }),
@@ -242,13 +243,21 @@ function commonFields(question: Question, onChange: (next: Question) => void): H
  */
 export function questionForm(question: Question, onChange: (next: Question) => void): HTMLElement {
   const form = el('div', { class: 'question-form' });
-  form.append(commonFields(question, onChange));
+  // The form is not re-rendered between edits, so every handler must merge into
+  // the newest question. Spreading the original `question` would drop edits made
+  // to other fields.
+  let latest = question;
+  const update = (patch: Partial<Question>): void => {
+    latest = { ...latest, ...patch } as Question;
+    onChange(latest);
+  };
+  form.append(commonFields(() => latest, update));
 
   switch (question.type) {
     case 'single': {
       form.append(
         el('p', { class: 'muted' }, 'Mark the correct option.'),
-        stringList([...question.options], (options) => onChange({ ...question, options }), {
+        stringList([...question.options], (options) => update({ options }), {
           min: MIN_ANSWER_OPTIONS,
           max: MAX_ANSWER_OPTIONS,
           maxlength: OPTION_TEXT_MAX,
@@ -265,7 +274,7 @@ export function questionForm(question: Question, onChange: (next: Question) => v
               type: 'radio',
               name: `correct-${question.id}`,
               ...(index === question.correctIndex ? { checked: true } : {}),
-              onchange: () => onChange({ ...question, correctIndex: index }),
+              onchange: () => update({ correctIndex: index }),
             }),
             el('span', null, `#${index + 1}`),
           ),
@@ -293,7 +302,7 @@ export function questionForm(question: Question, onChange: (next: Question) => v
                   type: 'radio',
                   name: `tf-${question.id}`,
                   ...(question.correct === value ? { checked: true } : {}),
-                  onchange: () => onChange({ ...question, correct: value as boolean }),
+                  onchange: () => update({ correct: value as boolean }),
                 }),
                 el('span', null, label as string),
               ),
@@ -306,7 +315,7 @@ export function questionForm(question: Question, onChange: (next: Question) => v
     case 'multiple': {
       form.append(
         el('p', { class: 'muted' }, 'Mark every correct option.'),
-        stringList([...question.options], (options) => onChange({ ...question, options }), {
+        stringList([...question.options], (options) => update({ options }), {
           min: MIN_ANSWER_OPTIONS,
           max: MAX_ANSWER_OPTIONS,
           maxlength: OPTION_TEXT_MAX,
@@ -327,7 +336,7 @@ export function questionForm(question: Question, onChange: (next: Question) => v
                 const set = new Set(question.correctIndices);
                 if (checked) set.add(index);
                 else set.delete(index);
-                onChange({ ...question, correctIndices: [...set].sort((a, b) => a - b) });
+                update({ correctIndices: [...set].sort((a, b) => a - b) });
               },
             }),
             el('span', null, `#${index + 1}`),
@@ -341,7 +350,7 @@ export function questionForm(question: Question, onChange: (next: Question) => v
     case 'text':
       form.append(
         el('p', { class: 'muted' }, 'Accepted answers (compared case- and accent-insensitively).'),
-        stringList([...question.accepted], (accepted) => onChange({ ...question, accepted }), {
+        stringList([...question.accepted], (accepted) => update({ accepted }), {
           min: 1,
           placeholder: 'Accepted answer',
         }),
@@ -355,15 +364,15 @@ export function questionForm(question: Question, onChange: (next: Question) => v
           { class: 'grid grid--3' },
           field(
             'Minimum',
-            numberInput(question.min, (min) => onChange({ ...question, min })),
+            numberInput(question.min, (min) => update({ min })),
           ),
           field(
             'Maximum',
-            numberInput(question.max, (max) => onChange({ ...question, max })),
+            numberInput(question.max, (max) => update({ max })),
           ),
           field(
             'Step',
-            numberInput(question.step, (step) => onChange({ ...question, step }), { min: 1 }),
+            numberInput(question.step, (step) => update({ step }), { min: 1 }),
           ),
         ),
         el(
@@ -371,17 +380,17 @@ export function questionForm(question: Question, onChange: (next: Question) => v
           { class: 'grid grid--3' },
           field(
             'Correct value',
-            numberInput(question.answer, (answer) => onChange({ ...question, answer })),
+            numberInput(question.answer, (answer) => update({ answer })),
           ),
           field(
             'Tolerance',
-            numberInput(question.tolerance, (tolerance) => onChange({ ...question, tolerance }), {
+            numberInput(question.tolerance, (tolerance) => update({ tolerance }), {
               min: 0,
             }),
           ),
           field(
             'Unit',
-            textInput(question.unit, (unit) => onChange({ ...question, unit }), {
+            textInput(question.unit, (unit) => update({ unit }), {
               placeholder: 'e.g. kg',
             }),
           ),
@@ -396,7 +405,7 @@ export function questionForm(question: Question, onChange: (next: Question) => v
           { class: 'muted' },
           'Enter the items in the correct order. Players see them shuffled.',
         ),
-        stringList([...question.items], (items) => onChange({ ...question, items }), {
+        stringList([...question.items], (items) => update({ items }), {
           min: 2,
           placeholder: 'Item',
         }),
@@ -406,7 +415,7 @@ export function questionForm(question: Question, onChange: (next: Question) => v
     case 'poll':
       form.append(
         el('p', { class: 'muted' }, 'A poll has no correct answer.'),
-        stringList([...question.options], (options) => onChange({ ...question, options }), {
+        stringList([...question.options], (options) => update({ options }), {
           min: MIN_ANSWER_OPTIONS,
           max: MAX_ANSWER_OPTIONS,
           maxlength: OPTION_TEXT_MAX,
@@ -419,7 +428,7 @@ export function questionForm(question: Question, onChange: (next: Question) => v
       form.append(
         field(
           'Maximum length',
-          numberInput(question.maxLength, (maxLength) => onChange({ ...question, maxLength }), {
+          numberInput(question.maxLength, (maxLength) => update({ maxLength }), {
             min: 1,
             max: 2000,
           }),
@@ -434,18 +443,18 @@ export function questionForm(question: Question, onChange: (next: Question) => v
           { class: 'grid grid--3' },
           field(
             'Steps',
-            numberInput(question.steps, (steps) => onChange({ ...question, steps }), {
+            numberInput(question.steps, (steps) => update({ steps }), {
               min: SCALE_MIN_STEPS,
               max: SCALE_MAX_STEPS,
             }),
           ),
           field(
             'Low label',
-            textInput(question.lowLabel, (lowLabel) => onChange({ ...question, lowLabel })),
+            textInput(question.lowLabel, (lowLabel) => update({ lowLabel })),
           ),
           field(
             'High label',
-            textInput(question.highLabel, (highLabel) => onChange({ ...question, highLabel })),
+            textInput(question.highLabel, (highLabel) => update({ highLabel })),
           ),
         ),
       );
@@ -458,11 +467,11 @@ export function questionForm(question: Question, onChange: (next: Question) => v
           { class: 'grid grid--2' },
           field(
             'Low label',
-            textInput(question.lowLabel, (lowLabel) => onChange({ ...question, lowLabel })),
+            textInput(question.lowLabel, (lowLabel) => update({ lowLabel })),
           ),
           field(
             'High label',
-            textInput(question.highLabel, (highLabel) => onChange({ ...question, highLabel })),
+            textInput(question.highLabel, (highLabel) => update({ highLabel })),
           ),
         ),
       );
@@ -472,7 +481,7 @@ export function questionForm(question: Question, onChange: (next: Question) => v
       form.append(
         field(
           'Body',
-          textArea(question.body, (body) => onChange({ ...question, body }), SLIDE_BODY_MAX),
+          textArea(question.body, (body) => update({ body }), SLIDE_BODY_MAX),
         ),
       );
       break;
@@ -484,14 +493,14 @@ export function questionForm(question: Question, onChange: (next: Question) => v
           { class: 'grid grid--2' },
           field(
             'Max ideas per player',
-            numberInput(question.maxIdeas, (maxIdeas) => onChange({ ...question, maxIdeas }), {
+            numberInput(question.maxIdeas, (maxIdeas) => update({ maxIdeas }), {
               min: 1,
               max: IDEAS_MAX,
             }),
           ),
           field(
             'Votes per player',
-            numberInput(question.maxVotes, (maxVotes) => onChange({ ...question, maxVotes }), {
+            numberInput(question.maxVotes, (maxVotes) => update({ maxVotes }), {
               min: 1,
               max: IDEA_VOTES,
             }),

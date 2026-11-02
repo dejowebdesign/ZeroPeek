@@ -17,7 +17,7 @@ import {
   type Quiz,
 } from '@zeropeek/shared';
 
-import { del, get, post, put, ApiError } from '../api.js';
+import { del, get, post, put, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
 import { questionForm, newQuestion } from '../questionForm.js';
 import { questionResult, solutionText } from '../questionView.js';
@@ -129,9 +129,13 @@ const app: HTMLElement = appElement;
 
   async function createQuiz(): Promise<void> {
     try {
+      // The server requires at least one question, so seed the new quiz with a
+      // single choice question and open it for editing.
+      const first = newQuestion('single');
+      first.text = 'New question';
       const quiz = await post<Quiz>('/api/quizzes', {
         title: 'New quiz',
-        questions: [],
+        questions: [first],
       });
       await openQuiz(quiz.id);
     } catch (error) {
@@ -221,7 +225,11 @@ const app: HTMLElement = appElement;
                 }),
                 button('Remove', {
                   variant: 'danger',
+                  // A quiz must keep at least one question (server rule), so the
+                  // last remaining question cannot be removed.
+                  disabled: quiz.questions.length === 1,
                   onClick: () => {
+                    if (quiz.questions.length === 1) return;
                     quiz.questions.splice(index, 1);
                     paintQuestions();
                   },
@@ -339,5 +347,23 @@ const app: HTMLElement = appElement;
     document.body.append(dialog);
   }
 
-  void showList();
+  // Bootstrap the CSRF token before any write. The editor is its own page, so
+  // it cannot rely on the host page having logged in already.
+  void (async () => {
+    try {
+      const session = await get<{ user: unknown; csrfToken?: string }>('/api/auth/me');
+      if (!session.user) {
+        location.href = './host.html';
+        return;
+      }
+      if (session.csrfToken) setCsrfToken(session.csrfToken);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        location.href = './host.html';
+        return;
+      }
+      toast(errorText(error), 'error');
+    }
+    await showList();
+  })();
 }

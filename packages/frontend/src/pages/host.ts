@@ -170,8 +170,13 @@ async function showHome(): Promise<void> {
 
     const start = async (quizId: string): Promise<void> => {
       try {
-        const created = await request<HostGame>(ensureSocket(), 'host:create', { quizId });
-        showLobby(created);
+        // The server ACKs with { gameId, pin }; HostGame uses `id`.
+        const created = await request<{ gameId: string; pin: string }>(
+          ensureSocket(),
+          'host:create',
+          { quizId },
+        );
+        showLobby({ id: created.gameId, pin: created.pin });
       } catch (error) {
         toast(errorText(error), 'error');
       }
@@ -179,8 +184,12 @@ async function showHome(): Promise<void> {
 
     const resume = async (gameId: string): Promise<void> => {
       try {
-        const state = await request<{ pin: string }>(ensureSocket(), 'host:join', { gameId });
-        showLobby({ id: gameId, pin: state.pin });
+        const state = await request<{ pin: string; players: PublicPlayer[] }>(
+          ensureSocket(),
+          'host:join',
+          { gameId },
+        );
+        showLobby({ id: gameId, pin: state.pin }, state.players ?? []);
       } catch (error) {
         toast(errorText(error), 'error');
       }
@@ -306,7 +315,7 @@ async function showHome(): Promise<void> {
 }
 
 /** The lobby screen with the join PIN and the growing player list. */
-function showLobby(game: HostGame): void {
+function showLobby(game: HostGame, initialPlayers: PublicPlayer[] = []): void {
   const players = el('ul', { class: 'lobby__players' });
   const paint = (list: PublicPlayer[]): void => {
     players.replaceChildren(
@@ -347,6 +356,7 @@ function showLobby(game: HostGame): void {
   );
 
   const host = ensureSocket();
+  paint(initialPlayers);
   host.on('host:lobby', (payload) => paint(payload.players));
   host.on('host:question', (question) => showQuestion(game, question));
   host.on('host:reveal', (payload) => showReveal(game, payload.question, payload.distribution));
@@ -529,16 +539,16 @@ function showPodium(game: HostGame, players: PublicPlayer[]): void {
 async function showReport(id: string): Promise<void> {
   try {
     const report = await get<{
-      quizTitle: string;
+      quiz: { id: string; title: string; questionCount: number };
       players: Array<{ nickname: string; score: number; rank: number }>;
       questions: Array<{ text: string; answered: number; correct: number }>;
-    }>(`/api/reports/${id}`);
+    }>(`/api/reports/games/${id}`);
     render(
       app,
       el(
         'section',
         { class: 'wrap' },
-        pageHeader(report.quizTitle, [button('Back', { onClick: () => void showHome() })]),
+        pageHeader(report.quiz.title, [button('Back', { onClick: () => void showHome() })]),
         el('h2', { class: 'section-title' }, 'Players'),
         el(
           'ol',
