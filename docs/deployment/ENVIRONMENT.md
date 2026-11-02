@@ -27,6 +27,24 @@ environment editor; in local development copy the example to `.env`.
 | `POSTGRES_PASSWORD` | yes      | –       | Database password. Use a long random value.                                    |
 | `DATABASE_URL`      | yes      | –       | Connection string used by the backend (Prisma). Host is the service name `db`. |
 
+> The first three values are guarded with Compose's `:?` operator: if any of them
+> is missing **or empty**, the stack fails to deploy with a clear message
+> instead of starting a database that can never become healthy. An empty
+> `POSTGRES_PASSWORD` aborts PostgreSQL initialisation
+> (`Database is uninitialized and superuser password is not specified`) and
+> leaves `db` permanently `unhealthy` – see
+> [../reports/postgresql-password-fix.md](../reports/postgresql-password-fix.md).
+>
+> `DATABASE_URL` must repeat exactly the same database name, user and password.
+> A mismatch does not stop the database container from starting, but the backend
+> cannot log in and `/api/health` fails.
+
+> `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD` are applied **only when
+> the `db-data` volume is first initialised**. On an existing volume PostgreSQL
+> ignores them, so editing them later does not rename the user or change the
+> password; the credentials that already exist inside the volume remain in
+> force.
+
 ## Redis
 
 | Variable          | Required | Default | Description                                             |

@@ -101,6 +101,37 @@ meaning is in [ENVIRONMENT.md](./ENVIRONMENT.md). The critical ones:
 > The database host inside `DATABASE_URL` is the compose service name `db`, not
 > `localhost`.
 
+### 5.1 Setting the PostgreSQL credentials in Portainer
+
+`POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD` are **required and must
+not be empty**. The stack file guards them with Compose's `:?` operator, so a
+missing or empty value stops the deployment with a clear error instead of
+starting a database that can never become healthy.
+
+Step by step:
+
+1. Open Portainer and sign in.
+2. Go to **Stacks** and select the `zeropeek` stack (container names start with
+   `zero_peek-`).
+3. Open the stack's **Editor** / **Environment variables** section.
+4. Set `POSTGRES_DB` – the database name, e.g. `zeropeek`.
+5. Set `POSTGRES_USER` – the database user, e.g. `zeropeek`.
+6. Set `POSTGRES_PASSWORD` to a strong, unique password
+   (`openssl rand -base64 32`). Never leave it empty and never reuse the
+   placeholder from `.env.portainer.example`.
+7. Set `DATABASE_URL` so it repeats **exactly** those three values:
+   `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@db:5432/<POSTGRES_DB>?schema=public`.
+8. Click **Deploy the stack** (or **Update the stack**).
+
+> **Existing volume:** these three values are applied only the first time the
+> `db-data` volume is initialised. If the volume already exists, PostgreSQL
+> ignores them and the credentials stored inside the volume stay in force – the
+> values in the stack must match them, otherwise the backend cannot log in.
+> Never delete the volume to "reset" the password without backing up first.
+
+> **Never commit credentials.** Enter them only in Portainer. `.env.portainer.example`
+> contains placeholders, not real secrets.
+
 ## 6. First start
 
 After deploying, Portainer starts the services in dependency order: `db` and
@@ -166,3 +197,24 @@ exactly which commit is running, and a rollback is trivial
 | Stack up but `/api/health` returns 502      | `backend` not healthy yet, or `DATABASE_URL` wrong → check backend logs         |
 | Data lost after redeploy                    | The `db-data` volume was removed → avoid "remove volumes" on update             |
 | Port 80 already in use                      | Another service uses it → set `HTTP_PORT` to a free port                        |
+
+### Database container stays `unhealthy`
+
+`dependency failed to start: container zero_peek-db-1 is unhealthy` almost always
+means the database could not initialise. Check the container log:
+
+```bash
+docker logs zero_peek-db-1
+```
+
+| Log message                                                         | Cause / fix                                                                                           |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `Database is uninitialized and superuser password is not specified` | `POSTGRES_PASSWORD` is empty → set a strong password in the stack (section 5.1) and redeploy          |
+| `required variable POSTGRES_PASSWORD is missing a value`            | Same, but the `:?` guard caught it before the container started → set the variable                    |
+| `database files are incompatible with server`                       | The volume was created by another PostgreSQL major version → migrate or use the matching image        |
+| `FATAL: role "<user>" does not exist` (repeating)                   | `POSTGRES_USER` does not match the user inside the existing volume → set the original value           |
+| Log is empty and the container keeps restarting                     | The password is empty; nothing is written because initdb aborts immediately → set `POSTGRES_PASSWORD` |
+
+If the stack was deployed with an **empty** password against a **fresh** volume,
+the volume stays empty, so simply setting the password and redeploying recovers
+cleanly – no data is lost and no volume needs to be removed.
