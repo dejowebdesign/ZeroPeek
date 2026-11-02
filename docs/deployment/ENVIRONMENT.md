@@ -76,9 +76,14 @@ environment editor; in local development copy the example to `.env`.
 
 | Variable               | Required | Default | Description                                                                                           |
 | ---------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------- |
-| `HTTP_PORT`            | no       | `80`    | Host port published by Caddy. Set `443` for TLS.                                                      |
+| `HTTP_PORT`            | no       | `3737`  | Host port published by Caddy. Set `443` for TLS.                                                      |
 | `CADDY_CONTAINER_PORT` | no       | `80`    | Port Caddy listens on inside the container (`80` HTTP, `443` TLS).                                    |
 | `ZP_SITE_ADDRESS`      | no       | empty   | Domain Caddy serves. Empty = plain HTTP on `:80`. Set to the public domain to enable automatic HTTPS. |
+
+> The default host port is **3737**, not 80, because port 80 is frequently
+> already bound on the Docker host. Deploying with `HTTP_PORT=80` on such a host
+> fails with `failed to bind port 0.0.0.0:80/tcp: bind: address already in use`.
+> The container port stays 80; only the published host port changes.
 
 ### Enabling TLS
 
@@ -99,6 +104,9 @@ Caddy then obtains and renews a Let's Encrypt certificate for
 from the internet** so the ACME challenge can complete; Caddy uses port 80 for
 the HTTP-01 challenge and the HTTP→HTTPS redirect even though the site itself
 listens on 443.
+
+> With TLS the host port must be **443**, not the 3737 default: clients expect
+> HTTPS on 443.
 
 > Publishing `HTTP_PORT=443` while leaving `ZP_SITE_ADDRESS` empty is a
 > misconfiguration: Caddy would serve plain HTTP on a port clients expect to
