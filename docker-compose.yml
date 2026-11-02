@@ -1,0 +1,79 @@
+# ZeroPeek – full local stack.
+#
+#   docker compose up --build
+#   Frontend via proxy:  http://localhost:8080
+#   Backend direct:      http://localhost:3000/api/health
+#
+# Copy .env.example to .env before running.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zeropeek}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-production}
+      POSTGRES_DB: ${POSTGRES_DB:-zeropeek}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-zeropeek} -d ${POSTGRES_DB:-zeropeek}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional. Used from Phase 4+ for Socket.IO scaling and rate limiting.
+  cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      BACKEND_PORT: '3000'
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://zeropeek:change-me-in-production@db:5432/zeropeek?schema=public}
+      REDIS_URL: ${REDIS_URL:-redis://cache:6379}
+      SESSION_SECRET: ${SESSION_SECRET:-please-generate-a-32-byte-hex-secret}
+      COOKIE_NAME: ${COOKIE_NAME:-zp_session}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - '${BACKEND_PORT:-3000}:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '${PROXY_PORT:-8080}:80'
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  db-data:

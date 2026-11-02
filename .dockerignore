@@ -1,0 +1,16 @@
+# Ignore local build artifacts and data for Docker builds.
+node_modules
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.github
+.data
+uploads
+tmp
+*.log
+.env
+.env.*
+!.env.example
+nopeek-audit.md
+.openhands
