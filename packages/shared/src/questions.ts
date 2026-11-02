@@ -148,10 +148,15 @@ export interface Quiz {
  * The type-specific fields a player or beamer may see while a question is open.
  *
  * This is an **allow-list**: solution fields (`correctIndex`, `correct`,
- * `correctIndices`, `accepted`, `answer`, `items` order) are never copied, so
- * the correct answer cannot leak to the client before the reveal. The backend
- * builds the player payload through this function (see the game engine).
+ * `correctIndices`, `accepted`, `answer`) are never copied, so the correct
+ * answer cannot leak to the client before the reveal. The backend builds the
+ * player payload through this function (see the game engine).
+ *
+ * Ordering questions are special: `correctnessOf` compares against the original
+ * `items`, so the display presents a deterministic **shuffled** copy (see
+ * `shuffleWithSeed`) that every client can reproduce.
  */
+
 export function questionDisplay(question: Question): Record<string, unknown> {
   switch (question.type) {
     case 'single':
@@ -170,8 +175,10 @@ export function questionDisplay(question: Question): Record<string, unknown> {
         unit: question.unit,
       };
     case 'order':
-      // The items are shown shuffled; the correct order stays on the server.
-      return { items: question.items };
+      // Shuffled, deterministically by id, so the correct order stays on the
+      // server until the reveal. `correctnessOf` compares against the original
+      // `items`, so the player sends their ordering of these displayed items.
+      return { items: shuffleWithSeed(question.items, question.id) };
     case 'wordCloud':
     case 'open':
       return { maxLength: question.maxLength };
@@ -184,6 +191,35 @@ export function questionDisplay(question: Question): Record<string, unknown> {
     case 'ideas':
       return { maxIdeas: question.maxIdeas, maxVotes: question.maxVotes };
   }
+}
+
+/**
+ * A deterministic shuffle, seeded by a string.
+ *
+ * Seeding by the question id means the server and every client derive the same
+ * shuffled order, so the reveal can show the correct order and the answer never
+ * leaks beforehand.
+ */
+export function shuffleWithSeed<T>(items: readonly T[], seed: string): T[] {
+  // mulberry32 PRNG seeded from a simple string hash.
+  let state = 0x9e3779b9;
+  for (let index = 0; index < seed.length; index += 1) {
+    state = Math.imul(state ^ seed.charCodeAt(index), 0x85ebca6b) >>> 0;
+  }
+  const next = (): number => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(next() * (index + 1));
+    [result[index], result[swap]] = [result[swap]!, result[index]!];
+  }
+  return result;
 }
 
 /**

@@ -170,8 +170,18 @@ export function validateQuestion(question: Question, path = 'question'): Validat
   switch (question.type) {
     case 'single': {
       const options = validateOptions(question.options, `${path}.options`, issues);
-      if (options && !(Number.isInteger(question.correctIndex) && question.correctIndex >= 0 && question.correctIndex < options.length)) {
-        issues.push({ path: `${path}.correctIndex`, message: 'Select exactly one correct option.' });
+      if (
+        options &&
+        !(
+          Number.isInteger(question.correctIndex) &&
+          question.correctIndex >= 0 &&
+          question.correctIndex < options.length
+        )
+      ) {
+        issues.push({
+          path: `${path}.correctIndex`,
+          message: 'Select exactly one correct option.',
+        });
       }
       break;
     }
@@ -185,14 +195,26 @@ export function validateQuestion(question: Question, path = 'question'): Validat
       const options = validateOptions(question.options, `${path}.options`, issues);
       const indices = question.correctIndices;
       if (!Array.isArray(indices) || indices.length === 0) {
-        issues.push({ path: `${path}.correctIndices`, message: 'Select at least one correct option.' });
+        issues.push({
+          path: `${path}.correctIndices`,
+          message: 'Select at least one correct option.',
+        });
       } else {
         const unique = new Set(indices);
         if (unique.size !== indices.length) {
-          issues.push({ path: `${path}.correctIndices`, message: 'Correct options must be unique.' });
+          issues.push({
+            path: `${path}.correctIndices`,
+            message: 'Correct options must be unique.',
+          });
         }
-        if (options && indices.some((index) => !Number.isInteger(index) || index < 0 || index >= options.length)) {
-          issues.push({ path: `${path}.correctIndices`, message: 'A correct option index is out of range.' });
+        if (
+          options &&
+          indices.some((index) => !Number.isInteger(index) || index < 0 || index >= options.length)
+        ) {
+          issues.push({
+            path: `${path}.correctIndices`,
+            message: 'A correct option index is out of range.',
+          });
         }
         if (options && unique.size >= options.length) {
           issues.push({
@@ -209,15 +231,25 @@ export function validateQuestion(question: Question, path = 'question'): Validat
       } else {
         question.accepted.forEach((answer, index) => {
           if (!isNonEmptyString(answer)) {
-            issues.push({ path: `${path}.accepted.${index}`, message: 'An accepted answer must not be empty.' });
+            issues.push({
+              path: `${path}.accepted.${index}`,
+              message: 'An accepted answer must not be empty.',
+            });
           }
         });
       }
       break;
     }
     case 'slider': {
-      if (!isFiniteNumber(question.min) || !isFiniteNumber(question.max) || question.min >= question.max) {
-        issues.push({ path: `${path}.min`, message: 'The minimum must be smaller than the maximum.' });
+      if (
+        !isFiniteNumber(question.min) ||
+        !isFiniteNumber(question.max) ||
+        question.min >= question.max
+      ) {
+        issues.push({
+          path: `${path}.min`,
+          message: 'The minimum must be smaller than the maximum.',
+        });
       }
       if (!isFiniteNumber(question.step) || question.step <= 0) {
         issues.push({ path: `${path}.step`, message: 'The step must be greater than zero.' });
@@ -228,7 +260,10 @@ export function validateQuestion(question: Question, path = 'question'): Validat
         isFiniteNumber(question.max) &&
         (question.answer < question.min || question.answer > question.max)
       ) {
-        issues.push({ path: `${path}.answer`, message: 'The correct value must lie between min and max.' });
+        issues.push({
+          path: `${path}.answer`,
+          message: 'The correct value must lie between min and max.',
+        });
       }
       if (!isFiniteNumber(question.tolerance) || question.tolerance < 0) {
         issues.push({ path: `${path}.tolerance`, message: 'The tolerance must not be negative.' });
@@ -254,7 +289,10 @@ export function validateQuestion(question: Question, path = 'question'): Validat
     case 'wordCloud':
     case 'open': {
       if (!Number.isInteger(question.maxLength) || question.maxLength < 1) {
-        issues.push({ path: `${path}.maxLength`, message: 'A positive maximum length is required.' });
+        issues.push({
+          path: `${path}.maxLength`,
+          message: 'A positive maximum length is required.',
+        });
       }
       break;
     }
@@ -285,13 +323,21 @@ export function validateQuestion(question: Question, path = 'question'): Validat
       break;
     }
     case 'ideas': {
-      if (!Number.isInteger(question.maxIdeas) || question.maxIdeas < 1 || question.maxIdeas > IDEAS_MAX) {
+      if (
+        !Number.isInteger(question.maxIdeas) ||
+        question.maxIdeas < 1 ||
+        question.maxIdeas > IDEAS_MAX
+      ) {
         issues.push({
           path: `${path}.maxIdeas`,
           message: `Between 1 and ${IDEAS_MAX} ideas are allowed.`,
         });
       }
-      if (!Number.isInteger(question.maxVotes) || question.maxVotes < 1 || question.maxVotes > IDEA_VOTES) {
+      if (
+        !Number.isInteger(question.maxVotes) ||
+        question.maxVotes < 1 ||
+        question.maxVotes > IDEA_VOTES
+      ) {
         issues.push({
           path: `${path}.maxVotes`,
           message: `Between 1 and ${IDEA_VOTES} votes are allowed.`,
@@ -317,7 +363,10 @@ export function validateQuiz(quiz: Quiz): ValidationResult<Quiz> {
   if (!isNonEmptyString(quiz.title)) {
     issues.push({ path: 'title', message: 'A quiz title is required.' });
   } else if (quiz.title.length > QUIZ_TITLE_MAX) {
-    issues.push({ path: 'title', message: `The title must not exceed ${QUIZ_TITLE_MAX} characters.` });
+    issues.push({
+      path: 'title',
+      message: `The title must not exceed ${QUIZ_TITLE_MAX} characters.`,
+    });
   }
   if (typeof quiz.description !== 'string') {
     issues.push({ path: 'description', message: 'The description must be a string.' });
