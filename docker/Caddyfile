@@ -1,6 +1,8 @@
 # Edge reverse proxy for the full ZeroPeek stack.
 # Routes /api and /socket.io to the backend, everything else to the frontend.
-# Provides TLS automatically when a real domain is configured (see ZP_DOMAIN).
+# Local development serves plain HTTP; the production stack
+# (docker-compose.portainer.yml) enables TLS through ZP_SITE_ADDRESS
+# (see docs/deployment/ENVIRONMENT.md).
 
 {
   # During local development no automatic HTTPS is attempted.

@@ -96,7 +96,8 @@ meaning is in [ENVIRONMENT.md](./ENVIRONMENT.md). The critical ones:
 | `SESSION_SECRET`     | `openssl rand -hex 32`                                      |
 | `APP_BASE_URL`       | `https://quiz.example.com`                                  |
 | `CORS_ORIGIN`        | `https://quiz.example.com`                                  |
-| `HTTP_PORT`          | `80` (or `443` with TLS)                                    |
+| `HTTP_PORT`          | `80` (plain HTTP) or `443` (with TLS)                       |
+| `ZP_SITE_ADDRESS`    | empty (plain HTTP) or the public domain (TLS)               |
 
 > The database host inside `DATABASE_URL` is the compose service name `db`, not
 > `localhost`.
@@ -147,6 +148,36 @@ curl -s http://<host>/api/health
 ```
 
 Open `http://<host>/` in a browser to see the ZeroPeek start page.
+
+### 6.1 Enabling HTTPS (TLS)
+
+The stack ships **plain HTTP** by default so it works on any host immediately.
+To serve HTTPS, set three variables in the stack environment together:
+
+```env
+ZP_SITE_ADDRESS=quiz.example.com
+CADDY_CONTAINER_PORT=443
+HTTP_PORT=443
+```
+
+Then **Update the stack**. Caddy obtains and renews a Let's Encrypt certificate
+for `ZP_SITE_ADDRESS` automatically. Two conditions must hold:
+
+1. `ZP_SITE_ADDRESS` resolves to the host in public DNS.
+2. Ports **80 and 443** are both reachable from the internet — Caddy uses port
+   80 for the ACME challenge and the HTTP→HTTPS redirect.
+
+Also update `APP_BASE_URL` and `CORS_ORIGIN` to the `https://` origin and set
+`COOKIE_SECURE=true`, otherwise the session cookie is not marked `Secure`.
+
+> Do not set `HTTP_PORT=443` while leaving `ZP_SITE_ADDRESS` empty: Caddy would
+> then serve plain HTTP on a port clients expect to speak TLS on.
+
+Verify:
+
+```bash
+curl -s https://<domain>/api/health
+```
 
 ## 7. Updating to a new image
 

@@ -74,10 +74,35 @@ environment editor; in local development copy the example to `.env`.
 
 ## Reverse proxy
 
-| Variable    | Required | Default     | Description                                                     |
-| ----------- | -------- | ----------- | --------------------------------------------------------------- |
-| `HTTP_PORT` | no       | `80`        | Host port published by Caddy. Set `443` when TLS is configured. |
-| `ZP_DOMAIN` | no       | `localhost` | Domain served by Caddy; used for automatic HTTPS.               |
+| Variable               | Required | Default | Description                                                                                           |
+| ---------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| `HTTP_PORT`            | no       | `80`    | Host port published by Caddy. Set `443` for TLS.                                                      |
+| `CADDY_CONTAINER_PORT` | no       | `80`    | Port Caddy listens on inside the container (`80` HTTP, `443` TLS).                                    |
+| `ZP_SITE_ADDRESS`      | no       | empty   | Domain Caddy serves. Empty = plain HTTP on `:80`. Set to the public domain to enable automatic HTTPS. |
+
+### Enabling TLS
+
+`ZP_SITE_ADDRESS` is the single switch for HTTPS. With it **empty** (the
+default) Caddy serves plain HTTP on container port `80`, so the stack works out
+of the box on a private network.
+
+To serve HTTPS, set all three values consistently:
+
+```env
+ZP_SITE_ADDRESS=quiz.example.com
+CADDY_CONTAINER_PORT=443
+HTTP_PORT=443
+```
+
+Caddy then obtains and renews a Let's Encrypt certificate for
+`quiz.example.com` automatically. Ports **80 and 443 must both be reachable
+from the internet** so the ACME challenge can complete; Caddy uses port 80 for
+the HTTP-01 challenge and the HTTP→HTTPS redirect even though the site itself
+listens on 443.
+
+> Publishing `HTTP_PORT=443` while leaving `ZP_SITE_ADDRESS` empty is a
+> misconfiguration: Caddy would serve plain HTTP on a port clients expect to
+> speak TLS on. Always set the three values together.
 
 ## Optional
 
