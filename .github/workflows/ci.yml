@@ -57,6 +57,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `npm ci` installs @prisma/client but does not generate the client from
+      # the schema, so every Prisma type would be missing and typecheck would
+      # fail with TS2305/TS2694. The backend image generates it explicitly too.
+      - name: Generate Prisma client
+        run: npm run prisma:generate -w @zeropeek/backend
+
       - name: Apply database migrations
         run: npm run prisma:deploy -w @zeropeek/backend
 
