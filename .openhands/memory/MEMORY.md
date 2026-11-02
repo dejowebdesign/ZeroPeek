@@ -26,6 +26,88 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
 - `@prisma/client` resolves from the **repo root** `node_modules`, not
   `backend/node_modules`.
 
+## ZeroPeek repo (github.com/dejowebdesign/ZeroPeek)
+
+- Was an **empty scaffold** (`ebbdd79` "Initial commit", only a 1-line README).
+- Stack declared by the customer: TypeScript, Node.js, Socket.IO, PostgreSQL, Docker.
+- Remote `origin` is set; develop on per-phase branches, e.g. `phase-0/project-foundation`,
+  `feat/ci-docker-portainer`.
+- **Do not push / open PRs without explicit approval** — the user stops for approval at the
+  end of every phase.
+- Phase 0 layout: npm workspaces `packages/{shared,backend,frontend}`; docs/architecture holds
+  7 ADRs; `docs/reports/phase-N.md` holds the per-phase report. Open product questions are
+  tracked as Q1–Q7 in `docs/architecture/README.md` (scoring formula, "too fast" threshold,
+  cheat-report signals, team assignment, IP retention, tie-breakers, self-paced mode).
+- Frontend decision is **Vanilla TS + Vite multi-page** (player/host/editor), NOT Angular —
+  reasons in ADR 0002; strict CSP forbids inline styles so the client styles via the CSSOM.
+- Deployment (Phase 0.5): `.github/workflows/docker-publish.yml` publishes
+  `ghcr.io/dejowebdesign/zeropeek-{backend,frontend}` (tags `sha-<short>`, `main`, `latest`);
+  `docker-compose.portainer.yml` is the self-contained production stack (no `build:`, Caddyfile
+  inline via Compose `configs.content`, only the proxy publishes a port). Docs in
+  `docs/deployment/`. CI (`ci.yml`) is PR-only; publish workflow owns `main`+tags.
+
+### Fresh-checkout trap (broke real CI, found by `act`)
+
+`packages/shared` exposes `dist/` only (`main`/`types` point at `dist`). A clean clone has no
+`dist`, so typechecking backend/frontend fails with `TS2307: Cannot find module '@zeropeek/shared'`.
+The root `typecheck`/`test` scripts must therefore run `build:shared` first. Never reorder them.
+
+### Verifying workflows without a real push
+
+`act` (nektos) runs the workflow in a container: `sudo /tmp/act push -W
+.github/workflows/docker-publish.yml -j verify -P ubuntu-latest=catthehacker/ubuntu:act-latest
+--pull=false`. Note: **act < 0.2.86 has known CVEs** — use 0.2.94+. `actionlint` catches
+expression errors. The sandbox has no GHCR creds, so a real `docker push` can't be tested here;
+build locally with the exact GHCR tag instead.
+
+### Real pipeline facts (confirmed on GitHub, not just locally)
+
+- `docker-publish.yml` on `main` really works: run `41497604769` → verify ✓, both
+  images published (`main`, `latest`, `sha-6db36e1`), deploy job skipped cleanly (no
+  `PORTAINER_WEBHOOK_URL` secret). This is the authoritative test; the sandbox cannot push.
+- The repo and its GHCR packages are **public**, so Portainer pulls anonymously — no registry
+  credentials needed. `.env.portainer.example` default `ZEROPEEK_IMAGE_TAG` can stay `latest`
+  or be pinned to a `sha-…`.
+- Pushing from this sandbox: `gh auth setup-git` fails and plain `git push` prompts for a
+  username (non-interactive → hangs). Use a one-shot URL
+  `git push "https://x-access-token:${GITHUB_TOKEN}@github.com/...git" HEAD:<branch>`, then
+  **immediately** `git remote set-url origin <clean>` **and** unset
+  `branch.<name>.remote/.merge`, because `git push` writes the token-bearing URL into
+  `.git/config` (verified: it does).
+
+### Docker trap found here (cost ~1 build cycle)
+
+`tsc` with `composite: true` leaves `*.tsbuildinfo` in the package dir. If those files get copied
+into a Docker build context, `tsc` thinks the package is already built and emits **no** `dist/`,
+so dependents fail with `TS2307: Cannot find module '@zeropeek/shared'`. `.dockerignore` must
+contain `**/*.tsbuildinfo` (and `**/dist`). Also: in this sandbox the Docker socket needs
+`sudo docker ...`; the daemon must be started with `sudo dockerd > /tmp/docker.log 2>&1 &`.
+
+### Postgres `unhealthy` in the Portainer stack (root cause)
+
+`dependency failed to start: container zero_peek-db-1 is unhealthy` == **empty `POSTGRES_PASSWORD`**.
+The postgres entrypoint aborts a fresh init (`Database is uninitialized and superuser password is
+not specified`), the container restart-loops, and the backend's `depends_on: service_healthy`
+kills the deploy. Fix: `:?` guards on `POSTGRES_DB/USER/PASSWORD` in `docker-compose.portainer.yml`
+so Compose fails fast with a clear message. Do **not** guard `DATABASE_URL`/`REDIS_URL`/
+`APP_BASE_URL`/`SESSION_SECRET` — the Phase 0 backend boots without them.
+
+`pg_isready` is a **bad** healthcheck on its own: it returns 0 for a nonexistent user *and*
+database. The loopback address (`127.0.0.1`/`localhost`) is `trust` in the image's `pg_hba.conf`,
+so `psql -h 127.0.0.1` accepts *any* password. A login-validating probe must use
+`psql -h "$(hostname)"` (or the service IP) — that path is `scram-sha-256` and rejects a wrong
+password. `POSTGRES_DB/USER/PASSWORD` are only applied on **first** volume init; on an existing
+volume they are ignored. A failed init leaves the volume empty, so retrying with a correct
+password recovers with no data loss.
+
+### Compose interpolation facts
+
+- `$$` in a `healthcheck.test` is escaped and reaches the container as a single `$`, so the
+  variable is read from the *container* env at runtime (verified via `docker inspect`).
+- A single `$` in an `.env` *value* is still interpolated by Compose (`p@ss$word` → `p@ss` +
+  warning). A literal `$$` survives.
+- `${VAR:?msg}` fails the deploy for both **unset** and **empty** values — the desired behaviour.
+
 ## Testing gotchas
 
 - `npm -w backend test` takes ~3 minutes (change-detection tests sleep ~19s

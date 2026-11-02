@@ -23,9 +23,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # `:?` makes Compose fail fast with a clear message when a value is
+      # missing or empty, instead of starting PostgreSQL with an empty
+      # POSTGRES_PASSWORD (which aborts initialisation and leaves the container
+      # `unhealthy`). See docs/reports/postgresql-password-fix.md.
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB muss gesetzt sein}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER muss gesetzt sein}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD muss gesetzt sein}
       # Deterministic, reproducible collation for ordered quiz results.
       POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
     volumes:
@@ -33,7 +37,19 @@ services:
     networks:
       - zeropeek
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+      # `pg_isready` alone only proves the server accepts connections; it
+      # succeeds even for a non-existent user or database. The `psql` probe
+      # below performs a real login, so a POSTGRES_USER/DB/PASSWORD mismatch is
+      # reported as `unhealthy` instead of surfacing later as a backend error.
+      # The host is `$(hostname)`, not 127.0.0.1: the loopback address is
+      # covered by the image's `trust` rule and would accept any password.
+      # `$$` escapes the `$` so the values are read from the container env at
+      # runtime rather than interpolated by Compose.
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" && PGPASSWORD="$$POSTGRES_PASSWORD" psql -w -h "$$(hostname)" -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "SELECT 1" >/dev/null',
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
