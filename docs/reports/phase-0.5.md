@@ -143,8 +143,20 @@ The deploy shell logic was exercised against a local fake endpoint:
 - The `deploy` job requires you to create the `PORTAINER_WEBHOOK_URL` secret in
   GitHub; without it the step skips cleanly and manual updates still work.
 
-## 8. Recommendation
+## 8. Result
 
-Phase 0.5 is complete and verified end to end. Recommended next step after
-approval: push the branch and open a PR, then confirm the first real
-`docker-publish.yml` run on `main` and the first Portainer stack deploy.
+- Branch `feat/ci-docker-portainer` pushed; **PR #1** opened against `main`:
+  https://github.com/dejowebdesign/ZeroPeek/pull/1
+- The PR triggered **only** the `CI` workflow (`pass`, 26 s) — the publish
+  workflow correctly did not run, confirming the disjoint-trigger design.
+
+## 9. Recommendation
+
+Phase 0.5 is complete and verified end to end. Recommended next steps after
+merge:
+
+1. Confirm the first real `docker-publish.yml` run on `main` publishes both
+   images to GHCR.
+2. Create the Portainer stack from `docker-compose.portainer.yml` (see
+   `docs/deployment/PORTAINER.md`).
+3. Optionally add the `PORTAINER_WEBHOOK_URL` secret to enable auto-deploy.
