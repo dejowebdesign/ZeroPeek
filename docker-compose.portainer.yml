@@ -143,11 +143,12 @@ services:
     restart: unless-stopped
     # The only service with a published port. With ZP_SITE_ADDRESS empty
     # (default) Caddy serves plain HTTP on container port 80, so HTTP_PORT is
-    # the public port. For TLS set ZP_SITE_ADDRESS to the public domain,
-    # CADDY_CONTAINER_PORT=443 and HTTP_PORT=443; Caddy then obtains and renews
-    # certificates for that domain automatically.
+    # the public port. 3737 is the default because port 80 is commonly already
+    # taken on the Docker host. For TLS set ZP_SITE_ADDRESS to the public
+    # domain, CADDY_CONTAINER_PORT=443 and HTTP_PORT=443; Caddy then obtains and
+    # renews certificates for that domain automatically.
     ports:
-      - '${HTTP_PORT:-80}:${CADDY_CONTAINER_PORT:-80}'
+      - '${HTTP_PORT:-3737}:${CADDY_CONTAINER_PORT:-80}'
     environment:
       # Site address Caddy binds to. Empty (the default) makes the embedded
       # Caddyfile fall back to `:80` for plain HTTP. Set it to the public

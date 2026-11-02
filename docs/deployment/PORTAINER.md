@@ -31,7 +31,7 @@ port, so the database and Redis are unreachable from outside the Docker host.
 
 - A Docker host with Portainer (CE or BE) running.
 - Outbound internet access from the host to `ghcr.io`.
-- A free host port for the proxy (80 by default, 443 for TLS).
+- A free host port for the proxy (**3737** by default, **443** for TLS).
 
 ## 3. Adding the stack in Portainer
 
@@ -96,7 +96,7 @@ meaning is in [ENVIRONMENT.md](./ENVIRONMENT.md). The critical ones:
 | `SESSION_SECRET`     | `openssl rand -hex 32`                                      |
 | `APP_BASE_URL`       | `https://quiz.example.com`                                  |
 | `CORS_ORIGIN`        | `https://quiz.example.com`                                  |
-| `HTTP_PORT`          | `80` (plain HTTP) or `443` (with TLS)                       |
+| `HTTP_PORT`          | `3737` (plain HTTP) or `443` (with TLS)                     |
 | `ZP_SITE_ADDRESS`    | empty (plain HTTP) or the public domain (TLS)               |
 
 > The database host inside `DATABASE_URL` is the compose service name `db`, not
@@ -142,12 +142,13 @@ show a green **healthy** state when the stack is up.
 Verification:
 
 ```bash
-# Replace 80 with your HTTP_PORT if you changed it.
-curl -s http://<host>/api/health
+# The proxy publishes host port 3737 by default. Replace 3737 with your
+# HTTP_PORT if you changed it.
+curl -s http://<host>:3737/api/health
 # {"status":"ok","service":"zeropeek-backend","version":"0.0.0","questionTypes":13}
 ```
 
-Open `http://<host>/` in a browser to see the ZeroPeek start page.
+Open `http://<host>:3737/` in a browser to see the ZeroPeek start page.
 
 ### 6.1 Enabling HTTPS (TLS)
 
@@ -227,7 +228,7 @@ exactly which commit is running, and a rollback is trivial
 | `pull access denied` for `zeropeek-backend` | Image not published yet → check the Actions run in GitHub                       |
 | Stack up but `/api/health` returns 502      | `backend` not healthy yet, or `DATABASE_URL` wrong → check backend logs         |
 | Data lost after redeploy                    | The `db-data` volume was removed → avoid "remove volumes" on update             |
-| Port 80 already in use                      | Another service uses it → set `HTTP_PORT` to a free port                        |
+| `failed to bind port 0.0.0.0:80/tcp`        | Host port 80 is already in use → set `HTTP_PORT` to a free port (default 3737)  |
 
 ### Database container stays `unhealthy`
 
