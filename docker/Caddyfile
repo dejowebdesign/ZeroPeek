@@ -1,0 +1,40 @@
+# Edge reverse proxy for the full ZeroPeek stack.
+# Routes /api and /socket.io to the backend, everything else to the frontend.
+# Provides TLS automatically when a real domain is configured (see ZP_DOMAIN).
+
+{
+  # During local development no automatic HTTPS is attempted.
+  auto_https off
+  admin off
+}
+
+:80 {
+  encode zstd gzip
+
+  # Security headers applied at the edge (mirrors ADR 0006).
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer"
+    Cross-Origin-Opener-Policy "same-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    -Server
+  }
+
+  # Realtime: Socket.IO needs WebSocket upgrade support (Caddy handles it).
+  @sockets path /socket.io/*
+  handle @sockets {
+    reverse_proxy backend:3000
+  }
+
+  # REST API.
+  @api path /api/*
+  handle @api {
+    reverse_proxy backend:3000
+  }
+
+  # Everything else is the static frontend.
+  handle {
+    reverse_proxy frontend:80
+  }
+}

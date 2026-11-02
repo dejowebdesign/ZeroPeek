@@ -1,0 +1,25 @@
+{
+  "name": "@zeropeek/frontend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ZeroPeek frontend: multi-page Vanilla-TS client (player, host, editor).",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview --port 5173",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@zeropeek/shared": "*",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,12 @@
+# Caddyfile used inside the frontend image to serve the static build.
+# The edge proxy (docker/Caddyfile) forwards non-API traffic here.
+
+:80 {
+  encode zstd gzip
+  root * /srv
+
+  # SPA-style fallback is not used: this is a multi-page app with real files.
+  try_files {path} {path}.html {path}/index.html
+
+  file_server
+}

@@ -1,0 +1,33 @@
+// ZeroPeek – Prisma schema (Phase 0 skeleton)
+//
+// Phase 0 establishes the datasource, the generator and a single User model so
+// that `prisma validate` and `prisma generate` succeed. The full domain model
+// (Quiz, Question, Game, GamePlayer, PlayerAnswer, GameResult, Team, GameEvent,
+// Session, …) is added in Phase 2.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  TRAINER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String?  @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(TRAINER)
+  disabled     Boolean  @default(false)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
