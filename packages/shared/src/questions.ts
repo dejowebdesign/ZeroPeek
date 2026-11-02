@@ -145,6 +145,48 @@ export interface Quiz {
 }
 
 /**
+ * The type-specific fields a player or beamer may see while a question is open.
+ *
+ * This is an **allow-list**: solution fields (`correctIndex`, `correct`,
+ * `correctIndices`, `accepted`, `answer`, `items` order) are never copied, so
+ * the correct answer cannot leak to the client before the reveal. The backend
+ * builds the player payload through this function (see the game engine).
+ */
+export function questionDisplay(question: Question): Record<string, unknown> {
+  switch (question.type) {
+    case 'single':
+    case 'multiple':
+    case 'poll':
+      return { options: question.options };
+    case 'trueFalse':
+      return { options: [true, false] };
+    case 'text':
+      return {};
+    case 'slider':
+      return {
+        min: question.min,
+        max: question.max,
+        step: question.step,
+        unit: question.unit,
+      };
+    case 'order':
+      // The items are shown shuffled; the correct order stays on the server.
+      return { items: question.items };
+    case 'wordCloud':
+    case 'open':
+      return { maxLength: question.maxLength };
+    case 'scale':
+      return { steps: question.steps, lowLabel: question.lowLabel, highLabel: question.highLabel };
+    case 'nps':
+      return { lowLabel: question.lowLabel, highLabel: question.highLabel };
+    case 'slide':
+      return { body: question.body };
+    case 'ideas':
+      return { maxIdeas: question.maxIdeas, maxVotes: question.maxVotes };
+  }
+}
+
+/**
  * The display options of a rating question, in fixed order (never shuffled).
  * `nps` yields "0".."10"; all other scales yield "1"..steps.
  */
