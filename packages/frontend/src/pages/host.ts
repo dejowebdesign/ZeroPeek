@@ -205,6 +205,10 @@ async function showHome(): Promise<void> {
         { class: 'wrap' },
         pageHeader(`Welcome, ${me?.username ?? 'host'}`, [
           button('Editor', { onClick: () => (location.href = './editor.html') }),
+          // Only administrators can reach the user management page.
+          ...(me?.role === 'ADMIN'
+            ? [button('Users', { onClick: () => (location.href = './admin.html') })]
+            : []),
           button('Sign out', {
             onClick: async () => {
               try {

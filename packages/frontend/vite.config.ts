@@ -17,6 +17,7 @@ export default defineConfig({
         index: resolve(__dirname, 'src/index.html'),
         host: resolve(__dirname, 'src/host.html'),
         editor: resolve(__dirname, 'src/editor.html'),
+        admin: resolve(__dirname, 'src/admin.html'),
       },
     },
   },
