@@ -13,9 +13,10 @@
   ],
   "scripts": {
     "build": "npm run build -w @zeropeek/shared && npm run build -w @zeropeek/backend && npm run build -w @zeropeek/frontend",
+    "build:shared": "npm run build -w @zeropeek/shared",
     "dev": "npm run dev -w @zeropeek/backend",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run build:shared && npm run test --workspaces --if-present",
     "test:watch": "npm run test:watch --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --write .",

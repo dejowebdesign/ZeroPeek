@@ -45,11 +45,12 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       BACKEND_PORT: '3000'
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
       DATABASE_URL: ${DATABASE_URL:-postgresql://zeropeek:change-me-in-production@db:5432/zeropeek?schema=public}
       REDIS_URL: ${REDIS_URL:-redis://cache:6379}
       SESSION_SECRET: ${SESSION_SECRET:-please-generate-a-32-byte-hex-secret}
-      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-zp_session}
+      COOKIE_NAME: ${COOKIE_NAME:-zp_session}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     ports:
       - '${BACKEND_PORT:-3000}:3000'

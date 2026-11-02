@@ -1,8 +1,14 @@
+# ZeroPeek – continuous integration for pull requests.
+#
+# Scope: this workflow is the fast feedback gate for pull requests only.
+# Pushes to `main` and version tags are handled by docker-publish.yml, which
+# runs the exact same verification steps before it publishes any image. Keeping
+# the two triggers disjoint avoids running (and paying for) the same checks
+# twice for one commit.
+
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
 
 concurrency:
@@ -13,6 +19,9 @@ jobs:
   build-and-test:
     name: Typecheck, test and build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -33,8 +42,8 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      - name: Build
-        run: npm run build
-
       - name: Check formatting
         run: npm run format:check
+
+      - name: Build all workspaces
+        run: npm run build

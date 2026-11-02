@@ -12,7 +12,10 @@ export interface AppConfig {
   nodeEnv: NodeEnv;
   port: number;
   host: string;
-  publicBaseUrl: string;
+  /** Public origin of the app (links, QR codes, cookie scope). */
+  appBaseUrl: string;
+  /** Allowed browser origin for CORS. */
+  corsOrigin: string;
   logLevel: string;
   cookieSecure: boolean;
   sessionCookieName: string;
@@ -30,13 +33,18 @@ function readPort(value: string | undefined, fallback: number): number {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  // `APP_BASE_URL` is the documented name; `PUBLIC_BASE_URL` is kept as a
+  // fallback so older deployments keep working.
+  const appBaseUrl = env.APP_BASE_URL ?? env.PUBLIC_BASE_URL ?? 'http://localhost:8080';
+
   return {
     nodeEnv: readNodeEnv(env.NODE_ENV),
     port: readPort(env.BACKEND_PORT, 3000),
     host: env.BACKEND_HOST ?? '0.0.0.0',
-    publicBaseUrl: env.PUBLIC_BASE_URL ?? 'http://localhost:8080',
+    appBaseUrl,
+    corsOrigin: env.CORS_ORIGIN ?? appBaseUrl,
     logLevel: env.LOG_LEVEL ?? 'info',
     cookieSecure: env.COOKIE_SECURE === 'true',
-    sessionCookieName: env.SESSION_COOKIE_NAME ?? 'zp_session',
+    sessionCookieName: env.COOKIE_NAME ?? env.SESSION_COOKIE_NAME ?? 'zp_session',
   };
 }

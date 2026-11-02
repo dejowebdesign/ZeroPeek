@@ -10,6 +10,8 @@ describe('config', () => {
     expect(config.port).toBe(3000);
     expect(config.host).toBe('0.0.0.0');
     expect(config.cookieSecure).toBe(false);
+    expect(config.appBaseUrl).toBe('http://localhost:8080');
+    expect(config.corsOrigin).toBe('http://localhost:8080');
   });
 
   it('reads provided values', () => {
@@ -17,12 +19,34 @@ describe('config', () => {
       NODE_ENV: 'production',
       BACKEND_PORT: '4321',
       COOKIE_SECURE: 'true',
-      SESSION_COOKIE_NAME: 'zp_test',
+      COOKIE_NAME: 'zp_test',
+      APP_BASE_URL: 'https://quiz.example.com',
+      CORS_ORIGIN: 'https://other.example.com',
     });
     expect(config.nodeEnv).toBe('production');
     expect(config.port).toBe(4321);
     expect(config.cookieSecure).toBe(true);
     expect(config.sessionCookieName).toBe('zp_test');
+    expect(config.appBaseUrl).toBe('https://quiz.example.com');
+    expect(config.corsOrigin).toBe('https://other.example.com');
+  });
+
+  it('falls back to the legacy PUBLIC_BASE_URL / SESSION_COOKIE_NAME names', () => {
+    const config = loadConfig({
+      PUBLIC_BASE_URL: 'https://legacy.example.com',
+      SESSION_COOKIE_NAME: 'legacy_cookie',
+    });
+    expect(config.appBaseUrl).toBe('https://legacy.example.com');
+    expect(config.corsOrigin).toBe('https://legacy.example.com');
+    expect(config.sessionCookieName).toBe('legacy_cookie');
+  });
+
+  it('prefers APP_BASE_URL over the legacy name', () => {
+    const config = loadConfig({
+      APP_BASE_URL: 'https://new.example.com',
+      PUBLIC_BASE_URL: 'https://legacy.example.com',
+    });
+    expect(config.appBaseUrl).toBe('https://new.example.com');
   });
 
   it('ignores an invalid port', () => {
