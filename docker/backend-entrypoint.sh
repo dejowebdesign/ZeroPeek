@@ -19,6 +19,14 @@
 set -e
 
 # --- 1. Validate the configuration and resolve DATABASE_URL -------------------
+# The node snippet prints, on stdout, one `ZP_*` line per fact so the shell can
+# report them without re-implementing any validation:
+#   ZP_DATABASE_URL:<url>        the resolved connection string (internal use)
+#   ZP_DATABASE_TARGET:<user@host:port/db>   password-free, safe to log
+#   ZP_DATABASE_SOURCE:<explicit|derived|none>
+#   ZP_WARN:<message>            a non-fatal configuration observation
+# A fatal problem (ConfigError) is printed to stderr and exits 1, so the operator
+# sees the readable message and the container stops instead of looping.
 config_output=$(
   node -e '
     const { loadConfig, ConfigError } = require("./packages/backend/dist/config.js");
@@ -30,7 +38,12 @@ config_output=$(
         );
         process.exit(1);
       }
+      for (const warning of config.warnings) {
+        process.stdout.write("ZP_WARN:" + warning + "\n");
+      }
       process.stdout.write("ZP_DATABASE_URL:" + config.databaseUrl + "\n");
+      process.stdout.write("ZP_DATABASE_TARGET:" + (config.databaseTarget || "unknown") + "\n");
+      process.stdout.write("ZP_DATABASE_SOURCE:" + config.databaseUrlSource + "\n");
     } catch (error) {
       if (error instanceof ConfigError) {
         console.error(error.message);
@@ -44,12 +57,26 @@ config_output=$(
   '
 ) || exit 1
 
+# Surface the non-fatal observations (no secrets) before anything else.
+printf '%s\n' "$config_output" | sed -n 's/^ZP_WARN:/WARNING: /p' >&2
+
 DATABASE_URL=$(printf '%s\n' "$config_output" | sed -n 's/^ZP_DATABASE_URL://p')
 if [ -z "$DATABASE_URL" ]; then
   echo "FATAL: DATABASE_URL could not be resolved from the environment." >&2
   exit 1
 fi
 export DATABASE_URL
+
+DATABASE_TARGET=$(printf '%s\n' "$config_output" | sed -n 's/^ZP_DATABASE_TARGET://p')
+DATABASE_SOURCE=$(printf '%s\n' "$config_output" | sed -n 's/^ZP_DATABASE_SOURCE://p')
+
+# Name the exact target (host, port, database and user – never the password) so a
+# later failure is unambiguous. When DATABASE_URL is explicit it wins over the
+# POSTGRES_* values; say so and how to fall back to them.
+echo "database target: ${DATABASE_TARGET:-unknown} (source: ${DATABASE_SOURCE:-unknown})"
+if [ "$DATABASE_SOURCE" = "explicit" ]; then
+  echo "  DATABASE_URL was set explicitly and takes precedence over POSTGRES_*. If the database is the bundled 'db' service, clear DATABASE_URL so it is derived from POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB." >&2
+fi
 
 # --- 2. Wait for PostgreSQL, diagnosing the reason ----------------------------
 # Exit code 0 = reachable. On failure a single `ZP_DB_ERROR:<code> <hint>` line
@@ -99,6 +126,7 @@ until err=$(probe_db); do
   detail=${err#ZP_DB_ERROR:}
   if [ "$attempt" -ge "$max_attempts" ]; then
     echo "FATAL: the database is not reachable after ${max_attempts} attempts." >&2
+    echo "       target: ${DATABASE_TARGET:-unknown} (source: ${DATABASE_SOURCE:-unknown})" >&2
     echo "       ${detail:-unknown error}" >&2
     echo "       The PostgreSQL volume was left untouched. Correct DATABASE_URL and the POSTGRES_* values in the stack, then redeploy." >&2
     exit 1

@@ -19,6 +19,9 @@
 
 export type NodeEnv = 'development' | 'test' | 'production';
 
+/** Where the effective `DATABASE_URL` came from. */
+export type DatabaseUrlSource = 'explicit' | 'derived' | 'none';
+
 /** Raised when a required configuration value is missing or invalid. */
 export class ConfigError extends Error {
   /** Names of the offending environment variables. */
@@ -50,6 +53,14 @@ export interface AppConfig {
   sessionSecret: string;
   /** PostgreSQL connection string consumed by Prisma. */
   databaseUrl: string;
+  /** Where `databaseUrl` came from: an explicit value, derived, or none. */
+  databaseUrlSource: DatabaseUrlSource;
+  /**
+   * `host:port/database` (as user) of `databaseUrl`, with **no password** – safe
+   * to log, so a failure names the target that was actually used instead of
+   * leaving the operator to guess. `null` when it cannot be parsed.
+   */
+  databaseTarget: string | null;
   /**
    * Non-fatal configuration observations (e.g. a localhost public URL). They are
    * logged on start but do not stop the backend, so a working deployment is
@@ -129,6 +140,77 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
+/**
+ * A short, password-free description of a connection string: `user@host:port/db`.
+ *
+ * It is safe to log and is what turns a bare "the database is not reachable"
+ * into a message that names the host, port, database and user that were actually
+ * used. The password is never part of the result. Returns `null` for a value that
+ * is not a parseable URL.
+ */
+export function describeDatabaseUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const user = decodeURIComponent(url.username || '');
+    const database = url.pathname.replace(/^\//, '');
+    const auth = user ? `${user}@` : '';
+    return `${auth}${url.hostname}:${url.port || '5432'}/${database}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether a connection string uses the `postgresql:`/`postgres:` scheme. */
+export function isPostgresUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === 'postgresql:' || protocol === 'postgres:';
+  } catch {
+    return false;
+  }
+}
+
+/** Obvious "replace me" values shipped in the example files. */
+const PLACEHOLDER_SECRETS = [
+  'change-me-session-secret',
+  'please-generate-a-32-byte-hex-secret',
+  'phase-0-placeholder',
+];
+
+/**
+ * Whether a session secret still looks like a placeholder or is trivially short.
+ *
+ * A secret that was copied from an example file, or that is shorter than the
+ * 32 characters `openssl rand -hex 32` produces, does not protect a production
+ * deployment and is almost always an oversight, so it is treated as an error in
+ * production.
+ */
+export function isPlaceholderSecret(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length < 32) return true;
+  return PLACEHOLDER_SECRETS.some((placeholder) => normalized.includes(placeholder));
+}
+
+/**
+ * Compare the host, port, database and user of two connection strings, ignoring
+ * the password. Used to warn when an explicit `DATABASE_URL` silently points
+ * somewhere other than the `POSTGRES_*` values next to it.
+ */
+function sameDatabaseTarget(a: string, b: string): boolean {
+  try {
+    const left = new URL(a);
+    const right = new URL(b);
+    return (
+      left.hostname === right.hostname &&
+      (left.port || '5432') === (right.port || '5432') &&
+      left.pathname === right.pathname &&
+      left.username === right.username
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** A localhost origin, used to flag plain-HTTP public URLs in production. */
 function isLoopbackUrl(value: string): boolean {
   try {
@@ -160,6 +242,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   // instead of failing, because a cache outage must not take the app down.
   const redisUrl = isNonEmpty(env.REDIS_URL) ? env.REDIS_URL : 'redis://cache:6379';
   const databaseUrl = resolveDatabaseUrl(env) ?? '';
+  const databaseUrlSource: DatabaseUrlSource = isNonEmpty(env.DATABASE_URL)
+    ? 'explicit'
+    : databaseUrl
+      ? 'derived'
+      : 'none';
+  const databaseTarget = databaseUrl ? describeDatabaseUrl(databaseUrl) : null;
 
   // `COOKIE_SECURE` is derived from the scheme of `APP_BASE_URL` unless it is
   // set explicitly. A cookie marked `Secure` is dropped by the browser over
@@ -178,12 +266,36 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       problems.push(
         'SESSION_SECRET is missing or empty. Set a long random value, e.g. `openssl rand -hex 32`.',
       );
+    } else if (isPlaceholderSecret(sessionSecret)) {
+      // A secret copied from an example file, or shorter than the 32 characters
+      // `openssl rand -hex 32` produces, does not protect a production
+      // deployment and is almost always an oversight.
+      problems.push(
+        'SESSION_SECRET still looks like a placeholder or is too short. Replace it with a long random value, e.g. `openssl rand -hex 32`.',
+      );
     }
 
     if (!isNonEmpty(databaseUrl)) {
       problems.push(
         'DATABASE_URL is missing or empty and cannot be derived. Set DATABASE_URL, or set POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB so it can be built automatically.',
       );
+    } else if (!isPostgresUrl(databaseUrl)) {
+      problems.push(
+        `DATABASE_URL must be a PostgreSQL connection string (postgresql://…), got "${databaseTarget ?? databaseUrl}".`,
+      );
+    } else if (databaseUrlSource === 'explicit' && isNonEmpty(env.POSTGRES_USER)) {
+      // An explicit DATABASE_URL wins over the POSTGRES_* values. When it names a
+      // different host/port/database/user than those values, it is almost always
+      // a leftover placeholder (e.g. the one from .env.example) and is the reason
+      // a deployment that looks correctly configured still cannot reach the
+      // database. Warn loudly instead of failing, because an external database is
+      // a legitimate setup.
+      const derived = resolveDatabaseUrl({ ...env, DATABASE_URL: undefined });
+      if (derived && !sameDatabaseTarget(databaseUrl, derived)) {
+        warnings.push(
+          `DATABASE_URL is set explicitly and points at "${databaseTarget}", but the POSTGRES_* values describe "${describeDatabaseUrl(derived)}". The explicit DATABASE_URL wins. If the database is the bundled \`db\` service, clear DATABASE_URL so it is derived from POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB.`,
+        );
+      }
     }
 
     // REDIS_URL is intentionally not required: it defaults to the bundled
@@ -239,6 +351,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     redisUrl,
     sessionSecret,
     databaseUrl,
+    databaseUrlSource,
+    databaseTarget,
     warnings,
     ...(env.BOOTSTRAP_ADMIN_USER ? { bootstrapAdminUser: env.BOOTSTRAP_ADMIN_USER } : {}),
     ...(env.BOOTSTRAP_ADMIN_PASSWORD

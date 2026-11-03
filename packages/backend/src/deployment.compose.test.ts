@@ -108,3 +108,28 @@ describe('docker-compose.portainer.yml proxy ports', () => {
     expect(challengePort, 'proxy must publish container port 80').toBeDefined();
   });
 });
+
+describe('backend entrypoint diagnostics', () => {
+  const entrypoint = read('docker/backend-entrypoint.sh');
+
+  it('names the resolved database target (host/port/db) so failures are unambiguous', () => {
+    expect(entrypoint).toContain('ZP_DATABASE_TARGET');
+    expect(entrypoint).toMatch(/database target:/);
+  });
+
+  it('explains that an explicit DATABASE_URL takes precedence over POSTGRES_*', () => {
+    expect(entrypoint).toMatch(/clear DATABASE_URL/);
+  });
+
+  it('reports the number of attempts and leaves the volume untouched', () => {
+    expect(entrypoint).toMatch(/database is not reachable after/);
+    expect(entrypoint).toMatch(/volume was left untouched/);
+  });
+
+  it('never echoes the resolved connection string (which contains the password)', () => {
+    // The resolved URL is assigned to DATABASE_URL and exported; it must never be
+    // printed. Only the password-free target is echoed.
+    expect(entrypoint).not.toMatch(/echo[^\n]*\$\{?DATABASE_URL\b/);
+    expect(entrypoint).not.toMatch(/echo[^\n]*\$DATABASE_URL\b/);
+  });
+});
