@@ -88,6 +88,17 @@ The packages are private too. Register the registry once in Portainer:
 
 The token is stored in Portainer, never in this repository.
 
+> **Changing the repository to private does not change the packages.** GHCR
+> package visibility is set per package and only inherits the repository's
+> visibility **when the package is first pushed**; after that the two are
+> independent. If the repository is later made private, the existing
+> `zeropeek-backend` / `zeropeek-frontend` packages may still be public — or, if
+> they were already private, they stay private. Verify each package's visibility
+> under **GitHub → Packages → the package → Package settings**, and either keep
+> them public (anonymous pulls keep working, nothing to configure in Portainer) or
+> make them private **and** register the GHCR credentials above. A private package
+> without credentials makes Portainer's pull fail with `unauthorized`.
+
 ## 5. Environment variables
 
 Set them in the stack's **Environment variables** section. The complete list and

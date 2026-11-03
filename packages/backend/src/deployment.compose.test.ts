@@ -27,6 +27,7 @@ function read(relativePath: string): string {
 }
 
 const compose = read('docker-compose.portainer.yml');
+const devCompose = read('docker-compose.yml');
 const portainerDoc = read('docs/deployment/PORTAINER.md');
 const environmentDoc = read('docs/deployment/ENVIRONMENT.md');
 const envTemplate = read('.env.portainer.example');
@@ -131,5 +132,42 @@ describe('backend entrypoint diagnostics', () => {
     // printed. Only the password-free target is echoed.
     expect(entrypoint).not.toMatch(/echo[^\n]*\$\{?DATABASE_URL\b/);
     expect(entrypoint).not.toMatch(/echo[^\n]*\$DATABASE_URL\b/);
+  });
+});
+
+describe('docker-compose.yml (local development)', () => {
+  it('does not guard any variable with `:?`, so a fresh clone needs no secrets', () => {
+    // `docker compose up --build` must work on a clean checkout. A `:?` guard
+    // here would abort the local stack on a variable the developer has not set.
+    expect(requiredVariables(devCompose)).toEqual([]);
+  });
+
+  it('defaults NODE_ENV to development, not production', () => {
+    // The strict production validation (placeholder secrets, real APP_BASE_URL,
+    // postgresql:// DATABASE_URL) must not apply to the local stack. Defaulting
+    // to `production` while the other defaults are placeholders stopped the
+    // backend on start; `development` keeps the local flow working.
+    expect(devCompose).toMatch(/NODE_ENV:\s*\$\{NODE_ENV:-development\}/);
+    expect(devCompose).not.toMatch(/NODE_ENV:\s*\$\{NODE_ENV:-production\}/);
+  });
+});
+
+describe('portainer stack vs local stack', () => {
+  it('keeps the production stack the only one that requires secrets', () => {
+    expect(required).toEqual([
+      'POSTGRES_DB',
+      'POSTGRES_PASSWORD',
+      'POSTGRES_USER',
+      'SESSION_SECRET',
+    ]);
+    expect(requiredVariables(devCompose)).toEqual([]);
+  });
+
+  it('documents the GHCR package-visibility caveat for a private repository', () => {
+    // Changing the repository to private does NOT change the visibility of the
+    // packages already published under ghcr.io; they must be checked separately
+    // or Portainer pulls fail with `unauthorized`.
+    expect(portainerDoc).toMatch(/package(s)?[^\n]*visib|visib[^\n]*package/i);
+    expect(portainerDoc).toMatch(/private/i);
   });
 });
