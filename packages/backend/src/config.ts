@@ -50,6 +50,12 @@ export interface AppConfig {
   sessionSecret: string;
   /** PostgreSQL connection string consumed by Prisma. */
   databaseUrl: string;
+  /**
+   * Non-fatal configuration observations (e.g. a localhost public URL). They are
+   * logged on start but do not stop the backend, so a working deployment is
+   * never blocked by a value that only degrades quality.
+   */
+  warnings: string[];
   /** Bootstrap admin credentials; when both are set and no admin exists yet,
    * the account is created on boot. Never logged. */
   bootstrapAdminUser?: string;
@@ -148,8 +154,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       : 'http://localhost:8080';
   const corsOrigin = isNonEmpty(env.CORS_ORIGIN) ? env.CORS_ORIGIN : appBaseUrl;
   const sessionSecret = isNonEmpty(env.SESSION_SECRET) ? env.SESSION_SECRET : 'phase-0-placeholder';
+  // Redis is optional (Socket.IO scaling / rate limiting). The compose service
+  // is named `cache`, so this default is always correct for the bundled stack;
+  // the backend additionally probes the connection at start and logs a warning
+  // instead of failing, because a cache outage must not take the app down.
   const redisUrl = isNonEmpty(env.REDIS_URL) ? env.REDIS_URL : 'redis://cache:6379';
   const databaseUrl = resolveDatabaseUrl(env) ?? '';
+
+  // `COOKIE_SECURE` is derived from the scheme of `APP_BASE_URL` unless it is
+  // set explicitly. A cookie marked `Secure` is dropped by the browser over
+  // plain HTTP, which silently breaks login, so the default must follow the
+  // deployment rather than assume HTTPS.
+  const cookieSecure = isNonEmpty(env.COOKIE_SECURE)
+    ? env.COOKIE_SECURE === 'true'
+    : appBaseUrl.startsWith('https://');
+
+  const warnings: string[] = [];
 
   if (nodeEnv === 'production') {
     const problems: string[] = [];
@@ -166,11 +186,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       );
     }
 
-    if (!isNonEmpty(env.REDIS_URL)) {
-      problems.push(
-        'REDIS_URL is missing or empty. Set it to the cache service, e.g. `redis://cache:6379`.',
-      );
-    }
+    // REDIS_URL is intentionally not required: it defaults to the bundled
+    // `cache` service and the app degrades gracefully without Redis.
 
     if (!isNonEmpty(env.APP_BASE_URL) && !isNonEmpty(env.PUBLIC_BASE_URL)) {
       problems.push(
@@ -179,8 +196,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     } else if (!isHttpUrl(appBaseUrl)) {
       problems.push(`APP_BASE_URL must be an absolute http(s) URL, got "${appBaseUrl}".`);
     } else if (isLoopbackUrl(appBaseUrl)) {
-      problems.push(
-        `APP_BASE_URL points at localhost ("${appBaseUrl}"). Set the public origin users reach, e.g. \`https://quiz.example.com\`.`,
+      // A localhost public URL is a real deployment mistake, but it is only
+      // reachable on the host itself – for an internal/plain-HTTP deployment it
+      // is intentional. Warn instead of blocking, so the stack still deploys.
+      warnings.push(
+        `APP_BASE_URL points at localhost ("${appBaseUrl}"). Links, QR codes and cookie scope will not work for other devices. Set the origin users actually reach, e.g. \`https://quiz.example.com\`.`,
       );
     }
 
@@ -190,7 +210,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
     if (problems.length > 0) {
       throw new ConfigError(
-        ['SESSION_SECRET', 'DATABASE_URL', 'REDIS_URL', 'APP_BASE_URL', 'CORS_ORIGIN'],
+        ['SESSION_SECRET', 'DATABASE_URL', 'APP_BASE_URL', 'CORS_ORIGIN'],
         [
           'ZeroPeek backend cannot start: the configuration is incomplete or invalid.',
           '',
@@ -209,7 +229,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     appBaseUrl,
     corsOrigin,
     logLevel: env.LOG_LEVEL ?? 'info',
-    cookieSecure: env.COOKIE_SECURE === 'true',
+    cookieSecure,
     sessionCookieName: isNonEmpty(env.COOKIE_NAME)
       ? env.COOKIE_NAME
       : isNonEmpty(env.SESSION_COOKIE_NAME)
@@ -219,6 +239,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     redisUrl,
     sessionSecret,
     databaseUrl,
+    warnings,
     ...(env.BOOTSTRAP_ADMIN_USER ? { bootstrapAdminUser: env.BOOTSTRAP_ADMIN_USER } : {}),
     ...(env.BOOTSTRAP_ADMIN_PASSWORD
       ? { bootstrapAdminPassword: env.BOOTSTRAP_ADMIN_PASSWORD }
