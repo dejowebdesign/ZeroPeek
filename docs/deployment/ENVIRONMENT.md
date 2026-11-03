@@ -20,11 +20,11 @@ environment editor; in local development copy the example to `.env`.
 
 ## PostgreSQL
 
-| Variable            | Required | Default | Description                                                                      |
-| ------------------- | -------- | ------- | -------------------------------------------------------------------------------- |
-| `POSTGRES_DB`       | yes      | –       | Database name created on first start.                                            |
-| `POSTGRES_USER`     | yes      | –       | Database user.                                                                   |
-| `POSTGRES_PASSWORD` | yes      | –       | Database password. Use a long random value.                                      |
+| Variable            | Required | Default | Description                                                                                                                  |
+| ------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_DB`       | yes      | –       | Database name created on first start.                                                                                        |
+| `POSTGRES_USER`     | yes      | –       | Database user.                                                                                                               |
+| `POSTGRES_PASSWORD` | yes      | –       | Database password. Use a long random value.                                                                                  |
 | `DATABASE_URL`      | no       | derived | Connection string used by the backend (Prisma). When empty it is built from the three values above (host `db`, port `5432`). |
 
 > The first three values are guarded with Compose's `:?` operator: if any of them
@@ -59,14 +59,14 @@ environment editor; in local development copy the example to `.env`.
 
 ## Application
 
-| Variable       | Required | Default                | Description                                                       |
-| -------------- | -------- | ---------------------- | ----------------------------------------------------------------- |
-| `NODE_ENV`     | no       | `production` (compose) | Runtime mode.                                                     |
-| `BACKEND_PORT` | no       | `3000`                 | Port Fastify listens on inside the container.                     |
-| `BACKEND_HOST` | no       | `0.0.0.0`              | Bind address.                                                     |
-| `LOG_LEVEL`    | no       | `info`                 | Pino log level.                                                   |
+| Variable       | Required | Default                | Description                                                                                                                            |
+| -------------- | -------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`     | no       | `production` (compose) | Runtime mode.                                                                                                                          |
+| `BACKEND_PORT` | no       | `3000`                 | Port Fastify listens on inside the container.                                                                                          |
+| `BACKEND_HOST` | no       | `0.0.0.0`              | Bind address.                                                                                                                          |
+| `LOG_LEVEL`    | no       | `info`                 | Pino log level.                                                                                                                        |
 | `APP_BASE_URL` | yes      | –                      | Public URL of the app; used for links, QR codes and cookie scope. Must be an absolute http(s) URL and must not be a localhost address. |
-| `CORS_ORIGIN`  | no       | `APP_BASE_URL`         | Allowed browser origin. Defaults to `APP_BASE_URL` when empty.    |
+| `CORS_ORIGIN`  | no       | `APP_BASE_URL`         | Allowed browser origin. Defaults to `APP_BASE_URL` when empty.                                                                         |
 
 ## Sessions and cookies
 

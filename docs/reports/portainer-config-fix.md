@@ -17,13 +17,13 @@ Related: [PORTAINER.md](../deployment/PORTAINER.md) ·
 
 The reported container inspect is the whole story:
 
-| Value          | Reported state | Effect                                                                                  |
-| -------------- | -------------- | --------------------------------------------------------------------------------------- |
-| `DATABASE_URL` | wrong placeholder | Prisma cannot authenticate → every connection attempt fails.                         |
-| `SESSION_SECRET` | empty        | `@fastify/cookie` was registered with an empty secret.                                  |
-| `CORS_ORIGIN`  | empty          | **`@fastify/cors` throws `Invalid CORS origin option` on every request → HTTP 500.**    |
-| `APP_BASE_URL` | empty          | Links, QR codes and cookie scope fall back to `http://localhost:8080`.                  |
-| `REDIS_URL`    | empty          | Socket.IO adapter falls back to `redis://cache:6379`.                                   |
+| Value            | Reported state    | Effect                                                                               |
+| ---------------- | ----------------- | ------------------------------------------------------------------------------------ |
+| `DATABASE_URL`   | wrong placeholder | Prisma cannot authenticate → every connection attempt fails.                         |
+| `SESSION_SECRET` | empty             | `@fastify/cookie` was registered with an empty secret.                               |
+| `CORS_ORIGIN`    | empty             | **`@fastify/cors` throws `Invalid CORS origin option` on every request → HTTP 500.** |
+| `APP_BASE_URL`   | empty             | Links, QR codes and cookie scope fall back to `http://localhost:8080`.               |
+| `REDIS_URL`      | empty             | Socket.IO adapter falls back to `redis://cache:6379`.                                |
 
 Two independent faults combined:
 
@@ -41,24 +41,24 @@ times** with no diagnosis, which is why the symptom looked like a database
 problem rather than a configuration problem.
 
 > **The PostgreSQL volume is not the cause.** `POSTGRES_PASSWORD` in the stack
-> only initialises a *fresh* cluster; on an existing volume PostgreSQL ignores it.
+> only initialises a _fresh_ cluster; on an existing volume PostgreSQL ignores it.
 > The volume was left untouched by every change in this branch.
 
 ## 2. What changed
 
-| File                                    | Change                                                                                                                                                 |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `packages/backend/src/config.ts`        | `ConfigError`; `resolveDatabaseUrl()` derives `DATABASE_URL` from `POSTGRES_*` with URL-safe encoding; strict production validation; every string value now treats empty as unset; `sessionTtlMs` from `SESSION_TTL_HOURS`. |
-| `packages/backend/src/server.ts`        | Catches `ConfigError` before building the app and exits `1` with the readable message.                                                                  |
-| `packages/backend/src/app.ts`          | Cookie secret comes from the validated `config.sessionSecret`.                                                                                          |
-| `packages/backend/src/sessions.ts`     | Session lifetime comes from `config.sessionTtlMs` (was a hard-coded constant).                                                                          |
-| `docker/backend-entrypoint.sh`          | Preflight validation via the compiled `loadConfig`; derives `DATABASE_URL`; bounded (15) retry that prints the Prisma code and a hint; never prints a secret. |
-| `docker-compose.portainer.yml`          | `:?` guards for the six critical variables; `DATABASE_URL` optional and derived; `POSTGRES_*` passed to the backend; backend `restart: on-failure:5`.     |
-| `.env.portainer.example`                | Documents the derived `DATABASE_URL` and the required values.                                                                                           |
-| `docs/deployment/ENVIRONMENT.md`        | Variable table, derivation rules, fail-fast behaviour.                                                                                                  |
-| `docs/deployment/PORTAINER.md`          | §5.1 minimal variable set, §5.3 aligning credentials with an existing volume, restart-loop and database troubleshooting.                                |
-| `packages/backend/src/config.test.ts`   | **New.** 18 unit tests for `loadConfig` / `resolveDatabaseUrl`.                                                                                          |
-| `packages/backend/src/app.test.ts`      | Production case supplies the now-required values.                                                                                                        |
+| File                                  | Change                                                                                                                                                                                                                      |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/backend/src/config.ts`      | `ConfigError`; `resolveDatabaseUrl()` derives `DATABASE_URL` from `POSTGRES_*` with URL-safe encoding; strict production validation; every string value now treats empty as unset; `sessionTtlMs` from `SESSION_TTL_HOURS`. |
+| `packages/backend/src/server.ts`      | Catches `ConfigError` before building the app and exits `1` with the readable message.                                                                                                                                      |
+| `packages/backend/src/app.ts`         | Cookie secret comes from the validated `config.sessionSecret`.                                                                                                                                                              |
+| `packages/backend/src/sessions.ts`    | Session lifetime comes from `config.sessionTtlMs` (was a hard-coded constant).                                                                                                                                              |
+| `docker/backend-entrypoint.sh`        | Preflight validation via the compiled `loadConfig`; derives `DATABASE_URL`; bounded (15) retry that prints the Prisma code and a hint; never prints a secret.                                                               |
+| `docker-compose.portainer.yml`        | `:?` guards for the six critical variables; `DATABASE_URL` optional and derived; `POSTGRES_*` passed to the backend; backend `restart: on-failure:5`.                                                                       |
+| `.env.portainer.example`              | Documents the derived `DATABASE_URL` and the required values.                                                                                                                                                               |
+| `docs/deployment/ENVIRONMENT.md`      | Variable table, derivation rules, fail-fast behaviour.                                                                                                                                                                      |
+| `docs/deployment/PORTAINER.md`        | §5.1 minimal variable set, §5.3 aligning credentials with an existing volume, restart-loop and database troubleshooting.                                                                                                    |
+| `packages/backend/src/config.test.ts` | **New.** 18 unit tests for `loadConfig` / `resolveDatabaseUrl`.                                                                                                                                                             |
+| `packages/backend/src/app.test.ts`    | Production case supplies the now-required values.                                                                                                                                                                           |
 
 No file was deleted, renamed or moved. The product logic is unchanged.
 
@@ -101,27 +101,27 @@ Set these under **Stack → Environment variables**.
 
 **Required (no default):**
 
-| Variable            | Value                                                                 |
-| ------------------- | --------------------------------------------------------------------- |
-| `POSTGRES_DB`       | the database name, e.g. `zeropeek`                                    |
-| `POSTGRES_USER`     | the user that exists in the volume, e.g. `zeropeek`                   |
-| `POSTGRES_PASSWORD` | the password that exists in the volume                                |
-| `SESSION_SECRET`    | `openssl rand -hex 32`                                                |
-| `APP_BASE_URL`      | the public origin, e.g. `https://quiz.example.com` (never localhost)  |
+| Variable            | Value                                                                |
+| ------------------- | -------------------------------------------------------------------- |
+| `POSTGRES_DB`       | the database name, e.g. `zeropeek`                                   |
+| `POSTGRES_USER`     | the user that exists in the volume, e.g. `zeropeek`                  |
+| `POSTGRES_PASSWORD` | the password that exists in the volume                               |
+| `SESSION_SECRET`    | `openssl rand -hex 32`                                               |
+| `APP_BASE_URL`      | the public origin, e.g. `https://quiz.example.com` (never localhost) |
 
 **Optional (safe default in the compose file):**
 
-| Variable               | Default                     | When to change                                              |
-| ---------------------- | --------------------------- | ----------------------------------------------------------- |
-| `DATABASE_URL`         | derived from `POSTGRES_*`   | only for an external database (then percent-encode the password) |
-| `CORS_ORIGIN`          | `APP_BASE_URL`              | only if the browser origin differs                          |
-| `REDIS_URL`            | `redis://cache:6379`        | only for an external cache                                  |
-| `ZEROPEEK_IMAGE_TAG`   | `latest`                    | pin `sha-<short>` for reproducible deploys                  |
-| `HTTP_PORT`            | `3737`                      | `443` with TLS                                              |
-| `CADDY_CONTAINER_PORT` | `80`                        | `443` with TLS                                              |
-| `ZP_SITE_ADDRESS`      | empty (plain HTTP)          | the public domain to enable TLS                             |
-| `COOKIE_SECURE`        | `true`                      | `false` only for plain-HTTP testing                         |
-| `SESSION_TTL_HOURS`    | `72`                        | session lifetime                                            |
+| Variable               | Default                   | When to change                                                   |
+| ---------------------- | ------------------------- | ---------------------------------------------------------------- |
+| `DATABASE_URL`         | derived from `POSTGRES_*` | only for an external database (then percent-encode the password) |
+| `CORS_ORIGIN`          | `APP_BASE_URL`            | only if the browser origin differs                               |
+| `REDIS_URL`            | `redis://cache:6379`      | only for an external cache                                       |
+| `ZEROPEEK_IMAGE_TAG`   | `latest`                  | pin `sha-<short>` for reproducible deploys                       |
+| `HTTP_PORT`            | `3737`                    | `443` with TLS                                                   |
+| `CADDY_CONTAINER_PORT` | `80`                      | `443` with TLS                                                   |
+| `ZP_SITE_ADDRESS`      | empty (plain HTTP)        | the public domain to enable TLS                                  |
+| `COOKIE_SECURE`        | `true`                    | `false` only for plain-HTTP testing                              |
+| `SESSION_TTL_HOURS`    | `72`                      | session lifetime                                                 |
 
 `REDIS_URL` and `CORS_ORIGIN` already have the correct values in
 `docker-compose.portainer.yml`; they need no Portainer entry. **Never commit
@@ -146,7 +146,7 @@ credentials** – enter them only in Portainer.
    `prisma migrate deploy`, which only adds missing migrations – it never resets
    or drops data.
 5. Verify: `docker logs zero_peek-backend-1` shows `No pending migrations to
-   apply.` and `Server listening`, and `GET /api/health` returns `200`.
+apply.` and `Server listening`, and `GET /api/health` returns `200`.
 
 If the login in step 2 fails with `password authentication failed`, the stack
 password is not the one in the volume. Enter the **original** password. If it is
@@ -157,11 +157,11 @@ running database and needs explicit approval, so it is **not** done here.
 
 ### 5.1 Repository checks
 
-| Check                            | Result                          |
-| -------------------------------- | ------------------------------- |
-| `npm run typecheck`              | 3 workspaces clean              |
-| `npm test` (without a database)  | 106 passed, 28 skipped          |
-| `npm test` (throwaway test DB)   | **53/53 backend tests passed**  |
+| Check                           | Result                         |
+| ------------------------------- | ------------------------------ |
+| `npm run typecheck`             | 3 workspaces clean             |
+| `npm test` (without a database) | 106 passed, 28 skipped         |
+| `npm test` (throwaway test DB)  | **53/53 backend tests passed** |
 
 ### 5.2 Compose validation
 
@@ -220,7 +220,7 @@ empty as unset, `/api/health` returns `200`. Covered by the
 
 - Wrong password: the log names it on every attempt
   (`waiting for the database (attempt n/15): connection authentication failed -
-  check POSTGRES_USER, POSTGRES_PASSWORD and DATABASE_URL`) and exits `1` after
+check POSTGRES_USER, POSTGRES_PASSWORD and DATABASE_URL`) and exits `1` after
   15 attempts with `FATAL: the database is not reachable after 15 attempts.` and
   `The PostgreSQL volume was left untouched.` No secret is printed.
 - Missing configuration: the container exits `1` immediately with the

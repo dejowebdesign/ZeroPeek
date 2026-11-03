@@ -95,25 +95,25 @@ Only six values have to be entered by hand; everything else has a safe default.
 `DATABASE_URL` is **not** among them – it is built automatically from the
 PostgreSQL values, which keeps the credentials in exactly one place.
 
-| Variable            | Required | Example                            | Notes                                                    |
-| ------------------- | -------- | ---------------------------------- | -------------------------------------------------------- |
-| `POSTGRES_DB`       | yes      | `zeropeek`                         | Name of the existing database.                           |
-| `POSTGRES_USER`     | yes      | `zeropeek`                         | User that already exists in the volume.                  |
-| `POSTGRES_PASSWORD` | yes      | `openssl rand -base64 32`          | Must match the password already inside the volume.       |
-| `SESSION_SECRET`    | yes      | `openssl rand -hex 32`             | Long random value; never reuse or commit.                |
-| `APP_BASE_URL`      | yes      | `https://quiz.example.com`         | Public origin; must not be a localhost address.          |
-| `ZEROPEEK_IMAGE_TAG`| no       | `sha-1a2b3c4` (or `latest`)        | Pin a commit tag for reproducible deployments.           |
+| Variable             | Required | Example                     | Notes                                              |
+| -------------------- | -------- | --------------------------- | -------------------------------------------------- |
+| `POSTGRES_DB`        | yes      | `zeropeek`                  | Name of the existing database.                     |
+| `POSTGRES_USER`      | yes      | `zeropeek`                  | User that already exists in the volume.            |
+| `POSTGRES_PASSWORD`  | yes      | `openssl rand -base64 32`   | Must match the password already inside the volume. |
+| `SESSION_SECRET`     | yes      | `openssl rand -hex 32`      | Long random value; never reuse or commit.          |
+| `APP_BASE_URL`       | yes      | `https://quiz.example.com`  | Public origin; must not be a localhost address.    |
+| `ZEROPEEK_IMAGE_TAG` | no       | `sha-1a2b3c4` (or `latest`) | Pin a commit tag for reproducible deployments.     |
 
 Optional, only when needed:
 
-| Variable          | When to set it                                                             |
-| ----------------- | -------------------------------------------------------------------------- |
-| `CORS_ORIGIN`     | Defaults to `APP_BASE_URL`; set only if the browser origin differs.        |
-| `DATABASE_URL`    | Only if the database is **not** the `db` service (e.g. an external host).  |
-| `HTTP_PORT`       | `3737` (plain HTTP, default) or `443` (with TLS).                          |
-| `ZP_SITE_ADDRESS` | Empty (plain HTTP, default) or the public domain (enables TLS).            |
-| `CADDY_CONTAINER_PORT` | `80` (plain HTTP, default) or `443` (with TLS).                       |
-| `COOKIE_SECURE`   | `true` (default) behind TLS; `false` only for plain-HTTP testing.          |
+| Variable               | When to set it                                                            |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `CORS_ORIGIN`          | Defaults to `APP_BASE_URL`; set only if the browser origin differs.       |
+| `DATABASE_URL`         | Only if the database is **not** the `db` service (e.g. an external host). |
+| `HTTP_PORT`            | `3737` (plain HTTP, default) or `443` (with TLS).                         |
+| `ZP_SITE_ADDRESS`      | Empty (plain HTTP, default) or the public domain (enables TLS).           |
+| `CADDY_CONTAINER_PORT` | `80` (plain HTTP, default) or `443` (with TLS).                           |
+| `COOKIE_SECURE`        | `true` (default) behind TLS; `false` only for plain-HTTP testing.         |
 
 > The stack refuses to deploy when `POSTGRES_DB`, `POSTGRES_USER`,
 > `POSTGRES_PASSWORD`, `APP_BASE_URL`, `REDIS_URL` or `SESSION_SECRET` is missing
@@ -274,14 +274,14 @@ exactly which commit is running, and a rollback is trivial
 
 ## 9. Troubleshooting
 
-| Symptom                                     | Cause / fix                                                                     |
-| ------------------------------------------- | ------------------------------------------------------------------------------- |
-| `denied` / `unauthorized` when pulling      | Private package without registry credentials → add GHCR credentials (section 4) |
-| `pull access denied` for `zeropeek-backend` | Image not published yet → check the actions run in GitHub                       |
-| Stack up but `/api/health` returns 502      | `backend` not healthy yet, or the database credentials are wrong → check backend logs |
-| Data lost after redeploy                    | The `db-data` volume was removed → avoid "remove volumes" on update             |
-| `failed to bind port 0.0.0.0:80/tcp`        | Host port 80 is already in use → set `HTTP_PORT` to a free port (default 3737)  |
-| Deployment stops with `required variable … is missing a value` | A required variable is empty → set the named variable (section 5.1) and redeploy |
+| Symptom                                                        | Cause / fix                                                                           |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `denied` / `unauthorized` when pulling                         | Private package without registry credentials → add GHCR credentials (section 4)       |
+| `pull access denied` for `zeropeek-backend`                    | Image not published yet → check the actions run in GitHub                             |
+| Stack up but `/api/health` returns 502                         | `backend` not healthy yet, or the database credentials are wrong → check backend logs |
+| Data lost after redeploy                                       | The `db-data` volume was removed → avoid "remove volumes" on update                   |
+| `failed to bind port 0.0.0.0:80/tcp`                           | Host port 80 is already in use → set `HTTP_PORT` to a free port (default 3737)        |
+| Deployment stops with `required variable … is missing a value` | A required variable is empty → set the named variable (section 5.1) and redeploy      |
 
 ### Backend container keeps restarting
 
@@ -292,13 +292,13 @@ Look at the top of the log:
 docker logs zero_peek-backend-1
 ```
 
-| Log message                                                             | Cause / fix                                                                                       |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `ZeroPeek backend cannot start: the configuration is incomplete …`      | One or more required values are missing; the following lines name each variable and how to fix it |
-| `DATABASE_URL is missing or empty and cannot be derived`                | Set `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`, or set `DATABASE_URL` explicitly      |
-| `SESSION_SECRET is missing or empty`                                    | Set `SESSION_SECRET` (`openssl rand -hex 32`)                                                     |
-| `REDIS_URL is missing or empty`                                         | Set `REDIS_URL=redis://cache:6379`                                                                |
-| `APP_BASE_URL … localhost`                                              | Set `APP_BASE_URL` to the public origin, not a localhost address                                  |
+| Log message                                                        | Cause / fix                                                                                       |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `ZeroPeek backend cannot start: the configuration is incomplete …` | One or more required values are missing; the following lines name each variable and how to fix it |
+| `DATABASE_URL is missing or empty and cannot be derived`           | Set `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`, or set `DATABASE_URL` explicitly      |
+| `SESSION_SECRET is missing or empty`                               | Set `SESSION_SECRET` (`openssl rand -hex 32`)                                                     |
+| `REDIS_URL is missing or empty`                                    | Set `REDIS_URL=redis://cache:6379`                                                                |
+| `APP_BASE_URL … localhost`                                         | Set `APP_BASE_URL` to the public origin, not a localhost address                                  |
 
 ### Backend cannot reach the database
 
@@ -310,12 +310,12 @@ message and **leaves the volume untouched**:
 docker logs zero_peek-backend-1
 ```
 
-| Log line                                                    | Cause / fix                                                                        |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `waiting for the database (attempt …): P1000 authentication failed` | The stack password does not match the volume → see section 5.3                     |
-| `… P1001 cannot reach the database server`                  | The `db` service is not running → check `docker logs zero_peek-db-1`               |
-| `… P1003 the database does not exist`                       | `POSTGRES_DB` does not match the database in the volume → set the original value   |
-| `FATAL: the database is not reachable after 15 attempts`    | Fix the values above and redeploy; no data was changed                             |
+| Log line                                                            | Cause / fix                                                                      |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `waiting for the database (attempt …): P1000 authentication failed` | The stack password does not match the volume → see section 5.3                   |
+| `… P1001 cannot reach the database server`                          | The `db` service is not running → check `docker logs zero_peek-db-1`             |
+| `… P1003 the database does not exist`                               | `POSTGRES_DB` does not match the database in the volume → set the original value |
+| `FATAL: the database is not reachable after 15 attempts`            | Fix the values above and redeploy; no data was changed                           |
 
 ### Database container stays `unhealthy`
 

@@ -147,9 +147,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       ? env.PUBLIC_BASE_URL
       : 'http://localhost:8080';
   const corsOrigin = isNonEmpty(env.CORS_ORIGIN) ? env.CORS_ORIGIN : appBaseUrl;
-  const sessionSecret = isNonEmpty(env.SESSION_SECRET)
-    ? env.SESSION_SECRET
-    : 'phase-0-placeholder';
+  const sessionSecret = isNonEmpty(env.SESSION_SECRET) ? env.SESSION_SECRET : 'phase-0-placeholder';
   const redisUrl = isNonEmpty(env.REDIS_URL) ? env.REDIS_URL : 'redis://cache:6379';
   const databaseUrl = resolveDatabaseUrl(env) ?? '';
 

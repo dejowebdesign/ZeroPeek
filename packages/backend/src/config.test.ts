@@ -58,7 +58,9 @@ describe('resolveDatabaseUrl', () => {
       POSTGRES_PASSWORD: 'p@ss:w/rd?#%!*',
       POSTGRES_DB: 'zeropeek',
     });
-    expect(url).toBe('postgresql://zeropeek:p%40ss%3Aw%2Frd%3F%23%25%21%2A@db:5432/zeropeek?schema=public');
+    expect(url).toBe(
+      'postgresql://zeropeek:p%40ss%3Aw%2Frd%3F%23%25%21%2A@db:5432/zeropeek?schema=public',
+    );
     // The resulting string must be parseable back to the original password.
     const parsed = new URL(url!);
     expect(decodeURIComponent(parsed.password)).toBe('p@ss:w/rd?#%!*');
@@ -91,9 +93,7 @@ describe('loadConfig in production', () => {
 
   it('rejects an empty SESSION_SECRET', () => {
     expect(() => loadConfig({ ...VALID_PRODUCTION, SESSION_SECRET: '' })).toThrow(ConfigError);
-    expect(() => loadConfig({ ...VALID_PRODUCTION, SESSION_SECRET: '' })).toThrow(
-      /SESSION_SECRET/,
-    );
+    expect(() => loadConfig({ ...VALID_PRODUCTION, SESSION_SECRET: '' })).toThrow(/SESSION_SECRET/);
   });
 
   it('rejects an empty REDIS_URL', () => {
@@ -115,9 +115,9 @@ describe('loadConfig in production', () => {
   });
 
   it('rejects a localhost APP_BASE_URL in production', () => {
-    expect(() => loadConfig({ ...VALID_PRODUCTION, APP_BASE_URL: 'http://localhost:8080' })).toThrow(
-      /localhost/,
-    );
+    expect(() =>
+      loadConfig({ ...VALID_PRODUCTION, APP_BASE_URL: 'http://localhost:8080' }),
+    ).toThrow(/localhost/);
   });
 
   it('reports every problem in one message', () => {
