@@ -7,16 +7,68 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { ConfigError, loadConfig, resolveDatabaseUrl } from './config.js';
+import {
+  ConfigError,
+  describeDatabaseUrl,
+  isPlaceholderSecret,
+  isPostgresUrl,
+  loadConfig,
+  resolveDatabaseUrl,
+} from './config.js';
 
 /** A complete, valid production environment. */
 const VALID_PRODUCTION = {
   NODE_ENV: 'production',
   APP_BASE_URL: 'https://quiz.example.com',
-  SESSION_SECRET: 'a-very-long-random-secret',
+  SESSION_SECRET: 'a-very-long-random-secret-that-is-at-least-32-characters',
   DATABASE_URL: 'postgresql://zeropeek:secret@db:5432/zeropeek?schema=public',
   REDIS_URL: 'redis://cache:6379',
 };
+
+describe('describeDatabaseUrl', () => {
+  it('describes user, host, port and database without the password', () => {
+    const described = describeDatabaseUrl(
+      'postgresql://zeropeek:s3cr3t@db:5432/zeropeek?schema=public',
+    );
+    expect(described).toBe('zeropeek@db:5432/zeropeek');
+    expect(described).not.toContain('s3cr3t');
+  });
+
+  it('defaults the port and tolerates a missing user', () => {
+    expect(describeDatabaseUrl('postgresql://db/zeropeek')).toBe('db:5432/zeropeek');
+  });
+
+  it('decodes a percent-encoded user but still hides the password', () => {
+    const described = describeDatabaseUrl('postgresql://a%40b:p%40ss@db:5432/zeropeek');
+    expect(described).toBe('a@b@db:5432/zeropeek');
+    expect(described).not.toContain('p@ss');
+  });
+
+  it('returns null for a value that is not a URL', () => {
+    expect(describeDatabaseUrl('not a url')).toBeNull();
+  });
+});
+
+describe('isPostgresUrl', () => {
+  it('accepts postgresql: and postgres: and rejects everything else', () => {
+    expect(isPostgresUrl('postgresql://db:5432/x')).toBe(true);
+    expect(isPostgresUrl('postgres://db:5432/x')).toBe(true);
+    expect(isPostgresUrl('mysql://db:3306/x')).toBe(false);
+    expect(isPostgresUrl('not a url')).toBe(false);
+  });
+});
+
+describe('isPlaceholderSecret', () => {
+  it('rejects short values and the shipped placeholders', () => {
+    expect(isPlaceholderSecret('short')).toBe(true);
+    expect(isPlaceholderSecret('change-me-session-secret')).toBe(true);
+    expect(isPlaceholderSecret('please-generate-a-32-byte-hex-secret')).toBe(true);
+  });
+
+  it('accepts a long random value', () => {
+    expect(isPlaceholderSecret('0123456789abcdef0123456789abcdef')).toBe(false);
+  });
+});
 
 describe('resolveDatabaseUrl', () => {
   it('prefers an explicit DATABASE_URL', () => {
@@ -143,6 +195,64 @@ describe('loadConfig in production', () => {
       // Redis is optional and must not appear as a blocking problem.
       expect(message).not.toContain('REDIS_URL');
     }
+  });
+
+  it('rejects a placeholder or too-short SESSION_SECRET', () => {
+    expect(() =>
+      loadConfig({ ...VALID_PRODUCTION, SESSION_SECRET: 'change-me-session-secret' }),
+    ).toThrow(/SESSION_SECRET/);
+    expect(() =>
+      loadConfig({ ...VALID_PRODUCTION, SESSION_SECRET: 'please-generate-a-32-byte-hex-secret' }),
+    ).toThrow(/SESSION_SECRET/);
+    expect(() => loadConfig({ ...VALID_PRODUCTION, SESSION_SECRET: 'tooshort' })).toThrow(
+      /SESSION_SECRET/,
+    );
+  });
+
+  it('rejects a non-PostgreSQL DATABASE_URL', () => {
+    expect(() =>
+      loadConfig({ ...VALID_PRODUCTION, DATABASE_URL: 'mysql://user:pw@db:3306/zeropeek' }),
+    ).toThrow(/PostgreSQL connection string/);
+  });
+
+  it('warns when an explicit DATABASE_URL contradicts the POSTGRES_* values', () => {
+    // The exact failure that made a correctly-looking stack unreachable: the
+    // example DATABASE_URL was left in place and silently won over POSTGRES_*.
+    const config = loadConfig({
+      ...VALID_PRODUCTION,
+      DATABASE_URL: 'postgresql://user:password@db:5432/zeropeek?schema=public',
+      POSTGRES_USER: 'zeropeek',
+      POSTGRES_PASSWORD: 'real-secret',
+      POSTGRES_DB: 'zeropeek',
+    });
+    expect(config.databaseUrlSource).toBe('explicit');
+    expect(config.databaseTarget).toBe('user@db:5432/zeropeek');
+    expect(config.warnings.join(' ')).toMatch(/DATABASE_URL is set explicitly/);
+    expect(config.warnings.join(' ')).toMatch(/clear DATABASE_URL/);
+  });
+
+  it('does not warn when an explicit DATABASE_URL matches the POSTGRES_* values', () => {
+    const config = loadConfig({
+      ...VALID_PRODUCTION,
+      DATABASE_URL: 'postgresql://zeropeek:real-secret@db:5432/zeropeek?schema=public',
+      POSTGRES_USER: 'zeropeek',
+      POSTGRES_PASSWORD: 'real-secret',
+      POSTGRES_DB: 'zeropeek',
+    });
+    expect(config.warnings.join(' ')).not.toMatch(/DATABASE_URL is set explicitly/);
+  });
+
+  it('reports the derived source and a password-free target', () => {
+    const config = loadConfig({
+      ...VALID_PRODUCTION,
+      DATABASE_URL: '',
+      POSTGRES_USER: 'zeropeek',
+      POSTGRES_PASSWORD: 'p@ss:w/rd',
+      POSTGRES_DB: 'zeropeek',
+    });
+    expect(config.databaseUrlSource).toBe('derived');
+    expect(config.databaseTarget).toBe('zeropeek@db:5432/zeropeek');
+    expect(JSON.stringify(config)).not.toContain('p@ss:w/rd');
   });
 });
 

@@ -44,6 +44,19 @@ environment editor; in local development copy the example to `.env`.
 > service (e.g. an external server); then it must repeat exactly the same user,
 > password and database name, with the password percent-encoded.
 
+> **An explicit `DATABASE_URL` wins over `POSTGRES_*`.** If it names a different
+> host, port, database or user than the `POSTGRES_*` values next to it, the
+> backend starts but logs a prominent warning naming both targets, because this is
+> almost always a leftover placeholder (the value from `.env.example`) and the
+> reason a correctly-looking stack cannot reach the database. If the database is
+> the bundled `db` service, **clear `DATABASE_URL`** so it is derived from the
+> `POSTGRES_*` values. A `DATABASE_URL` that is not a `postgresql://` URL is
+> rejected outright.
+
+> **`SESSION_SECRET` is validated.** An empty value, an obvious placeholder from
+> an example file, or a value shorter than 32 characters stops the backend with a
+> readable message in production. Generate one with `openssl rand -hex 32`.
+
 > `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD` are applied **only when
 > the `db-data` volume is first initialised**. On an existing volume PostgreSQL
 > ignores them, so editing them later does not rename the user or change the
@@ -87,12 +100,13 @@ environment editor; in local development copy the example to `.env`.
 
 In production the backend validates its configuration on start. If any of
 `SESSION_SECRET` or `DATABASE_URL` (or the `POSTGRES_*` values it is built from)
-is missing or invalid, or `APP_BASE_URL` is not a valid absolute http(s) URL, the
-container stops immediately with a readable message that names every offending
-variable and how to fix it – instead of a restart loop. The compose file also
-guards `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and `SESSION_SECRET`
-with Compose's `:?` operator, so the four truly required values are caught before
-the containers even start.
+is missing or invalid, if `SESSION_SECRET` is a placeholder or shorter than 32
+characters, if `DATABASE_URL` is not a `postgresql://` URL, or if `APP_BASE_URL`
+is not a valid absolute http(s) URL, the container stops immediately with a
+readable message that names every offending variable and how to fix it – instead
+of a restart loop. The compose file also guards `POSTGRES_DB`, `POSTGRES_USER`,
+`POSTGRES_PASSWORD` and `SESSION_SECRET` with Compose's `:?` operator, so the four
+truly required values are caught before the containers even start.
 
 `APP_BASE_URL` is **not** guarded: it defaults to `https://zeropeek.xubi.org`, so
 a missing value no longer stops the deployment. Set it only for a different host.

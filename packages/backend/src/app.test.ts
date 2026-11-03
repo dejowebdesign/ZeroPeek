@@ -22,7 +22,7 @@ describe('config', () => {
       COOKIE_NAME: 'zp_test',
       APP_BASE_URL: 'https://quiz.example.com',
       CORS_ORIGIN: 'https://other.example.com',
-      SESSION_SECRET: 'a-very-long-random-secret',
+      SESSION_SECRET: 'a-very-long-random-secret-that-is-at-least-32-characters',
       DATABASE_URL: 'postgresql://zeropeek:secret@db:5432/zeropeek?schema=public',
       REDIS_URL: 'redis://cache:6379',
     });
