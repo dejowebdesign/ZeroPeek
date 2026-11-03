@@ -220,6 +220,58 @@ docker exec -e PGPASSWORD='<the-password>' zero_peek-db-1 \
   Change `POSTGRES_PASSWORD` in the stack to the same new value afterwards. This
   is the only supported way to change the password without deleting data.
 
+### 5.4 First working deployment with preliminary values
+
+To get the stack **running once** before the real credentials are known, start
+from the template and fill in two obviously-preliminary values. Everything else
+already has a correct default.
+
+```bash
+cp .env.portainer.example .env      # `.env` is git-ignored, never committed
+```
+
+Then set only these two lines in `.env` (the rest of the file stays as-is):
+
+```env
+POSTGRES_PASSWORD=zeropeek-preliminary-password
+SESSION_SECRET=preliminary-session-secret-replace-before-production-01
+```
+
+`SESSION_SECRET` must be at least 32 characters and must not contain one of the
+placeholder strings the backend rejects (`change-me-session-secret`,
+`please-generate-a-32-byte-hex-secret`, `phase-0-placeholder`); the value above
+satisfies both.
+
+> **These are throw-away placeholders, not secrets.** They exist only so the
+> stack comes up and the database is created. Replace them with real values
+> before the deployment is used by anyone.
+
+Then resolve and start locally:
+
+```bash
+docker compose -f docker-compose.portainer.yml config -q   # must exit 0
+docker compose -f docker-compose.portainer.yml up -d
+```
+
+**Replacing the preliminary values later.** A repository-managed Portainer stack
+does **not** read a git-ignored `.env` from the repository; the values are taken
+from the stack's **Environment variables** editor (or an `.env` uploaded there).
+So the two placeholders are replaced in Portainer, not in Git:
+
+1. Portainer → **Stacks** → the `zeropeek` stack → **Environment variables**.
+2. `SESSION_SECRET` → a fresh `openssl rand -hex 32`.
+3. `POSTGRES_PASSWORD` → see below, because of the existing volume.
+4. **Update the stack**.
+
+> **`POSTGRES_PASSWORD` is special.** On an **existing** `db-data` volume the
+> stack value does not change the password stored in the database — PostgreSQL
+> applies it only on first initialisation. If the volume already exists, set the
+> stack value to the password the volume **already** uses (section 5.3). Only a
+> brand-new volume adopts the preliminary password, in which case you should set
+> the real password **before** the first start rather than afterwards. To replace
+> a preliminary password on a volume that was created with it, follow the
+> approved `ALTER ROLE … WITH PASSWORD` path in section 5.3.
+
 ## 6. First start
 
 After deploying, Portainer starts the services in dependency order: `db` and

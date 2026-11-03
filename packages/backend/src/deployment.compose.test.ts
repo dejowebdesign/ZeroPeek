@@ -20,6 +20,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { isPlaceholderSecret } from './config.js';
+
 const repoRoot = new URL('../../../', import.meta.url);
 
 function read(relativePath: string): string {
@@ -169,5 +171,30 @@ describe('portainer stack vs local stack', () => {
     // or Portainer pulls fail with `unauthorized`.
     expect(portainerDoc).toMatch(/package(s)?[^\n]*visib|visib[^\n]*package/i);
     expect(portainerDoc).toMatch(/private/i);
+  });
+});
+
+describe('preliminary deployment values (PORTAINER.md section 5.4)', () => {
+  // The documented "get it running once" values must actually pass the backend
+  // validation, or the copy-paste instructions start a backend that refuses to
+  // boot. They are deliberately obvious placeholders, not secrets.
+  const preliminarySecret = 'preliminary-session-secret-replace-before-production-01';
+  const preliminaryPassword = 'zeropeek-preliminary-password';
+
+  it('documents the preliminary values in the Portainer guide', () => {
+    expect(portainerDoc).toContain(preliminarySecret);
+    expect(portainerDoc).toContain(preliminaryPassword);
+  });
+
+  it('uses a SESSION_SECRET that is long enough and not a rejected placeholder', () => {
+    expect(preliminarySecret.length).toBeGreaterThanOrEqual(32);
+    expect(isPlaceholderSecret(preliminarySecret)).toBe(false);
+  });
+
+  it('does not mistake the template placeholders for the preliminary values', () => {
+    // The template keeps its own `change-me-*` values, which the backend DOES
+    // reject – that is the signal to replace them.
+    expect(isPlaceholderSecret('change-me-session-secret')).toBe(true);
+    expect(envTemplate).toContain('SESSION_SECRET=change-me-session-secret');
   });
 });
