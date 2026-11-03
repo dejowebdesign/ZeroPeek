@@ -272,6 +272,46 @@ So the two placeholders are replaced in Portainer, not in Git:
 > a preliminary password on a volume that was created with it, follow the
 > approved `ALTER ROLE … WITH PASSWORD` path in section 5.3.
 
+### 5.5 Creating the first administrator
+
+A fresh deployment has no user, so nobody can sign in. Set these two variables in
+the stack's **Environment variables** editor to have the backend create the first
+`ADMIN` account automatically on start:
+
+| Variable                   | Value                                    |
+| -------------------------- | ---------------------------------------- |
+| `BOOTSTRAP_ADMIN_USER`     | the username you want, e.g. `admin`      |
+| `BOOTSTRAP_ADMIN_PASSWORD` | a password of **at least 10 characters** |
+
+How it behaves:
+
+- It runs on start and creates **exactly one** `ADMIN` user — but only when
+  **both** variables are set **and** no active administrator exists yet.
+- The password is stored as an **Argon2id** hash; the plain value is never
+  written to the database or to a log.
+- The password must meet the same rule as everywhere else in ZeroPeek: at least
+  **10 characters**. A shorter value is rejected and the account is not created
+  (the backend logs an error and keeps running — check the log, then fix the value
+  and restart).
+- **Existing administrators are never touched.** If an active administrator
+  already exists, the step does nothing: no overwrite, no change, no duplicate.
+  Restarting the stack is therefore safe and idempotent.
+- Leave **both** empty to skip automatic creation entirely.
+
+> **Remove the values after the first successful start.** The account persists in
+> the database, so the variables are no longer needed. Blanking them (or removing
+> them from the stack) keeps the admin working and stops the password from sitting
+> in the stack environment. This is recommended, but optional.
+
+Verification after the first start:
+
+```bash
+docker logs zero_peek-backend-1 2>&1 | grep -i "bootstrap administrator"
+# bootstrap administrator created
+```
+
+Then sign in at `https://<your-host>/admin` with the username and password above.
+
 ## 6. First start
 
 After deploying, Portainer starts the services in dependency order: `db` and

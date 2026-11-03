@@ -101,14 +101,22 @@ async function main(): Promise<void> {
 
   // Create the first admin from the environment when none exists yet. This is
   // the only way in on a fresh deployment; it is a no-op afterwards.
-  try {
-    const created = await ensureBootstrapAdmin(
-      config.bootstrapAdminUser,
-      config.bootstrapAdminPassword,
+  const hasBootstrapUser = Boolean(config.bootstrapAdminUser);
+  const hasBootstrapPassword = Boolean(config.bootstrapAdminPassword);
+  if (hasBootstrapUser !== hasBootstrapPassword) {
+    app.log.warn(
+      'BOOTSTRAP_ADMIN_USER and BOOTSTRAP_ADMIN_PASSWORD must both be set to create the first administrator; only one is set, so none was created.',
     );
-    if (created) app.log.info('bootstrap administrator created');
-  } catch (error) {
-    app.log.error({ error }, 'could not create the bootstrap administrator');
+  } else if (hasBootstrapUser && hasBootstrapPassword) {
+    try {
+      const created = await ensureBootstrapAdmin(
+        config.bootstrapAdminUser,
+        config.bootstrapAdminPassword,
+      );
+      if (created) app.log.info('bootstrap administrator created');
+    } catch (error) {
+      app.log.error({ error }, 'could not create the bootstrap administrator');
+    }
   }
 
   const sockets = attachSocketIO(app.server, config, config.corsOrigin);

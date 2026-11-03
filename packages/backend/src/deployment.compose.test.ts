@@ -174,6 +174,32 @@ describe('portainer stack vs local stack', () => {
   });
 });
 
+describe('bootstrap administrator wiring', () => {
+  it('passes BOOTSTRAP_ADMIN_USER and BOOTSTRAP_ADMIN_PASSWORD through to the backend', () => {
+    // The backend reads these from its environment; the compose file must forward
+    // them or the values entered in Portainer never reach the container.
+    expect(compose).toMatch(/BOOTSTRAP_ADMIN_USER:\s*\$\{BOOTSTRAP_ADMIN_USER:-/);
+    expect(compose).toMatch(/BOOTSTRAP_ADMIN_PASSWORD:\s*\$\{BOOTSTRAP_ADMIN_PASSWORD:-/);
+  });
+
+  it('does not require the bootstrap variables, so an empty value simply skips creation', () => {
+    expect(required).not.toContain('BOOTSTRAP_ADMIN_USER');
+    expect(required).not.toContain('BOOTSTRAP_ADMIN_PASSWORD');
+  });
+
+  it('documents both variables in PORTAINER.md, ENVIRONMENT.md and the template', () => {
+    for (const name of ['BOOTSTRAP_ADMIN_USER', 'BOOTSTRAP_ADMIN_PASSWORD']) {
+      expect(portainerDoc, `${name} is missing from PORTAINER.md`).toContain(`\`${name}\``);
+      expect(environmentDoc, `${name} is missing from ENVIRONMENT.md`).toContain(`\`${name}\``);
+      expect(envTemplate, `${name} is missing from .env.portainer.example`).toContain(name);
+    }
+  });
+
+  it('documents the minimum password length in the Portainer guide', () => {
+    expect(portainerDoc).toMatch(/at least 10 characters/i);
+  });
+});
+
 describe('preliminary deployment values (PORTAINER.md section 5.4)', () => {
   // The documented "get it running once" values must actually pass the backend
   // validation, or the copy-paste instructions start a backend that refuses to
