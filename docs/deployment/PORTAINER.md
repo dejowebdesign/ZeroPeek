@@ -31,7 +31,9 @@ port, so the database and Redis are unreachable from outside the Docker host.
 
 - A Docker host with Portainer (CE or BE) running.
 - Outbound internet access from the host to `ghcr.io`.
-- A free host port for the proxy (**3737** by default, **443** for TLS).
+- Free host ports: **3737** for the proxy in plain-HTTP mode, or **443 and 80**
+  for TLS (`443` serves the site, `80` answers the ACME challenge and the
+  HTTP→HTTPS redirect).
 
 ## 3. Adding the stack in Portainer
 
@@ -46,11 +48,12 @@ port, so the database and Redis are unreachable from outside the Docker host.
    - **Compose path:** `docker-compose.portainer.yml`
    - Authentication: off for a public repository. For a private repository,
      enable **Authentication** and supply a GitHub token with read access.
-5. **Environment variables:** add the required values from section 5.1. At
-   minimum set `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`,
-   `SESSION_SECRET` and `APP_BASE_URL`. Leave `DATABASE_URL`, `REDIS_URL` and
-   `COOKIE_SECURE` empty – they default correctly from the stack and
-   `APP_BASE_URL`.
+5. **Environment variables:** paste the full list from section 5.1 in one pass.
+   At minimum set `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and
+   `SESSION_SECRET`; for `zeropeek.xubi.org` also set the HTTPS values from
+   section 6.1. Leave `DATABASE_URL`, `REDIS_URL` and `CORS_ORIGIN` empty only if
+   you prefer their defaults — the compose file already knows the `db` and
+   `cache` services.
 6. **Deploy the stack.**
 
 Portainer can later poll the repository (**GitOps updates**) and redeploy when
@@ -90,42 +93,54 @@ The token is stored in Portainer, never in this repository.
 Set them in the stack's **Environment variables** section. The complete list and
 meaning is in [ENVIRONMENT.md](./ENVIRONMENT.md).
 
-### 5.1 The minimal set (recommended)
+### 5.1 The complete variable list
 
-Only a few values have to be entered by hand; everything else has a safe
-default. `DATABASE_URL` is **not** among them – it is built automatically from
-the PostgreSQL values, which keeps the credentials in exactly one place. Neither
-is `REDIS_URL`: the stack already knows its own `cache` service, so requiring it
-only caused needless deployment failures.
+This is the **full** set of variables the stack reads, with the value to use for
+the production domain `zeropeek.xubi.org`. Enter them all in the Portainer stack
+**Environment variables** editor in one pass — that is what prevents the stack
+from failing on one missing variable at a time.
 
-| Variable             | Required | Example                     | Notes                                                     |
-| -------------------- | -------- | --------------------------- | --------------------------------------------------------- |
-| `POSTGRES_DB`        | yes      | `zeropeek`                  | Name of the existing database.                            |
-| `POSTGRES_USER`      | yes      | `zeropeek`                  | User that already exists in the volume.                   |
-| `POSTGRES_PASSWORD`  | yes      | `openssl rand -base64 32`   | Must match the password already inside the volume.        |
-| `SESSION_SECRET`     | yes      | `openssl rand -hex 32`      | Long random value; never reuse or commit.                 |
-| `APP_BASE_URL`       | yes      | `https://quiz.example.com`  | Public origin; any absolute http(s) URL. Localhost warns. |
-| `ZEROPEEK_IMAGE_TAG` | no       | `sha-1a2b3c4` (or `latest`) | Pin a commit tag for reproducible deployments.            |
+**Required — the deployment stops without these:**
 
-Optional, only when needed:
+| Variable            | Value for `zeropeek.xubi.org` | Notes                                                          |
+| ------------------- | ----------------------------- | -------------------------------------------------------------- |
+| `POSTGRES_DB`       | `zeropeek`                    | Name of the existing database.                                 |
+| `POSTGRES_USER`     | `zeropeek`                    | User that already exists in the volume.                        |
+| `POSTGRES_PASSWORD` | _your database password_      | **Secret.** Must match the password already inside the volume. |
+| `SESSION_SECRET`    | `openssl rand -hex 32`        | **Secret.** Long random value; never reuse or commit.          |
 
-| Variable               | When to set it                                                            |
-| ---------------------- | ------------------------------------------------------------------------- |
-| `REDIS_URL`            | Defaults to the bundled `cache` service; set only for external Redis.     |
-| `CORS_ORIGIN`          | Defaults to `APP_BASE_URL`; set only if the browser origin differs.       |
-| `DATABASE_URL`         | Only if the database is **not** the `db` service (e.g. an external host). |
-| `HTTP_PORT`            | `3737` (plain HTTP, default) or `443` (with TLS).                         |
-| `ZP_SITE_ADDRESS`      | Empty (plain HTTP, default) or the public domain (enables TLS).           |
-| `ZP_ACME_CA`           | Empty = Let's Encrypt production; set to the staging URL while testing.   |
-| `CADDY_CONTAINER_PORT` | `80` (plain HTTP, default) or `443` (with TLS).                           |
-| `COOKIE_SECURE`        | Empty = derive from `APP_BASE_URL`; set `true`/`false` to override.       |
+**Set for `zeropeek.xubi.org` (they also have working defaults):**
 
-> The stack refuses to deploy when `POSTGRES_DB`, `POSTGRES_USER`,
-> `POSTGRES_PASSWORD`, `APP_BASE_URL` or `SESSION_SECRET` is missing or empty
-> (Compose `:?` guards). `REDIS_URL`, `CORS_ORIGIN` and `COOKIE_SECURE` already
-> have correct defaults in the compose file, so they normally need no entry.
-> **You do not have to enter `REDIS_URL`** – the stack knows the `cache` service
-> and defaults to `redis://cache:6379`.
+| Variable                 | Value for `zeropeek.xubi.org` | Notes                                                                                    |
+| ------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `APP_BASE_URL`           | `https://zeropeek.xubi.org`   | Default already; set only for a different host.                                          |
+| `CORS_ORIGIN`            | `https://zeropeek.xubi.org`   | Same-origin default is `APP_BASE_URL`; set it explicitly to be explicit.                 |
+| `ZP_SITE_ADDRESS`        | `zeropeek.xubi.org`           | The public domain Caddy serves. Enables automatic HTTPS.                                 |
+| `CADDY_CONTAINER_PORT`   | `443`                         | Caddy listens on 443 inside the container (TLS).                                         |
+| `HTTP_PORT`              | `443`                         | Host port published for HTTPS.                                                           |
+| `ZP_HTTP_CHALLENGE_PORT` | `80`                          | Host port mapped to container port 80 for the ACME challenge (default: `HTTP_PORT`).     |
+| `COOKIE_SECURE`          | `true`                        | Secure cookies. Default derives this from `APP_BASE_URL`; set it explicitly for clarity. |
+
+**Optional — leave unset unless you need them:**
+
+| Variable                                             | Default                   | When to set it                                          |
+| ---------------------------------------------------- | ------------------------- | ------------------------------------------------------- |
+| `REDIS_URL`                                          | `redis://cache:6379`      | Only when Redis is **not** the bundled `cache` service. |
+| `DATABASE_URL`                                       | derived from `POSTGRES_*` | Only when the database is **not** the `db` service.     |
+| `ZEROPEEK_IMAGE_TAG`                                 | `latest`                  | Pin `sha-<short>` for a reproducible deployment.        |
+| `ZP_ACME_CA`                                         | Let's Encrypt production  | Set to the staging directory while testing TLS.         |
+| `SESSION_TTL_HOURS`                                  | `72`                      | Session lifetime.                                       |
+| `COOKIE_NAME`                                        | `zp_session`              | Session cookie name.                                    |
+| `LOG_LEVEL`                                          | `info`                    | Pino log level.                                         |
+| `REDIS_MAXMEMORY`                                    | `256mb`                   | Memory ceiling for the cache-only Redis.                |
+| `ZEROPEEK_BACKEND_IMAGE` / `ZEROPEEK_FRONTEND_IMAGE` | GHCR defaults             | Override if the images move.                            |
+
+> **Exactly four values are required and must not be empty** (Compose `:?`
+> guards): `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and
+> `SESSION_SECRET`. **Every other variable has a correct default**, including
+> `APP_BASE_URL` (which defaults to `https://zeropeek.xubi.org`). `REDIS_URL`,
+> `CORS_ORIGIN`, `DATABASE_URL` and `COOKIE_SECURE` are never required — the
+> stack knows its own `cache` and `db` services and derives the rest.
 
 ### 5.2 Setting the PostgreSQL credentials in Portainer
 
@@ -134,7 +149,7 @@ not be empty**. The stack file guards them with Compose's `:?` operator, so a
 missing or empty value stops the deployment with a clear error instead of
 starting a database that can never become healthy.
 
-Step by step:
+Step by step (for `zeropeek.xubi.org`):
 
 1. Open Portainer and sign in.
 2. Go to **Stacks** and select the `zeropeek` stack (container names start with
@@ -147,11 +162,12 @@ Step by step:
    string is built from it with URL-safe encoding.
 7. Leave `DATABASE_URL` **empty**. The backend builds it from the three values
    above. Set it only for an external database.
-8. Set `SESSION_SECRET` (`openssl rand -hex 32`) and `APP_BASE_URL`.
-   For a local, plain-HTTP deployment use e.g. `http://192.168.1.10:3737`
-   (`localhost` is accepted but only reachable on the host itself, so the
-   backend logs a warning).
-9. Leave `REDIS_URL` and `COOKIE_SECURE` **empty** – both default correctly.
+8. Set `SESSION_SECRET` (`openssl rand -hex 32`).
+9. Set the HTTPS values for the domain (see section 6.1):
+   `APP_BASE_URL=https://zeropeek.xubi.org`,
+   `CORS_ORIGIN=https://zeropeek.xubi.org`, `ZP_SITE_ADDRESS=zeropeek.xubi.org`,
+   `CADDY_CONTAINER_PORT=443`, `HTTP_PORT=443`, `ZP_HTTP_CHALLENGE_PORT=80` and
+   `COOKIE_SECURE=true`.
 10. Click **Deploy the stack** (or **Update the stack**).
 
 > **Existing volume:** these three values are applied only the first time the
@@ -212,25 +228,40 @@ Open `http://<host>:3737/` in a browser to see the ZeroPeek start page.
 
 ### 6.1 Enabling HTTPS (TLS)
 
-The stack ships **plain HTTP** by default so it works on any host immediately.
-To serve HTTPS, set three variables in the stack environment together:
+ZeroPeek is published at **`https://zeropeek.xubi.org`**. The stack ships plain
+HTTP by default so it works on any host immediately; for the public domain set
+these variables in the stack environment **together**:
 
 ```env
-ZP_SITE_ADDRESS=quiz.example.com
+ZP_SITE_ADDRESS=zeropeek.xubi.org
 CADDY_CONTAINER_PORT=443
 HTTP_PORT=443
+ZP_HTTP_CHALLENGE_PORT=80
+APP_BASE_URL=https://zeropeek.xubi.org
+CORS_ORIGIN=https://zeropeek.xubi.org
+COOKIE_SECURE=true
 ```
 
 Then **Update the stack**. Caddy obtains and renews a Let's Encrypt certificate
 for `ZP_SITE_ADDRESS` automatically. Two conditions must hold:
 
-1. `ZP_SITE_ADDRESS` resolves to the host in public DNS.
-2. Ports **80 and 443** are both reachable from the internet — Caddy uses port
-   80 for the ACME challenge and the HTTP→HTTPS redirect.
+1. `zeropeek.xubi.org` resolves to the host in public DNS.
+2. Ports **80 and 443** are both reachable from the internet. Caddy validates the
+   certificate over the **HTTP-01 challenge on port 80** and redirects HTTP to
+   HTTPS there; the site itself listens on 443. The compose file maps container
+   port 80 to host port `ZP_HTTP_CHALLENGE_PORT` for exactly this (it defaults to
+   `HTTP_PORT`, and in TLS mode you set it to `80`).
+   If host port 80 is already taken, set `ZP_HTTP_CHALLENGE_PORT` to a free port
+   and forward the host's public port 80 to it.
 
-Also update `APP_BASE_URL` and `CORS_ORIGIN` to the `https://` origin. The
-session cookie's `Secure` flag is then derived from `APP_BASE_URL` automatically;
-set `COOKIE_SECURE=true` explicitly only if you leave `APP_BASE_URL` on `http://`.
+> **Why port 80 matters.** Caddy also supports the `tls-alpn-01` challenge on
+> port 443, but the automatic HTTP→HTTPS redirect always binds port 80. Without
+> it a certificate can still be issued via ALPN yet the redirect breaks, so the
+> stack publishes port 80 on purpose. Keeping it published is the simplest,
+> most reliable setup.
+
+`COOKIE_SECURE=true` is set explicitly for clarity; it is also derived from the
+`https://` `APP_BASE_URL` automatically.
 
 > **Test with the staging directory first.** Set
 > `ZP_ACME_CA=https://acme-staging-v02.api.letsencrypt.org/directory` while
@@ -252,7 +283,8 @@ set `COOKIE_SECURE=true` explicitly only if you leave `APP_BASE_URL` on `http://
 Verify:
 
 ```bash
-curl -s https://<domain>/api/health
+curl -s https://zeropeek.xubi.org/api/health
+# {"status":"ok","service":"zeropeek-backend","version":"0.0.0","questionTypes":13}
 ```
 
 ## 7. Updating to a new image
@@ -302,14 +334,15 @@ exactly which commit is running, and a rollback is trivial
 
 ## 9. Troubleshooting
 
-| Symptom                                                        | Cause / fix                                                                           |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `denied` / `unauthorized` when pulling                         | Private package without registry credentials → add GHCR credentials (section 4)       |
-| `pull access denied` for `zeropeek-backend`                    | Image not published yet → check the actions run in GitHub                             |
-| Stack up but `/api/health` returns 502                         | `backend` not healthy yet, or the database credentials are wrong → check backend logs |
-| Data lost after redeploy                                       | The `db-data` volume was removed → avoid "remove volumes" on update                   |
-| `failed to bind port 0.0.0.0:80/tcp`                           | Host port 80 is already in use → set `HTTP_PORT` to a free port (default 3737)        |
-| Deployment stops with `required variable … is missing a value` | A required variable is empty → set the named variable (section 5.1) and redeploy      |
+| Symptom                                                        | Cause / fix                                                                                                                                                                        |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `denied` / `unauthorized` when pulling                         | Private package without registry credentials → add GHCR credentials (section 4)                                                                                                    |
+| `pull access denied` for `zeropeek-backend`                    | Image not published yet → check the actions run in GitHub                                                                                                                          |
+| Stack up but `/api/health` returns 502                         | `backend` not healthy yet, or the database credentials are wrong → check backend logs                                                                                              |
+| Data lost after redeploy                                       | The `db-data` volume was removed → avoid "remove volumes" on update                                                                                                                |
+| `failed to bind port 0.0.0.0:80/tcp`                           | Host port 80 is already in use → set `ZP_HTTP_CHALLENGE_PORT` to a free port and forward public port 80 to it, or set `HTTP_PORT` to a free port (default 3737) in plain-HTTP mode |
+| `failed to bind port 0.0.0.0:443/tcp` (TLS)                    | `ZP_HTTP_CHALLENGE_PORT` defaults to `HTTP_PORT`; with `HTTP_PORT=443` also set `ZP_HTTP_CHALLENGE_PORT=80` so the challenge port does not collide with the TLS listener           |
+| Deployment stops with `required variable … is missing a value` | A required variable is empty → set the named variable (section 5.1) and redeploy                                                                                                   |
 
 ### Backend container keeps restarting
 

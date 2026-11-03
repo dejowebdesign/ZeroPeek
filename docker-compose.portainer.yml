@@ -101,8 +101,11 @@ services:
       BACKEND_HOST: 0.0.0.0
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Public origin of the app, used for links, QR codes and cookie scope.
-      # Required: the stack refuses to deploy with an empty value.
-      APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL muss gesetzt sein (z. B. https://quiz.example.com)}
+      # Defaults to the canonical production origin so the stack deploys even
+      # when the value is not entered in Portainer. Override it for another host
+      # (e.g. a staging domain). A localhost value is accepted but logs a
+      # warning, because links and QR codes then only work on the host itself.
+      APP_BASE_URL: ${APP_BASE_URL:-https://zeropeek.xubi.org}
       # Allowed browser origin for CORS. Defaults to APP_BASE_URL when empty.
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       # Connection string consumed by Prisma. Optional: when empty it is built
@@ -175,7 +178,18 @@ services:
     # domain, CADDY_CONTAINER_PORT=443 and HTTP_PORT=443; Caddy then obtains and
     # renews certificates for that domain automatically.
     ports:
+      # Primary listener. Plain HTTP by default (host 3737 -> container 80); for
+      # TLS set CADDY_CONTAINER_PORT=443 and HTTP_PORT=443.
       - '${HTTP_PORT:-3737}:${CADDY_CONTAINER_PORT:-80}'
+      # Container port 80, used for the ACME HTTP-01 challenge and the
+      # HTTP->HTTPS redirect. Caddy only requests a certificate (and only binds
+      # this port) in TLS mode. It defaults to the same host port as the primary
+      # listener, which Compose collapses in plain HTTP mode (3737:80 twice) so
+      # the default deployment is unchanged. In TLS mode set
+      # ZP_HTTP_CHALLENGE_PORT=80: Let's Encrypt always validates the challenge
+      # on the host's port 80. If host port 80 is taken, use a free port and
+      # forward the host's public port 80 to it.
+      - '${ZP_HTTP_CHALLENGE_PORT:-${HTTP_PORT:-3737}}:80'
     environment:
       # Site address Caddy binds to. Empty (the default) makes the embedded
       # Caddyfile fall back to `:80` for plain HTTP. Set it to the public
