@@ -65,14 +65,14 @@ environment editor; in local development copy the example to `.env`.
 
 ## Application
 
-| Variable       | Required | Default                | Description                                                                                                                                            |
-| -------------- | -------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `NODE_ENV`     | no       | `production` (compose) | Runtime mode.                                                                                                                                          |
-| `BACKEND_PORT` | no       | `3000`                 | Port Fastify listens on inside the container.                                                                                                          |
-| `BACKEND_HOST` | no       | `0.0.0.0`              | Bind address.                                                                                                                                          |
-| `LOG_LEVEL`    | no       | `info`                 | Pino log level.                                                                                                                                        |
-| `APP_BASE_URL` | yes      | –                      | Public URL of the app; used for links, QR codes and cookie scope. Must be an absolute http(s) URL. A localhost address is accepted but logs a warning. |
-| `CORS_ORIGIN`  | no       | `APP_BASE_URL`         | Allowed browser origin. Defaults to `APP_BASE_URL` when empty.                                                                                         |
+| Variable       | Required | Default                     | Description                                                                                                                                            |
+| -------------- | -------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NODE_ENV`     | no       | `production` (compose)      | Runtime mode.                                                                                                                                          |
+| `BACKEND_PORT` | no       | `3000`                      | Port Fastify listens on inside the container.                                                                                                          |
+| `BACKEND_HOST` | no       | `0.0.0.0`                   | Bind address.                                                                                                                                          |
+| `LOG_LEVEL`    | no       | `info`                      | Pino log level.                                                                                                                                        |
+| `APP_BASE_URL` | no       | `https://zeropeek.xubi.org` | Public URL of the app; used for links, QR codes and cookie scope. Must be an absolute http(s) URL. A localhost address is accepted but logs a warning. |
+| `CORS_ORIGIN`  | no       | `APP_BASE_URL`              | Allowed browser origin. Defaults to `APP_BASE_URL` when empty.                                                                                         |
 
 ## Sessions and cookies
 
@@ -86,12 +86,16 @@ environment editor; in local development copy the example to `.env`.
 ## Required values fail fast
 
 In production the backend validates its configuration on start. If any of
-`SESSION_SECRET`, `DATABASE_URL` (or the `POSTGRES_*` values it is built from) or
-`APP_BASE_URL` is missing or invalid, the container stops immediately with a
-readable message that names every offending variable and how to fix it – instead
-of a restart loop. The compose file also guards `POSTGRES_DB`, `POSTGRES_USER`,
-`POSTGRES_PASSWORD`, `APP_BASE_URL` and `SESSION_SECRET` with Compose's `:?`
-operator, so most mistakes are caught before the containers even start.
+`SESSION_SECRET` or `DATABASE_URL` (or the `POSTGRES_*` values it is built from)
+is missing or invalid, or `APP_BASE_URL` is not a valid absolute http(s) URL, the
+container stops immediately with a readable message that names every offending
+variable and how to fix it – instead of a restart loop. The compose file also
+guards `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and `SESSION_SECRET`
+with Compose's `:?` operator, so the four truly required values are caught before
+the containers even start.
+
+`APP_BASE_URL` is **not** guarded: it defaults to `https://zeropeek.xubi.org`, so
+a missing value no longer stops the deployment. Set it only for a different host.
 
 `REDIS_URL` is deliberately **not** required: it defaults to the bundled `cache`
 service, and the backend logs a warning and continues when Redis is unreachable.
@@ -102,12 +106,13 @@ In development and test the lenient defaults are kept.
 
 ## Reverse proxy
 
-| Variable               | Required | Default                  | Description                                                                                           |
-| ---------------------- | -------- | ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `HTTP_PORT`            | no       | `3737`                   | Host port published by Caddy. Set `443` for TLS.                                                      |
-| `CADDY_CONTAINER_PORT` | no       | `80`                     | Port Caddy listens on inside the container (`80` HTTP, `443` TLS).                                    |
-| `ZP_SITE_ADDRESS`      | no       | empty                    | Domain Caddy serves. Empty = plain HTTP on `:80`. Set to the public domain to enable automatic HTTPS. |
-| `ZP_ACME_CA`           | no       | Let's Encrypt production | ACME directory. Set to the staging URL while testing to protect the production rate limit.            |
+| Variable                 | Required | Default                  | Description                                                                                                                 |
+| ------------------------ | -------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `HTTP_PORT`              | no       | `3737`                   | Host port published for the primary listener. Set `443` for TLS.                                                            |
+| `CADDY_CONTAINER_PORT`   | no       | `80`                     | Port Caddy listens on inside the container (`80` HTTP, `443` TLS).                                                          |
+| `ZP_HTTP_CHALLENGE_PORT` | no       | `HTTP_PORT`              | Host port mapped to container port 80 (ACME challenge + HTTP→HTTPS redirect). Set to `80` for TLS.                          |
+| `ZP_SITE_ADDRESS`        | no       | empty                    | Domain Caddy serves. Empty = plain HTTP on `:80`. Set to the public domain (`zeropeek.xubi.org`) to enable automatic HTTPS. |
+| `ZP_ACME_CA`             | no       | Let's Encrypt production | ACME directory. Set to the staging URL while testing to protect the production rate limit.                                  |
 
 > The default host port is **3737**, not 80, because port 80 is frequently
 > already bound on the Docker host. Deploying with `HTTP_PORT=80` on such a host
@@ -120,19 +125,23 @@ In development and test the lenient defaults are kept.
 default) Caddy serves plain HTTP on container port `80`, so the stack works out
 of the box on a private network.
 
-To serve HTTPS, set all three values consistently:
+To serve HTTPS at `https://zeropeek.xubi.org`, set all the values consistently:
 
 ```env
-ZP_SITE_ADDRESS=quiz.example.com
+ZP_SITE_ADDRESS=zeropeek.xubi.org
 CADDY_CONTAINER_PORT=443
 HTTP_PORT=443
+ZP_HTTP_CHALLENGE_PORT=80
 ```
 
 Caddy then obtains and renews a Let's Encrypt certificate for
-`quiz.example.com` automatically. Ports **80 and 443 must both be reachable
+`zeropeek.xubi.org` automatically. Ports **80 and 443 must both be reachable
 from the internet** so the ACME challenge can complete; Caddy uses port 80 for
 the HTTP-01 challenge and the HTTP→HTTPS redirect even though the site itself
-listens on 443.
+listens on 443. The compose file maps container port 80 to
+`ZP_HTTP_CHALLENGE_PORT` (default: `HTTP_PORT`; set it to `80` in TLS mode) for
+exactly this; if host port 80 is already taken, point `ZP_HTTP_CHALLENGE_PORT`
+at a free port and forward the host's public port 80 to it.
 
 > With TLS the host port must be **443**, not the 3737 default: clients expect
 > HTTPS on 443.
