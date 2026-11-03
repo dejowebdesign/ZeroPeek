@@ -6,13 +6,25 @@
  */
 
 import { buildApp } from './app.js';
-import { loadConfig } from './config.js';
+import { type AppConfig, ConfigError, loadConfig } from './config.js';
 import { disconnectPrisma } from './db.js';
 import { ensureBootstrapAdmin } from './services/userService.js';
 import { attachSocketIO } from './socket.js';
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  // Validate the environment first. A misconfigured stack fails here with a
+  // readable message instead of starting a container that can never serve.
+  let config: AppConfig;
+  try {
+    config = loadConfig();
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      console.error(error.message);
+      process.exit(1);
+    }
+    throw error;
+  }
+
   const app = await buildApp({ config });
 
   // Create the first admin from the environment when none exists yet. This is

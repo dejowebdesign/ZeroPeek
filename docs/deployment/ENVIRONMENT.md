@@ -20,12 +20,12 @@ environment editor; in local development copy the example to `.env`.
 
 ## PostgreSQL
 
-| Variable            | Required | Default | Description                                                                    |
-| ------------------- | -------- | ------- | ------------------------------------------------------------------------------ |
-| `POSTGRES_DB`       | yes      | –       | Database name created on first start.                                          |
-| `POSTGRES_USER`     | yes      | –       | Database user.                                                                 |
-| `POSTGRES_PASSWORD` | yes      | –       | Database password. Use a long random value.                                    |
-| `DATABASE_URL`      | yes      | –       | Connection string used by the backend (Prisma). Host is the service name `db`. |
+| Variable            | Required | Default | Description                                                                      |
+| ------------------- | -------- | ------- | -------------------------------------------------------------------------------- |
+| `POSTGRES_DB`       | yes      | –       | Database name created on first start.                                            |
+| `POSTGRES_USER`     | yes      | –       | Database user.                                                                   |
+| `POSTGRES_PASSWORD` | yes      | –       | Database password. Use a long random value.                                      |
+| `DATABASE_URL`      | no       | derived | Connection string used by the backend (Prisma). When empty it is built from the three values above (host `db`, port `5432`). |
 
 > The first three values are guarded with Compose's `:?` operator: if any of them
 > is missing **or empty**, the stack fails to deploy with a clear message
@@ -34,10 +34,15 @@ environment editor; in local development copy the example to `.env`.
 > (`Database is uninitialized and superuser password is not specified`) and
 > leaves `db` permanently `unhealthy` – see
 > [../reports/postgresql-password-fix.md](../reports/postgresql-password-fix.md).
->
-> `DATABASE_URL` must repeat exactly the same database name, user and password.
-> A mismatch does not stop the database container from starting, but the backend
-> cannot log in and `/api/health` fails.
+
+> **`DATABASE_URL` is derived automatically.** Leave it empty and the backend
+> builds `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@db:5432/<POSTGRES_DB>?schema=public`
+> from the values above, percent-encoding anything in the password that is
+> significant in a URL (`@`, `:`, `/`, `?`, `#`, `%`, a space, …). This is the
+> recommended setup: the credentials live in exactly one place and cannot drift
+> apart. Set `DATABASE_URL` explicitly only when the database is not the `db`
+> service (e.g. an external server); then it must repeat exactly the same user,
+> password and database name, with the password percent-encoded.
 
 > `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD` are applied **only when
 > the `db-data` volume is first initialised**. On an existing volume PostgreSQL
@@ -60,8 +65,8 @@ environment editor; in local development copy the example to `.env`.
 | `BACKEND_PORT` | no       | `3000`                 | Port Fastify listens on inside the container.                     |
 | `BACKEND_HOST` | no       | `0.0.0.0`              | Bind address.                                                     |
 | `LOG_LEVEL`    | no       | `info`                 | Pino log level.                                                   |
-| `APP_BASE_URL` | yes      | –                      | Public URL of the app; used for links, QR codes and cookie scope. |
-| `CORS_ORIGIN`  | yes      | `APP_BASE_URL`         | Allowed browser origin. Usually identical to `APP_BASE_URL`.      |
+| `APP_BASE_URL` | yes      | –                      | Public URL of the app; used for links, QR codes and cookie scope. Must be an absolute http(s) URL and must not be a localhost address. |
+| `CORS_ORIGIN`  | no       | `APP_BASE_URL`         | Allowed browser origin. Defaults to `APP_BASE_URL` when empty.    |
 
 ## Sessions and cookies
 
@@ -71,6 +76,18 @@ environment editor; in local development copy the example to `.env`.
 | `SESSION_TTL_HOURS` | no       | `72`                          | Session lifetime in hours.                                        |
 | `COOKIE_NAME`       | no       | `zp_session`                  | Session cookie name.                                              |
 | `COOKIE_SECURE`     | no       | `true` (prod) / `false` (dev) | Send cookies only over HTTPS. Set `false` only for local testing. |
+
+## Required values fail fast
+
+In production the backend validates its configuration on start. If any of
+`SESSION_SECRET`, `DATABASE_URL` (or the `POSTGRES_*` values it is built from),
+`REDIS_URL` or `APP_BASE_URL` is missing or invalid, the container stops
+immediately with a readable message that names every offending variable and how
+to fix it – instead of a restart loop. The compose file also guards
+`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `APP_BASE_URL`,
+`REDIS_URL` and `SESSION_SECRET` with Compose's `:?` operator, so most mistakes
+are caught before the containers even start. In development and test the lenient
+defaults are kept.
 
 ## Reverse proxy
 

@@ -22,6 +22,9 @@ describe('config', () => {
       COOKIE_NAME: 'zp_test',
       APP_BASE_URL: 'https://quiz.example.com',
       CORS_ORIGIN: 'https://other.example.com',
+      SESSION_SECRET: 'a-very-long-random-secret',
+      DATABASE_URL: 'postgresql://zeropeek:secret@db:5432/zeropeek?schema=public',
+      REDIS_URL: 'redis://cache:6379',
     });
     expect(config.nodeEnv).toBe('production');
     expect(config.port).toBe(4321);
@@ -29,6 +32,7 @@ describe('config', () => {
     expect(config.sessionCookieName).toBe('zp_test');
     expect(config.appBaseUrl).toBe('https://quiz.example.com');
     expect(config.corsOrigin).toBe('https://other.example.com');
+    expect(config.databaseUrl).toBe('postgresql://zeropeek:secret@db:5432/zeropeek?schema=public');
   });
 
   it('falls back to the legacy PUBLIC_BASE_URL / SESSION_COOKIE_NAME names', () => {

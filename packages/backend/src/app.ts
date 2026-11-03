@@ -62,7 +62,9 @@ export async function buildApp({ config }: BuildAppOptions): Promise<FastifyInst
     referrerPolicy: { policy: 'no-referrer' },
   });
 
-  await app.register(cookie, { secret: process.env.SESSION_SECRET ?? 'phase-0-placeholder' });
+  // `sessionSecret` is validated in production by `loadConfig`; the placeholder
+  // only ever applies to development/test.
+  await app.register(cookie, { secret: config.sessionSecret });
 
   // Browser requests come from the frontend origin; the proxy makes them
   // same-origin in production, so credentials are allowed for that one origin.

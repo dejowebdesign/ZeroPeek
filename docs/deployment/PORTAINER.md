@@ -46,9 +46,10 @@ port, so the database and Redis are unreachable from outside the Docker host.
    - **Compose path:** `docker-compose.portainer.yml`
    - Authentication: off for a public repository. For a private repository,
      enable **Authentication** and supply a GitHub token with read access.
-5. **Environment variables:** add every key from `.env.portainer.example`
-   (see section 5). At minimum change `POSTGRES_PASSWORD`, `DATABASE_URL`,
-   `SESSION_SECRET`, `APP_BASE_URL` and `CORS_ORIGIN`.
+5. **Environment variables:** add the six values from section 5.1. At minimum
+   set `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `SESSION_SECRET` and
+   `APP_BASE_URL`. Leave `DATABASE_URL` empty so it is built from the PostgreSQL
+   values. `REDIS_URL` and `CORS_ORIGIN` already default correctly.
 6. **Deploy the stack.**
 
 Portainer can later poll the repository (**GitOps updates**) and redeploy when
@@ -86,23 +87,40 @@ The token is stored in Portainer, never in this repository.
 ## 5. Environment variables
 
 Set them in the stack's **Environment variables** section. The complete list and
-meaning is in [ENVIRONMENT.md](./ENVIRONMENT.md). The critical ones:
+meaning is in [ENVIRONMENT.md](./ENVIRONMENT.md).
 
-| Variable             | Example                                                     |
-| -------------------- | ----------------------------------------------------------- |
-| `ZEROPEEK_IMAGE_TAG` | `sha-1a2b3c4` (or `latest`)                                 |
-| `POSTGRES_PASSWORD`  | a long random value                                         |
-| `DATABASE_URL`       | `postgresql://zeropeek:<pw>@db:5432/zeropeek?schema=public` |
-| `SESSION_SECRET`     | `openssl rand -hex 32`                                      |
-| `APP_BASE_URL`       | `https://quiz.example.com`                                  |
-| `CORS_ORIGIN`        | `https://quiz.example.com`                                  |
-| `HTTP_PORT`          | `3737` (plain HTTP) or `443` (with TLS)                     |
-| `ZP_SITE_ADDRESS`    | empty (plain HTTP) or the public domain (TLS)               |
+### 5.1 The minimal set (recommended)
 
-> The database host inside `DATABASE_URL` is the compose service name `db`, not
-> `localhost`.
+Only six values have to be entered by hand; everything else has a safe default.
+`DATABASE_URL` is **not** among them – it is built automatically from the
+PostgreSQL values, which keeps the credentials in exactly one place.
 
-### 5.1 Setting the PostgreSQL credentials in Portainer
+| Variable            | Required | Example                            | Notes                                                    |
+| ------------------- | -------- | ---------------------------------- | -------------------------------------------------------- |
+| `POSTGRES_DB`       | yes      | `zeropeek`                         | Name of the existing database.                           |
+| `POSTGRES_USER`     | yes      | `zeropeek`                         | User that already exists in the volume.                  |
+| `POSTGRES_PASSWORD` | yes      | `openssl rand -base64 32`          | Must match the password already inside the volume.       |
+| `SESSION_SECRET`    | yes      | `openssl rand -hex 32`             | Long random value; never reuse or commit.                |
+| `APP_BASE_URL`      | yes      | `https://quiz.example.com`         | Public origin; must not be a localhost address.          |
+| `ZEROPEEK_IMAGE_TAG`| no       | `sha-1a2b3c4` (or `latest`)        | Pin a commit tag for reproducible deployments.           |
+
+Optional, only when needed:
+
+| Variable          | When to set it                                                             |
+| ----------------- | -------------------------------------------------------------------------- |
+| `CORS_ORIGIN`     | Defaults to `APP_BASE_URL`; set only if the browser origin differs.        |
+| `DATABASE_URL`    | Only if the database is **not** the `db` service (e.g. an external host).  |
+| `HTTP_PORT`       | `3737` (plain HTTP, default) or `443` (with TLS).                          |
+| `ZP_SITE_ADDRESS` | Empty (plain HTTP, default) or the public domain (enables TLS).            |
+| `CADDY_CONTAINER_PORT` | `80` (plain HTTP, default) or `443` (with TLS).                       |
+| `COOKIE_SECURE`   | `true` (default) behind TLS; `false` only for plain-HTTP testing.          |
+
+> The stack refuses to deploy when `POSTGRES_DB`, `POSTGRES_USER`,
+> `POSTGRES_PASSWORD`, `APP_BASE_URL`, `REDIS_URL` or `SESSION_SECRET` is missing
+> or empty (Compose `:?` guards). `REDIS_URL` and `CORS_ORIGIN` already have the
+> correct values in the compose file, so they normally need no entry.
+
+### 5.2 Setting the PostgreSQL credentials in Portainer
 
 `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD` are **required and must
 not be empty**. The stack file guards them with Compose's `:?` operator, so a
@@ -117,12 +135,13 @@ Step by step:
 3. Open the stack's **Editor** / **Environment variables** section.
 4. Set `POSTGRES_DB` – the database name, e.g. `zeropeek`.
 5. Set `POSTGRES_USER` – the database user, e.g. `zeropeek`.
-6. Set `POSTGRES_PASSWORD` to a strong, unique password
-   (`openssl rand -base64 32`). Never leave it empty and never reuse the
-   placeholder from `.env.portainer.example`.
-7. Set `DATABASE_URL` so it repeats **exactly** those three values:
-   `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@db:5432/<POSTGRES_DB>?schema=public`.
-8. Click **Deploy the stack** (or **Update the stack**).
+6. Set `POSTGRES_PASSWORD` to the password that already exists in the volume
+   (see below if you are unsure). It may contain any characters; the connection
+   string is built from it with URL-safe encoding.
+7. Leave `DATABASE_URL` **empty**. The backend builds it from the three values
+   above. Set it only for an external database.
+8. Set `SESSION_SECRET` (`openssl rand -hex 32`) and `APP_BASE_URL`.
+9. Click **Deploy the stack** (or **Update the stack**).
 
 > **Existing volume:** these three values are applied only the first time the
 > `db-data` volume is initialised. If the volume already exists, PostgreSQL
@@ -132,6 +151,36 @@ Step by step:
 
 > **Never commit credentials.** Enter them only in Portainer. `.env.portainer.example`
 > contains placeholders, not real secrets.
+
+### 5.3 Aligning the credentials with an existing volume
+
+`POSTGRES_PASSWORD` in the stack does **not** change the password of an
+already-initialised cluster; it only takes effect on a fresh volume. To line the
+stack up with a database that already exists, recover the values that are in use
+instead of changing them:
+
+```bash
+# 1. What user and database does the volume actually contain?
+docker exec zero_peek-db-1 psql -U postgres -c '\du'   # roles
+docker exec zero_peek-db-1 psql -U postgres -c '\l'    # databases
+
+# 2. Test the password you intend to set (no change is made):
+docker exec -e PGPASSWORD='<the-password>' zero_peek-db-1 \
+  psql -w -h "$(hostname)" -U <user> -d <db> -tAc 'SELECT 1'
+```
+
+- If the login succeeds, enter exactly those values in the stack.
+- If it fails with `password authentication failed`, the password in the stack is
+  not the one in the volume. Enter the **original** password; if it was lost, an
+  intentional password change is required and must be approved first (it is a
+  change to the running database and outside the scope of this repository):
+
+  ```sql
+  ALTER ROLE "<user>" WITH PASSWORD '<new-password>';
+  ```
+
+  Change `POSTGRES_PASSWORD` in the stack to the same new value afterwards. This
+  is the only supported way to change the password without deleting data.
 
 ## 6. First start
 
@@ -216,7 +265,10 @@ exactly which commit is running, and a rollback is trivial
 - **Named volume** `db-data` for PostgreSQL; Portainer shows it under
   **Volumes** and it survives stack updates.
 - **Healthchecks** on all five services; Portainer displays the health column.
-- **Restart policy** `unless-stopped` on every service.
+- **Restart policy** `unless-stopped` on `db`, `cache`, `frontend` and `proxy`,
+  and `on-failure:5` on `backend`. The backend exits non-zero on a
+  misconfiguration, so a bounded `on-failure` policy avoids an endless restart
+  loop while still restarting after a host reboot.
 - **Secrets** come from the stack environment only; the compose file contains
   no credentials.
 
@@ -225,10 +277,45 @@ exactly which commit is running, and a rollback is trivial
 | Symptom                                     | Cause / fix                                                                     |
 | ------------------------------------------- | ------------------------------------------------------------------------------- |
 | `denied` / `unauthorized` when pulling      | Private package without registry credentials → add GHCR credentials (section 4) |
-| `pull access denied` for `zeropeek-backend` | Image not published yet → check the Actions run in GitHub                       |
-| Stack up but `/api/health` returns 502      | `backend` not healthy yet, or `DATABASE_URL` wrong → check backend logs         |
+| `pull access denied` for `zeropeek-backend` | Image not published yet → check the actions run in GitHub                       |
+| Stack up but `/api/health` returns 502      | `backend` not healthy yet, or the database credentials are wrong → check backend logs |
 | Data lost after redeploy                    | The `db-data` volume was removed → avoid "remove volumes" on update             |
 | `failed to bind port 0.0.0.0:80/tcp`        | Host port 80 is already in use → set `HTTP_PORT` to a free port (default 3737)  |
+| Deployment stops with `required variable … is missing a value` | A required variable is empty → set the named variable (section 5.1) and redeploy |
+
+### Backend container keeps restarting
+
+The backend validates its configuration on start and prints a readable message.
+Look at the top of the log:
+
+```bash
+docker logs zero_peek-backend-1
+```
+
+| Log message                                                             | Cause / fix                                                                                       |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `ZeroPeek backend cannot start: the configuration is incomplete …`      | One or more required values are missing; the following lines name each variable and how to fix it |
+| `DATABASE_URL is missing or empty and cannot be derived`                | Set `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`, or set `DATABASE_URL` explicitly      |
+| `SESSION_SECRET is missing or empty`                                    | Set `SESSION_SECRET` (`openssl rand -hex 32`)                                                     |
+| `REDIS_URL is missing or empty`                                         | Set `REDIS_URL=redis://cache:6379`                                                                |
+| `APP_BASE_URL … localhost`                                              | Set `APP_BASE_URL` to the public origin, not a localhost address                                  |
+
+### Backend cannot reach the database
+
+The entrypoint waits for PostgreSQL and prints the Prisma error code and a hint
+on every attempt; after a bounded number of attempts it stops with a clear
+message and **leaves the volume untouched**:
+
+```bash
+docker logs zero_peek-backend-1
+```
+
+| Log line                                                    | Cause / fix                                                                        |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `waiting for the database (attempt …): P1000 authentication failed` | The stack password does not match the volume → see section 5.3                     |
+| `… P1001 cannot reach the database server`                  | The `db` service is not running → check `docker logs zero_peek-db-1`               |
+| `… P1003 the database does not exist`                       | `POSTGRES_DB` does not match the database in the volume → set the original value   |
+| `FATAL: the database is not reachable after 15 attempts`    | Fix the values above and redeploy; no data was changed                             |
 
 ### Database container stays `unhealthy`
 
