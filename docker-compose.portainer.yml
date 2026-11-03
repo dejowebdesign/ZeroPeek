@@ -134,6 +134,14 @@ services:
       # Empty (the default) derives Secure from APP_BASE_URL: `https://` marks the
       # cookie Secure, plain HTTP does not. Set it explicitly to override.
       COOKIE_SECURE: ${COOKIE_SECURE:-}
+      # Bootstrap administrator. OPTIONAL and empty by default. When BOTH are
+      # set and no active administrator exists yet, the backend creates exactly
+      # one ADMIN user on start; it is a no-op on every later start and never
+      # touches an existing administrator. The password is hashed with Argon2id
+      # and must meet the minimum length (see docs/deployment/PORTAINER.md §5.5).
+      # There is no `:?` guard on purpose: an empty value simply skips creation.
+      BOOTSTRAP_ADMIN_USER: ${BOOTSTRAP_ADMIN_USER:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy

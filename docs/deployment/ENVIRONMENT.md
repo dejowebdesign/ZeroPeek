@@ -96,6 +96,18 @@ environment editor; in local development copy the example to `.env`.
 | `COOKIE_NAME`       | no       | `zp_session`                | Session cookie name.                                                                             |
 | `COOKIE_SECURE`     | no       | derived from `APP_BASE_URL` | Session cookie `Secure` flag. Empty = derive: an `https://` origin sets it, plain HTTP does not. |
 
+## Bootstrap administrator
+
+| Variable                   | Required | Default | Description                                                                              |
+| -------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------- |
+| `BOOTSTRAP_ADMIN_USER`     | no       | –       | Username of the first administrator. Set together with the password to enable creation.  |
+| `BOOTSTRAP_ADMIN_PASSWORD` | no       | –       | Password of the first administrator. Argon2id-hashed on storage; at least 10 characters. |
+
+When **both** values are set and no active administrator exists yet, the backend
+creates exactly one `ADMIN` user on start. This is a no-op on every later start:
+an existing administrator is never overwritten, modified or duplicated. Leave
+both empty to skip automatic creation.
+
 ## Required values fail fast
 
 In production the backend validates its configuration on start. If any of
