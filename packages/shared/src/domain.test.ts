@@ -8,7 +8,13 @@ import {
   GAME_PHASES,
   type QuestionType,
 } from './constants.js';
-import { scaleOptions, type NpsQuestion, type ScaleQuestion } from './questions.js';
+import {
+  questionDisplay,
+  scaleOptions,
+  shuffleWithSeed,
+  type NpsQuestion,
+  type ScaleQuestion,
+} from './questions.js';
 
 describe('question type catalogue', () => {
   it('contains exactly the 13 required question types', () => {
@@ -76,5 +82,42 @@ describe('scaleOptions', () => {
       highLabel: 'likely',
     };
     expect(scaleOptions(q)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
+  });
+});
+
+describe('shuffleWithSeed', () => {
+  it('is deterministic for the same seed', () => {
+    const items = ['a', 'b', 'c', 'd', 'e'];
+    expect(shuffleWithSeed(items, 'seed-1')).toEqual(shuffleWithSeed(items, 'seed-1'));
+  });
+
+  it('differs across seeds (so the order is not predictable)', () => {
+    const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    const orders = new Set(
+      ['s1', 's2', 's3', 's4', 's5'].map((seed) => shuffleWithSeed(items, seed).join('')),
+    );
+    expect(orders.size).toBeGreaterThan(1);
+  });
+
+  it('keeps every item and never mutates the input', () => {
+    const items = ['x', 'y', 'z'];
+    const shuffled = shuffleWithSeed(items, 'abc');
+    expect([...shuffled].sort()).toEqual([...items].sort());
+    expect(items).toEqual(['x', 'y', 'z']);
+  });
+
+  it('hides the correct order of an ordering question from the display payload', () => {
+    const question = {
+      id: 'q-1',
+      type: 'order' as const,
+      text: 'Order the steps',
+      timeLimit: 20,
+      points: 'standard' as const,
+      items: ['one', 'two', 'three', 'four', 'five'],
+    };
+    const display = questionDisplay(question) as { items: string[] };
+    // The displayed order is a permutation, and (for this seed) not the answer.
+    expect([...display.items].sort()).toEqual([...question.items].sort());
+    expect(display.items).not.toEqual(question.items);
   });
 });

@@ -1,9 +1,13 @@
-// ZeroPeek – Prisma schema (Phase 0 skeleton)
+// ZeroPeek – Prisma schema
 //
-// Phase 0 establishes the datasource, the generator and a single User model so
-// that `prisma validate` and `prisma generate` succeed. The full domain model
-// (Quiz, Question, Game, GamePlayer, PlayerAnswer, GameResult, Team, GameEvent,
-// Session, …) is added in Phase 2.
+// Phase 0 established the datasource, the generator and a single User model.
+// Phase 2 adds the full domain model on top: quizzes and their questions
+// (type-specific fields in a JSONB payload, per ADR 0004), games, players,
+// per-question answers and server-side sessions.
+//
+// Nothing from Phase 0 was removed: `User`, `UserRole` and the `users` table
+// mapping are unchanged. `Session`, `Quiz` and `Game` were added as relations
+// on `User`, so the model above is only extended.
 
 generator client {
   provider = "prisma-client-js"
@@ -29,5 +33,150 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  sessions Session[]
+  quizzes  Quiz[]
+
   @@map("users")
+}
+
+/// Server-side session. The cookie only carries the opaque `id`; everything
+/// else (expiry, CSRF token, user) lives here, so a session can be revoked.
+model Session {
+  id        String   @id
+  userId    String   @map("user_id")
+  csrfToken String   @map("csrf_token")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  lastSeen  DateTime @default(now()) @map("last_seen")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// A quiz: an ordered list of questions plus metadata.
+model Quiz {
+  id               String   @id @default(uuid())
+  title            String
+  description      String   @default("")
+  theme            String   @default("standard")
+  defaultTimeLimit Int      @default(20) @map("default_time_limit")
+  ownerId          String?  @map("owner_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  owner     User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  questions Question[]
+  games     Game[]
+
+  @@index([ownerId])
+  @@map("quizzes")
+}
+
+/// One question. `payload` holds the type-specific fields (options, correct
+/// answers, slider bounds, …); its shape is defined and validated by
+/// `@zeropeek/shared` (ADR 0004). `position` gives the ordering.
+model Question {
+  id        String   @id @default(uuid())
+  quizId    String   @map("quiz_id")
+  type      String
+  text      String
+  timeLimit Int      @map("time_limit")
+  points    String   @default("standard")
+  position  Int
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  quiz    Quiz           @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers PlayerAnswer[]
+
+  @@index([quizId, position])
+  @@map("questions")
+}
+
+/// A game session: one run of a quiz, addressed by a short PIN.
+model Game {
+  id           String    @id @default(uuid())
+  pin          String    @unique
+  quizId       String    @map("quiz_id")
+  hostId       String?   @map("host_id")
+  phase        String    @default("lobby")
+  currentIndex Int       @default(-1) @map("current_index")
+  /// Scoring settings snapshot (Q1/Q2/Q6), frozen when the game starts so a
+  /// later config change never rewrites history.
+  settings     Json      @default("{}")
+  startedAt    DateTime? @map("started_at")
+  endedAt      DateTime? @map("ended_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  quiz    Quiz        @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  players GamePlayer[]
+  events  GameEvent[]
+
+  @@index([quizId])
+  @@index([phase])
+  @@map("games")
+}
+
+/// A participant in one game. `token` lets a player reclaim their slot after a
+/// reconnect without letting anyone else impersonate them.
+model GamePlayer {
+  id           String   @id @default(uuid())
+  gameId       String   @map("game_id")
+  nickname     String
+  avatar       String   @default("")
+  token        String   @unique
+  score        Int      @default(0)
+  correctCount Int      @default(0) @map("correct_count")
+  totalTimeMs  Int      @default(0) @map("total_time_ms")
+  team         String?
+  joinedAt     DateTime @default(now()) @map("joined_at")
+  connected    Boolean  @default(true)
+
+  game    Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  answers PlayerAnswer[]
+
+  @@unique([gameId, nickname])
+  @@index([gameId])
+  @@map("game_players")
+}
+
+/// One player's answer to one question. `answer` keeps the raw payload for the
+/// report; `correctness`/`points` are the server's verdict.
+model PlayerAnswer {
+  id          String   @id @default(uuid())
+  gameId      String   @map("game_id")
+  playerId    String   @map("player_id")
+  questionId  String   @map("question_id")
+  answer      Json     @default("null")
+  correctness Float    @default(0)
+  points      Int      @default(0)
+  elapsedMs   Int      @default(0) @map("elapsed_ms")
+  flagged     Boolean  @default(false)
+  answeredAt  DateTime @default(now()) @map("answered_at")
+
+  player   GamePlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  question Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, questionId])
+  @@index([gameId])
+  @@index([questionId])
+  @@map("player_answers")
+}
+
+/// Append-only log of game transitions, used by the report and for auditing.
+model GameEvent {
+  id        String   @id @default(uuid())
+  gameId    String   @map("game_id")
+  type      String
+  data      Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, createdAt])
+  @@map("game_events")
 }

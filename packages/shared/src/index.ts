@@ -3,10 +3,15 @@
  * validation and scoring. This module is imported by both the backend and the
  * frontend, so it must stay runtime-agnostic: no `node:` imports, no DOM APIs.
  *
- * Phase 0 exposes the domain vocabulary (the 13 question types) and small pure
- * helpers. Full validation and the scoring formula are implemented in later
- * phases (see docs/phases.md and docs/architecture/README.md).
+ * Phase 1 completes the domain: the 13 question types plus validation,
+ * configurable scoring/ranking, PIN generation and the Socket.IO event
+ * contracts. Product decisions Q1/Q2/Q6 are exposed as configurable options
+ * (see `scoring.ts`) rather than hard-coded.
  */
 
 export * from './constants.js';
 export * from './questions.js';
+export * from './validation.js';
+export * from './scoring.js';
+export * from './pin.js';
+export * from './events.js';

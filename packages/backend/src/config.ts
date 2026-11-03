@@ -19,6 +19,12 @@ export interface AppConfig {
   logLevel: string;
   cookieSecure: boolean;
   sessionCookieName: string;
+  /** Redis connection string, used from Phase 4 for the Socket.IO adapter. */
+  redisUrl: string;
+  /** Bootstrap admin credentials; when both are set and no admin exists yet,
+   * the account is created on boot. Never logged. */
+  bootstrapAdminUser?: string;
+  bootstrapAdminPassword?: string;
 }
 
 function readNodeEnv(value: string | undefined): NodeEnv {
@@ -46,5 +52,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     logLevel: env.LOG_LEVEL ?? 'info',
     cookieSecure: env.COOKIE_SECURE === 'true',
     sessionCookieName: env.COOKIE_NAME ?? env.SESSION_COOKIE_NAME ?? 'zp_session',
+    redisUrl: env.REDIS_URL ?? 'redis://cache:6379',
+    ...(env.BOOTSTRAP_ADMIN_USER ? { bootstrapAdminUser: env.BOOTSTRAP_ADMIN_USER } : {}),
+    ...(env.BOOTSTRAP_ADMIN_PASSWORD
+      ? { bootstrapAdminPassword: env.BOOTSTRAP_ADMIN_PASSWORD }
+      : {}),
   };
 }
