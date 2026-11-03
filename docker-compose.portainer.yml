@@ -88,19 +88,36 @@ services:
   backend:
     # Pin the whole stack with ZEROPEEK_IMAGE_TAG (`latest` or `sha-<short>`).
     image: ${ZEROPEEK_BACKEND_IMAGE:-ghcr.io/dejowebdesign/zeropeek-backend}:${ZEROPEEK_IMAGE_TAG:-latest}
-    restart: unless-stopped
+    # `on-failure:5` (not `unless-stopped`): the backend exits non-zero on a
+    # misconfiguration or an unreachable database, so `unless-stopped` would
+    # restart it forever. This policy retries a few times, then leaves the
+    # container stopped and visible in Portainer instead of looping endlessly.
+    # A clean exit (code 0, e.g. SIGTERM during an update) is never restarted,
+    # and Docker still restarts it after a daemon/host reboot.
+    restart: on-failure:5
     environment:
       NODE_ENV: production
       BACKEND_PORT: '3000'
       BACKEND_HOST: 0.0.0.0
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Public origin of the app, used for links, QR codes and cookie scope.
-      APP_BASE_URL: ${APP_BASE_URL}
-      # Allowed browser origin for CORS.
-      CORS_ORIGIN: ${CORS_ORIGIN}
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      SESSION_SECRET: ${SESSION_SECRET}
+      # Required: the stack refuses to deploy with an empty value.
+      APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL muss gesetzt sein (z. B. https://quiz.example.com)}
+      # Allowed browser origin for CORS. Defaults to APP_BASE_URL when empty.
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      # Connection string consumed by Prisma. Optional: when empty it is built
+      # from the POSTGRES_* values below (with URL-safe encoding), so the
+      # credentials live in exactly one place. See docs/deployment/ENVIRONMENT.md.
+      DATABASE_URL: ${DATABASE_URL:-}
+      # Passed through so DATABASE_URL can be derived and the entrypoint can
+      # diagnose connection failures. Not logged anywhere.
+      POSTGRES_HOST: db
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER muss gesetzt sein}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD muss gesetzt sein}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB muss gesetzt sein}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL muss gesetzt sein (z. B. redis://cache:6379)}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET muss gesetzt sein (openssl rand -hex 32)}
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-72}
       COOKIE_NAME: ${COOKIE_NAME:-zp_session}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}

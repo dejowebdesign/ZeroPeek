@@ -14,9 +14,6 @@ import { forbidden, unauthorized } from './errors.js';
 import { newCsrfToken, newSessionId, safeEqual } from './auth.js';
 import type { AppConfig } from './config.js';
 
-/** Session lifetime in milliseconds. */
-export const SESSION_TTL_MS = 72 * 60 * 60 * 1000;
-
 /** Methods that must carry a valid CSRF token. */
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -48,7 +45,7 @@ function cookieOptions(config: AppConfig) {
     sameSite: 'lax' as const,
     secure: config.cookieSecure,
     path: '/',
-    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    maxAge: Math.floor(config.sessionTtlMs / 1000),
   };
 }
 
@@ -60,7 +57,7 @@ export async function startSession(
 ): Promise<string> {
   const id = newSessionId();
   const csrfToken = newCsrfToken();
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const expiresAt = new Date(Date.now() + config.sessionTtlMs);
 
   await prisma.session.create({ data: { id, userId, csrfToken, expiresAt } });
   reply.setCookie(config.sessionCookieName, id, cookieOptions(config));
