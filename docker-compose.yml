@@ -43,7 +43,13 @@ services:
       dockerfile: docker/backend.Dockerfile
     restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
+      # Local development stack: default to `development` so the strict
+      # production validation (which rejects placeholder secrets, requires a
+      # real APP_BASE_URL and a postgresql:// DATABASE_URL) does not apply here.
+      # The production stack is docker-compose.portainer.yml, which sets
+      # NODE_ENV: production explicitly. Running this file as `production` with
+      # the placeholder defaults below would stop the backend on start.
+      NODE_ENV: ${NODE_ENV:-development}
       BACKEND_PORT: '3000'
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}

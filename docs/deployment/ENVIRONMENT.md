@@ -78,14 +78,14 @@ environment editor; in local development copy the example to `.env`.
 
 ## Application
 
-| Variable       | Required | Default                     | Description                                                                                                                                            |
-| -------------- | -------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `NODE_ENV`     | no       | `production` (compose)      | Runtime mode.                                                                                                                                          |
-| `BACKEND_PORT` | no       | `3000`                      | Port Fastify listens on inside the container.                                                                                                          |
-| `BACKEND_HOST` | no       | `0.0.0.0`                   | Bind address.                                                                                                                                          |
-| `LOG_LEVEL`    | no       | `info`                      | Pino log level.                                                                                                                                        |
-| `APP_BASE_URL` | no       | `https://zeropeek.xubi.org` | Public URL of the app; used for links, QR codes and cookie scope. Must be an absolute http(s) URL. A localhost address is accepted but logs a warning. |
-| `CORS_ORIGIN`  | no       | `APP_BASE_URL`              | Allowed browser origin. Defaults to `APP_BASE_URL` when empty.                                                                                         |
+| Variable       | Required | Default                                                               | Description                                                                                                                                                                                                                          |
+| -------------- | -------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NODE_ENV`     | no       | `production` (Portainer) / `development` (local `docker-compose.yml`) | Runtime mode. Only `production` enables the strict config validation (placeholder secrets, non-postgres `DATABASE_URL`, real `APP_BASE_URL`). The local stack defaults to `development` so it runs on a fresh clone without secrets. |
+| `BACKEND_PORT` | no       | `3000`                                                                | Port Fastify listens on inside the container.                                                                                                                                                                                        |
+| `BACKEND_HOST` | no       | `0.0.0.0`                                                             | Bind address.                                                                                                                                                                                                                        |
+| `LOG_LEVEL`    | no       | `info`                                                                | Pino log level.                                                                                                                                                                                                                      |
+| `APP_BASE_URL` | no       | `https://zeropeek.xubi.org`                                           | Public URL of the app; used for links, QR codes and cookie scope. Must be an absolute http(s) URL. A localhost address is accepted but logs a warning.                                                                               |
+| `CORS_ORIGIN`  | no       | `APP_BASE_URL`                                                        | Allowed browser origin. Defaults to `APP_BASE_URL` when empty.                                                                                                                                                                       |
 
 ## Sessions and cookies
 
