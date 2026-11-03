@@ -46,10 +46,11 @@ port, so the database and Redis are unreachable from outside the Docker host.
    - **Compose path:** `docker-compose.portainer.yml`
    - Authentication: off for a public repository. For a private repository,
      enable **Authentication** and supply a GitHub token with read access.
-5. **Environment variables:** add the six values from section 5.1. At minimum
-   set `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `SESSION_SECRET` and
-   `APP_BASE_URL`. Leave `DATABASE_URL` empty so it is built from the PostgreSQL
-   values. `REDIS_URL` and `CORS_ORIGIN` already default correctly.
+5. **Environment variables:** add the required values from section 5.1. At
+   minimum set `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`,
+   `SESSION_SECRET` and `APP_BASE_URL`. Leave `DATABASE_URL`, `REDIS_URL` and
+   `COOKIE_SECURE` empty – they default correctly from the stack and
+   `APP_BASE_URL`.
 6. **Deploy the stack.**
 
 Portainer can later poll the repository (**GitOps updates**) and redeploy when
@@ -91,34 +92,40 @@ meaning is in [ENVIRONMENT.md](./ENVIRONMENT.md).
 
 ### 5.1 The minimal set (recommended)
 
-Only six values have to be entered by hand; everything else has a safe default.
-`DATABASE_URL` is **not** among them – it is built automatically from the
-PostgreSQL values, which keeps the credentials in exactly one place.
+Only a few values have to be entered by hand; everything else has a safe
+default. `DATABASE_URL` is **not** among them – it is built automatically from
+the PostgreSQL values, which keeps the credentials in exactly one place. Neither
+is `REDIS_URL`: the stack already knows its own `cache` service, so requiring it
+only caused needless deployment failures.
 
-| Variable             | Required | Example                     | Notes                                              |
-| -------------------- | -------- | --------------------------- | -------------------------------------------------- |
-| `POSTGRES_DB`        | yes      | `zeropeek`                  | Name of the existing database.                     |
-| `POSTGRES_USER`      | yes      | `zeropeek`                  | User that already exists in the volume.            |
-| `POSTGRES_PASSWORD`  | yes      | `openssl rand -base64 32`   | Must match the password already inside the volume. |
-| `SESSION_SECRET`     | yes      | `openssl rand -hex 32`      | Long random value; never reuse or commit.          |
-| `APP_BASE_URL`       | yes      | `https://quiz.example.com`  | Public origin; must not be a localhost address.    |
-| `ZEROPEEK_IMAGE_TAG` | no       | `sha-1a2b3c4` (or `latest`) | Pin a commit tag for reproducible deployments.     |
+| Variable             | Required | Example                     | Notes                                                     |
+| -------------------- | -------- | --------------------------- | --------------------------------------------------------- |
+| `POSTGRES_DB`        | yes      | `zeropeek`                  | Name of the existing database.                            |
+| `POSTGRES_USER`      | yes      | `zeropeek`                  | User that already exists in the volume.                   |
+| `POSTGRES_PASSWORD`  | yes      | `openssl rand -base64 32`   | Must match the password already inside the volume.        |
+| `SESSION_SECRET`     | yes      | `openssl rand -hex 32`      | Long random value; never reuse or commit.                 |
+| `APP_BASE_URL`       | yes      | `https://quiz.example.com`  | Public origin; any absolute http(s) URL. Localhost warns. |
+| `ZEROPEEK_IMAGE_TAG` | no       | `sha-1a2b3c4` (or `latest`) | Pin a commit tag for reproducible deployments.            |
 
 Optional, only when needed:
 
 | Variable               | When to set it                                                            |
 | ---------------------- | ------------------------------------------------------------------------- |
+| `REDIS_URL`            | Defaults to the bundled `cache` service; set only for external Redis.     |
 | `CORS_ORIGIN`          | Defaults to `APP_BASE_URL`; set only if the browser origin differs.       |
 | `DATABASE_URL`         | Only if the database is **not** the `db` service (e.g. an external host). |
 | `HTTP_PORT`            | `3737` (plain HTTP, default) or `443` (with TLS).                         |
 | `ZP_SITE_ADDRESS`      | Empty (plain HTTP, default) or the public domain (enables TLS).           |
+| `ZP_ACME_CA`           | Empty = Let's Encrypt production; set to the staging URL while testing.   |
 | `CADDY_CONTAINER_PORT` | `80` (plain HTTP, default) or `443` (with TLS).                           |
-| `COOKIE_SECURE`        | `true` (default) behind TLS; `false` only for plain-HTTP testing.         |
+| `COOKIE_SECURE`        | Empty = derive from `APP_BASE_URL`; set `true`/`false` to override.       |
 
 > The stack refuses to deploy when `POSTGRES_DB`, `POSTGRES_USER`,
-> `POSTGRES_PASSWORD`, `APP_BASE_URL`, `REDIS_URL` or `SESSION_SECRET` is missing
-> or empty (Compose `:?` guards). `REDIS_URL` and `CORS_ORIGIN` already have the
-> correct values in the compose file, so they normally need no entry.
+> `POSTGRES_PASSWORD`, `APP_BASE_URL` or `SESSION_SECRET` is missing or empty
+> (Compose `:?` guards). `REDIS_URL`, `CORS_ORIGIN` and `COOKIE_SECURE` already
+> have correct defaults in the compose file, so they normally need no entry.
+> **You do not have to enter `REDIS_URL`** – the stack knows the `cache` service
+> and defaults to `redis://cache:6379`.
 
 ### 5.2 Setting the PostgreSQL credentials in Portainer
 
@@ -141,7 +148,11 @@ Step by step:
 7. Leave `DATABASE_URL` **empty**. The backend builds it from the three values
    above. Set it only for an external database.
 8. Set `SESSION_SECRET` (`openssl rand -hex 32`) and `APP_BASE_URL`.
-9. Click **Deploy the stack** (or **Update the stack**).
+   For a local, plain-HTTP deployment use e.g. `http://192.168.1.10:3737`
+   (`localhost` is accepted but only reachable on the host itself, so the
+   backend logs a warning).
+9. Leave `REDIS_URL` and `COOKIE_SECURE` **empty** – both default correctly.
+10. Click **Deploy the stack** (or **Update the stack**).
 
 > **Existing volume:** these three values are applied only the first time the
 > `db-data` volume is initialised. If the volume already exists, PostgreSQL
@@ -217,8 +228,23 @@ for `ZP_SITE_ADDRESS` automatically. Two conditions must hold:
 2. Ports **80 and 443** are both reachable from the internet — Caddy uses port
    80 for the ACME challenge and the HTTP→HTTPS redirect.
 
-Also update `APP_BASE_URL` and `CORS_ORIGIN` to the `https://` origin and set
-`COOKIE_SECURE=true`, otherwise the session cookie is not marked `Secure`.
+Also update `APP_BASE_URL` and `CORS_ORIGIN` to the `https://` origin. The
+session cookie's `Secure` flag is then derived from `APP_BASE_URL` automatically;
+set `COOKIE_SECURE=true` explicitly only if you leave `APP_BASE_URL` on `http://`.
+
+> **Test with the staging directory first.** Set
+> `ZP_ACME_CA=https://acme-staging-v02.api.letsencrypt.org/directory` while
+> validating the setup, then remove it for a trusted certificate. Let's Encrypt
+> allows **50 certificates per registered domain per week**; a configuration that
+> is redeployed repeatedly can exhaust the quota and then fails with
+> `too many certificates (50) already issued for "<domain>"`.
+
+> **Certificates persist in the `caddy-data` volume.** Caddy stores issued
+> certificates and the ACME account under `/data`, mounted from `caddy-data`
+> (and `/config` from `caddy-config`). Because the volume survives restarts and
+> redeploys, Caddy only requests a new certificate when one actually expired –
+> this is what prevents the rate-limit error. Do **not** remove these volumes
+> during updates.
 
 > Do not set `HTTP_PORT=443` while leaving `ZP_SITE_ADDRESS` empty: Caddy would
 > then serve plain HTTP on a port clients expect to speak TLS on.
@@ -262,8 +288,10 @@ exactly which commit is running, and a rollback is trivial
   Portainer's API without a repository checkout.
 - **Self-contained proxy config.** The Caddyfile is embedded with the Compose
   `configs:` `content:` field, so the stack needs no host bind mounts.
-- **Named volume** `db-data` for PostgreSQL; Portainer shows it under
-  **Volumes** and it survives stack updates.
+- **Named volumes** `db-data` for PostgreSQL and `caddy-data` / `caddy-config`
+  for Caddy's certificates and ACME account; Portainer shows them under
+  **Volumes** and they survive stack updates. Do not remove `caddy-data` on
+  update, or Caddy re-requests certificates (see section 6.1).
 - **Healthchecks** on all five services; Portainer displays the health column.
 - **Restart policy** `unless-stopped` on `db`, `cache`, `frontend` and `proxy`,
   and `on-failure:5` on `backend`. The backend exits non-zero on a
@@ -292,13 +320,23 @@ Look at the top of the log:
 docker logs zero_peek-backend-1
 ```
 
-| Log message                                                        | Cause / fix                                                                                       |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `ZeroPeek backend cannot start: the configuration is incomplete …` | One or more required values are missing; the following lines name each variable and how to fix it |
-| `DATABASE_URL is missing or empty and cannot be derived`           | Set `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`, or set `DATABASE_URL` explicitly      |
-| `SESSION_SECRET is missing or empty`                               | Set `SESSION_SECRET` (`openssl rand -hex 32`)                                                     |
-| `REDIS_URL is missing or empty`                                    | Set `REDIS_URL=redis://cache:6379`                                                                |
-| `APP_BASE_URL … localhost`                                         | Set `APP_BASE_URL` to the public origin, not a localhost address                                  |
+| Log message                                                        | Cause / fix                                                                                            |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `ZeroPeek backend cannot start: the configuration is incomplete …` | One or more required values are missing; the following lines name each variable and how to fix it      |
+| `DATABASE_URL is missing or empty and cannot be derived`           | Set `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`, or set `DATABASE_URL` explicitly           |
+| `SESSION_SECRET is missing or empty`                               | Set `SESSION_SECRET` (`openssl rand -hex 32`)                                                          |
+| `Redis is not reachable at cache:6379 …`                           | The `cache` service is down. Not fatal – the app keeps serving → check `docker logs zero_peek-cache-1` |
+| `APP_BASE_URL … localhost`                                         | Set `APP_BASE_URL` to the public origin, not a localhost address                                       |
+
+### Redis warning in the backend log
+
+`Redis is not reachable at cache:6379 …` is a **warning, not an error**: Redis is
+optional (Socket.IO scaling and rate limiting only), so the backend starts and
+serves normally. Check the cache container:
+
+```bash
+docker logs zero_peek-cache-1
+```
 
 ### Backend cannot reach the database
 

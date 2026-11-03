@@ -116,11 +116,21 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER muss gesetzt sein}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD muss gesetzt sein}
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB muss gesetzt sein}
-      REDIS_URL: ${REDIS_URL:?REDIS_URL muss gesetzt sein (z. B. redis://cache:6379)}
+      # Redis connection string. OPTIONAL: it defaults to the `cache` service,
+      # which is the only correct value for this stack. There is no `:?` guard on
+      # purpose – requiring it only duplicated a value the stack already knows
+      # and made deployments fail on a variable that is not needed (see
+      # docs/reports/portainer-redis-and-acme-fix.md). Set it only when Redis runs
+      # outside this stack. The backend probes it on start and logs a clear
+      # warning when it is unreachable; Redis is optional, so the app still serves
+      # requests.
+      REDIS_URL: ${REDIS_URL:-redis://cache:6379}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET muss gesetzt sein (openssl rand -hex 32)}
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-72}
       COOKIE_NAME: ${COOKIE_NAME:-zp_session}
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Empty (the default) derives Secure from APP_BASE_URL: `https://` marks the
+      # cookie Secure, plain HTTP does not. Set it explicitly to override.
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
     depends_on:
       db:
         condition: service_healthy
@@ -172,11 +182,26 @@ services:
       # domain (e.g. quiz.example.com) together with CADDY_CONTAINER_PORT=443
       # and HTTP_PORT=443 to enable automatic HTTPS.
       ZP_SITE_ADDRESS: ${ZP_SITE_ADDRESS:-}
+      # ACME directory Caddy requests certificates from. Empty (the default)
+      # uses Let's Encrypt production. Set it to the staging directory while
+      # testing so a misconfiguration cannot consume the production rate limit
+      # (50 certificates per registered domain per week):
+      #   https://acme-staging-v02.api.letsencrypt.org/directory
+      ZP_ACME_CA: ${ZP_ACME_CA:-}
     # The Caddyfile is embedded inline so the stack needs no repository
     # checkout and no host bind mounts – it is fully self-contained.
     configs:
       - source: caddy_config
         target: /etc/caddy/Caddyfile
+    # Caddy keeps issued certificates and the ACME account under /data. That
+    # directory MUST be a named volume: without it every container recreation
+    # (image update, --force-recreate, redeploy) forgets the certificate and the
+    # account and requests a new one – which is what exhausted the Let's
+    # Encrypt limit ("too many certificates (50) already issued"). With the
+    # volume, Caddy only requests a certificate when it actually expired.
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
     depends_on:
       backend:
         condition: service_started
@@ -208,8 +233,13 @@ configs:
       # ZP_SITE_ADDRESS empty the site address falls back to `:80` (plain
       # HTTP). Compose substitutes the address when the stack is deployed, so
       # both modes work from this one file.
+      #
+      # ACME: certificates and the account are stored in /data, which is the
+      # `caddy-data` volume. ZP_ACME_CA is empty for Let's Encrypt production;
+      # set it to the staging directory while testing.
       {
         admin off
+        acme_ca ${ZP_ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
       }
 
       ${ZP_SITE_ADDRESS:-:80} {
@@ -245,3 +275,6 @@ networks:
 
 volumes:
   db-data:
+  # ACME certificates + account (see the proxy service).
+  caddy-data:
+  caddy-config:

@@ -96,8 +96,10 @@ describe('loadConfig in production', () => {
     expect(() => loadConfig({ ...VALID_PRODUCTION, SESSION_SECRET: '' })).toThrow(/SESSION_SECRET/);
   });
 
-  it('rejects an empty REDIS_URL', () => {
-    expect(() => loadConfig({ ...VALID_PRODUCTION, REDIS_URL: '' })).toThrow(/REDIS_URL/);
+  it('defaults an empty REDIS_URL instead of failing', () => {
+    // Redis is optional; a missing value must not block the deployment.
+    const config = loadConfig({ ...VALID_PRODUCTION, REDIS_URL: '' });
+    expect(config.redisUrl).toBe('redis://cache:6379');
   });
 
   it('rejects a missing or unbuildable DATABASE_URL', () => {
@@ -114,10 +116,12 @@ describe('loadConfig in production', () => {
     );
   });
 
-  it('rejects a localhost APP_BASE_URL in production', () => {
-    expect(() =>
-      loadConfig({ ...VALID_PRODUCTION, APP_BASE_URL: 'http://localhost:8080' }),
-    ).toThrow(/localhost/);
+  it('warns about a localhost APP_BASE_URL instead of failing', () => {
+    // A localhost origin is only reachable on the host, but it is a valid
+    // internal deployment, so it must not stop the stack.
+    const config = loadConfig({ ...VALID_PRODUCTION, APP_BASE_URL: 'http://localhost:8080' });
+    expect(config.appBaseUrl).toBe('http://localhost:8080');
+    expect(config.warnings.join(' ')).toMatch(/localhost/);
   });
 
   it('reports every problem in one message', () => {
@@ -133,10 +137,28 @@ describe('loadConfig in production', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ConfigError);
       const message = (error as ConfigError).message;
-      for (const variable of ['SESSION_SECRET', 'DATABASE_URL', 'REDIS_URL', 'APP_BASE_URL']) {
+      for (const variable of ['SESSION_SECRET', 'DATABASE_URL', 'APP_BASE_URL']) {
         expect(message).toContain(variable);
       }
+      // Redis is optional and must not appear as a blocking problem.
+      expect(message).not.toContain('REDIS_URL');
     }
+  });
+});
+
+describe('cookie security', () => {
+  it('derives COOKIE_SECURE from the APP_BASE_URL scheme', () => {
+    expect(loadConfig({ APP_BASE_URL: 'https://quiz.example.com' }).cookieSecure).toBe(true);
+    expect(loadConfig({ APP_BASE_URL: 'http://quiz.example.com' }).cookieSecure).toBe(false);
+  });
+
+  it('honours an explicit COOKIE_SECURE', () => {
+    expect(
+      loadConfig({ APP_BASE_URL: 'http://quiz.example.com', COOKIE_SECURE: 'true' }).cookieSecure,
+    ).toBe(true);
+    expect(
+      loadConfig({ APP_BASE_URL: 'https://quiz.example.com', COOKIE_SECURE: 'false' }).cookieSecure,
+    ).toBe(false);
   });
 });
 
