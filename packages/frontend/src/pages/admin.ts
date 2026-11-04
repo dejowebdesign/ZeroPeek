@@ -36,6 +36,12 @@ const appElement = document.getElementById('app');
 if (!appElement) throw new Error('ZeroPeek: the #app element is missing.');
 const app: HTMLElement = appElement;
 
+/**
+ * The admin dashboard is this page. The header logo links here from every admin
+ * sub-page, so a click always returns to the start of the admin area.
+ */
+const ADMIN_HOME = './admin.html';
+
 let me: MeResponse['user'] = null;
 
 /** Load every user and repaint the table. */
@@ -205,10 +211,15 @@ async function showUsers(): Promise<void> {
     el(
       'section',
       { class: 'wrap' },
-      pageHeader('Users', [
-        button('Host', { onClick: () => (location.href = './host.html') }),
-        button('Editor', { onClick: () => (location.href = './editor.html') }),
-      ]),
+      pageHeader(
+        'Users',
+        [
+          button('Host', { onClick: () => (location.href = './host.html') }),
+          button('Editor', { onClick: () => (location.href = './editor.html') }),
+        ],
+        undefined,
+        ADMIN_HOME,
+      ),
       createForm,
       el('h2', { class: 'section-title' }, 'Accounts'),
       el(
