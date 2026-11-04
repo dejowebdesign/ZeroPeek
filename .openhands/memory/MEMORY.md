@@ -38,6 +38,54 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
   7 ADRs; `docs/reports/phase-N.md` holds the per-phase report. Open product questions are
   tracked as Q1–Q7 in `docs/architecture/README.md` (scoring formula, "too fast" threshold,
   cheat-report signals, team assignment, IP retention, tie-breakers, self-paced mode).
+- **State on `main` @ `1cf30be` (PR #15, favicon + admin logo link) is far past Phase 0**: the
+  whole domain is implemented — 13 question types, server-authoritative engine, 2 socket
+  namespaces, 4 surfaces (player `/`, host/beamer `/host.html`, editor, admin), 8 Prisma models,
+  Argon2id + server sessions + CSRF + strict CSP. `npm ci` → `prisma:generate` → `typecheck` →
+  `test` → `build` → `format:check` all green.
+  **CORRECTION (Phase 5b): with a real PostgreSQL all DB suites run → 181 tests green (94 backend
+  + 25 frontend + 62 shared).** The engine is therefore verified end-to-end (R-1 disarmed). Recipe:
+  `CREATE DATABASE zeropeek_test`, expose it (socat `-p 15432:5432` on the compose network), set
+  `TEST_DATABASE_URL` + `DATABASE_URL`, `prisma migrate deploy`, `npm test`.
+- **Missing entirely (only `avatar String` free-text exists)**: player accounts/registration,
+  profiles, XP/level/inventory/achievements, a standalone beamer surface (the host page IS the
+  beamer), star-field login, sound, show graphics, global leaderboards. `GAME_PHASES` declares
+  `lead` but it is never entered; `GamePlayer.team` and `ideas` voting are data-only.
+- **Landmines found (verified, not assumed):** (1) `PlayerAnswer.questionId` is
+  `onDelete: Cascade` and `quizService.updateQuiz` deletes+recreates all questions, so **editing a
+  quiz destroys the answer history of its games** — so "autosave" in the editor is unsafe.
+  (2) `engine.get()` rebuilds state after a restart but sets `openedAt=null`, no timer, and
+  `answeredQuestionId=null`, so a running question never auto-reveals and a repeat answer hits
+  Prisma P2002 → generic 500. (3) `player:rejoin` does not re-send the current question (R-5).
+  (4) **No rate limit on socket events** (`@fastify/rate-limit` is HTTP-only) and **no Redis
+  socket adapter** despite `redisUrl` (single-instance design).
+- **Assets (Phase 5b, optimised in the working tree):** `logo.png` 2172×724 RGBA 1.2 MB →
+  **480×160 / 81 KB**; `favicon.png` 1254² RGB no-alpha 1.63 MB → **256² / 110 KB**; orphaned
+  `favicon.svg` **removed**; dead CSS rule `.brand-mark` **removed**. Favicon border is **not**
+  homogeneous white (RGB 200–255; only 30.4 % near-white) → do NOT auto-key-out transparency;
+  a transparent master must come from chrisB.
+- **Branding is fine — no "double Z":** the DOM renders exactly one `<img class="brand__logo"
+  src="/logo.png">`; `.brand-mark` (a gradient square that used to hold a "Z") is dead code.
+- **Logo palette (measured):** 38.9 % violet/indigo (255–285°), 23.2 % cyan (≈187°), 17.5 %
+  magenta, 20.3 % blue, 14.9 % silver. Existing tokens `#7c5cff`/`#22d3ee` are in-family but not
+  exact — propose a brand accent ladder alongside, never overwrite the tokens.
+- **Capacity measured (Phase 5b, `tools/loadtest.mjs`):** 25 players → join wall 95 ms, answer
+  p95 28 ms, 135 MB RSS; 35 players → join 134 ms, p95 35 ms, 143 MB. Target "25 + host" is
+  comfortable on one process; R-2 only matters for several hundred players.
+- **Engine tempo (by design):** `REVEAL_MS = 6000`, `BOARD_MS = 6000`, `ANSWER_GRACE_MS = 1500`;
+  a full question cycle ≈ 12 s + answer time. Host can force "next" at any time.
+- **The Phase 1–5 concept docs were NEVER committed** (only in the working tree; PR #9 was
+  closed unmerged and no remote branch holds them). Phase 5b branches off `main` to commit them
+  together with the asset optimisation + `tools/loadtest.mjs`.
+- **Phase 1–5 concept deliverables** (docs only, no code): `docs/analysis/
+  phase-1-technical-inventory.md`, `docs/concept/{design,game-design}-concept.md`,
+  `docs/concept/README.md`, `docs/roadmap/technical-roadmap.md`, `docs/assets/ASSET-BRIEFING.md`,
+  `docs/reports/phase-5-concept-report.md`, plus `docs/reports/phase-5b-revision-and-first-works.md`.
+  They answer the blockwelt-heroes brief and list the
+  open decisions; the project waits for chrisB's approval + character/beamer/audio assets before
+  any Phase 6 implementation. **Do not start Phase 6 or generate any images/characters.**
+- Docs convention: new `.md` under `docs/` must pass `npm run format:check` (run
+  `npx prettier --write` on them); tables get reflowed by Prettier, that is expected.
 - Frontend decision is **Vanilla TS + Vite multi-page** (player/host/editor), NOT Angular —
   reasons in ADR 0002; strict CSP forbids inline styles so the client styles via the CSSOM.
 - Deployment (Phase 0.5): `.github/workflows/docker-publish.yml` publishes
@@ -202,9 +250,202 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   `/nutzungsbedingungen`, `/impressum`. No sitemap/manifest.json/favicon.ico/sourcemaps.
 - Socket.IO POST upgrade from raw urllib got **403** (Cloudflare WAF); GET handshake works.
 
-## Repo: dejowebdesign/ZeroPeek (2026-11-02)
-- Public GitHub repo, checked out on branch `main` (HEAD `ebbdd79`, "Initial commit").
-- **Currently contains only `README.md`** — an empty scaffold for the planned rebuild.
-- README declares the intended stack: TypeScript, Node.js, Socket.IO, PostgreSQL
-  (matches the recommended stack from the NoPeek audit).
-- Pre-existing untracked workspace files (NOT from the repo): `.openhands/`, `nopeek-audit.md`.
+## Repo: dejowebdesign/ZeroPeek (updated 2026-11-02, evening)
+- Public GitHub repo. Default branch `main`. npm-workspaces monorepo:
+  `packages/{shared,backend,frontend}`, `docs/`, `docker/`, 2 compose files.
+- Stack: TS strict, Fastify 5 + Socket.IO 4 + Prisma, PostgreSQL 16, Redis 7,
+  Caddy, Vanilla-TS + Vite frontend. Node 22 in CI, 24 locally.
+- **Status: Phase 0 AND Phase 0.5 complete + PostgreSQL fix merged.**
+  PRs #1 (CI/GHCR/Portainer), #2 (postgres healthcheck) merged into `main`.
+  `main` HEAD `b29b318`. Branch `phase-0/project-foundation` **no longer exists**
+  (the old briefing still references it — don't trust that).
+- **GHCR images are published and PUBLIC** (anonymous pull works, verified):
+  `ghcr.io/dejowebdesign/zeropeek-backend` / `-frontend`, tags `latest`, `main`,
+  `sha-<short>`. Repo is public ⇒ Portainer needs no registry credentials.
+- `docker-publish.yml` already runs verify→publish(both images)→deploy and has
+  succeeded on `main`. `ci.yml` is pull_request-only. Triggers are disjoint.
+  The `deploy` job **skips** (not fails) while `PORTAINER_WEBHOOK_URL` is unset.
+- Verification commands: `npm install && npm run typecheck && npm test &&
+  npm run build && npm run format:check` → 21 tests (7 backend / 5 frontend /
+  9 shared). `npm test` builds shared first (`build:shared`) — a fresh checkout
+  breaks typecheck otherwise.
+- **Caddy/compose trap:** Compose interpolates `$` inside `configs.content`, so
+  a Caddy `{$VAR:default}` placeholder is mangled (`{localhost::80}`), and `$$`
+  is NOT unescaped there either. Build the site address with Compose instead:
+  `${ZP_SITE_ADDRESS:-:80}`. Also `auto_https on` is **invalid** Caddy syntax.
+- **TLS switch (as of PR #3):** set `ZP_SITE_ADDRESS=<domain>`,
+  `CADDY_CONTAINER_PORT=443`, `HTTP_PORT=443` together. Empty `ZP_SITE_ADDRESS`
+  = plain HTTP on :80 (default). `ZP_DOMAIN` is removed — don't reintroduce it.
+- **Proxy host port default is 3737** (as of PR #4), NOT 80: port 80 is often
+  already bound on the Docker host → `failed to bind port 0.0.0.0:80/tcp`. Only
+  the *left* side changed; `CADDY_CONTAINER_PORT` (80 HTTP / 443 TLS) and the
+  embedded Caddyfile are untouched, so the proxy healthcheck (probes the
+  container port) needs no change. `docker-compose.yml` (dev) is a separate
+  file and still uses `PROXY_PORT:-8080`.
+- Test the stack without touching real data: `docker compose -f
+  docker-compose.portainer.yml --env-file <env> -p <proj> up -d`, then `down -v`
+  (unique `-p` keeps named volumes separate). Start dockerd with
+  `sudo nohup dockerd > /tmp/docker.log 2>&1 &` (needs ~12 s).
+- Untracked workspace files that are NOT from the repo: `nopeek-audit.md`.
+  `.openhands/memory/MEMORY.md` **is** tracked in git (added in PR #2), so edits
+  to it show up in `git status`; keep it out of feature PRs.
+
+## ZeroPeek: platform status (verified 2026-11-02, branch `feat/full-platform-implementation`)
+- **Phases 1–7 are implemented and green.** Earlier notes calling `host.html` /
+  `editor.html` "Phase 0 placeholders" are OBSOLETE — delete-on-sight.
+  Backend routes: `authRoutes` (`/api/auth/login|logout|me`), `quizRoutes`,
+  `reportRoutes`, `adminRoutes`. Services: `engine`, `gameService`, `quizService`,
+  `reportService`, `userService`. Pages: `player.ts` (index.html), `host.ts`,
+  `editor.ts`, `admin.ts` (added this session).
+- **Socket.IO namespaces: player = default `/`, host = `/host`** (host is
+  auth-gated). Client wrappers live in `packages/frontend/src/socket.ts`.
+- **Contract traps that cost real debugging time:**
+  - `host:create` ACKs with `{ gameId, pin }` — **not** `{ id, pin }`.
+  - `host:join` ACKs with `{ pin, players }` — resume must paint `players`.
+  - Game report route is `/api/reports/games/:id` and the body is
+    `{ quiz: { id, title, questionCount }, players, questions }` — **not**
+    `/api/reports/:id` with a flat `quizTitle`.
+  - Server rejects a quiz with **zero questions**, so "New quiz" must seed one
+    question and the editor must block removing the last one.
+- **`questionForm.ts` merge bug (fixed):** the form is not re-rendered between
+  edits, so all 28 handlers must merge into a single `latest` holder via
+  `update(patch)`. Spreading the original `question` snapshot silently discards
+  every earlier edit. Regression test: `questionForm.test.ts`.
+- **Vite dev-proxy trap:** the rule must be `'^/api/'`, not `'/api'` — a bare
+  `/api` prefix also swallows the client module `/api.ts`, which Vite serves
+  from the project root, breaking the page. `server.allowedHosts` must include
+  `'.prod-runtime.all-hands.dev'` or the proxied hostname is rejected.
+- **Module E**: `admin.html` + `pages/admin.ts` are new files. Server keeps the
+  last-admin guards (409 on demote/disable of the sole admin; 403 without CSRF).
+- Q1–Q7 in `docs/architecture/README.md` are still unanswered and block the
+  Phase-5 product decisions; the engine exposes them as named `ScoringConfig` /
+  `SpeedPolicy` options with documented defaults rather than hard-coded guesses.
+- Portainer stack and `docker-publish.yml` (verify → publish → optional Portainer
+  webhook) were already in place and reviewed as sound; do not rebuild them.
+
+## Portainer/DB config fix (PR #6, 2026-11-03, branch `fix/portainer-config-and-db-url`)
+- Two causes of `FATAL: database not reachable after 30 attempts.`: a placeholder
+  `DATABASE_URL` passed through unguarded, **and** `loadConfig` using `??` — an
+  empty string is treated as set, and an empty `CORS_ORIGIN` makes
+  `@fastify/cors` throw → `/api/health` = 500 even with a reachable DB. Only the
+  real Docker stack exposed the second one.
+- Rule going forward: use `isNonEmpty(env.X)` for every string fallback; never
+  `env.X ?? default`.
+- `DATABASE_URL` is now derived from `POSTGRES_*` (percent-encoded password);
+  `ConfigError` fails fast in production; backend `restart: on-failure:5`
+  (verified: still auto-starts after a `dockerd` restart, bounded retries).
+- Prisma 6 auth errors have **no `code`** — match the message text.
+- Detail: `.openhands/memory/2026-11-03.md` and `docs/reports/portainer-config-fix.md`.
+
+## CI trap: the Prisma client is NOT generated by `npm ci` (cost ~1 h to find)
+- `@prisma/client` ships as a **stub**. `npm ci` installs it but does not run
+  `prisma generate`, so `node_modules/.prisma/client` does not exist and the
+  backend will not compile: **28 errors** (TS2305 "no exported member
+  PrismaClient/Prisma/UserRole/InputJsonValue/GameUpdateInput" plus a cascade of
+  TS7006 implicit-any in every callback that receives a Prisma row).
+- Both `.github/workflows/ci.yml` and `docker-publish.yml` now run
+  `npm run prisma:generate -w @zeropeek/backend` **before** typecheck and before
+  `prisma migrate deploy`. `docker/backend.Dockerfile` already did this
+  explicitly, which is why only CI broke.
+- **This stayed hidden for a whole branch** because the workflows trigger only
+  on `main` / tags, and `main` had no Prisma-typed code. Pushing a feature
+  branch is the first real test of CI — always watch the run.
+- **Reproducing it locally is the trap.** `composite: true` + `tsconfig.tsbuildinfo`
+  makes `tsc` skip re-checking, so deleting `.prisma` appears to change nothing
+  and returns 0 errors. To reproduce faithfully you must delete the build cache
+  *and* the client:
+  `rm -f packages/backend/tsconfig.tsbuildinfo packages/shared/tsconfig.tsbuildinfo`
+  `rm -rf packages/backend/dist && mv node_modules/.prisma /tmp/bak`
+  then `npm run typecheck -w @zeropeek/backend` → 28 errors without the step,
+  0 after `npm run prisma:generate -w @zeropeek/backend`.
+
+## ZeroPeek Portainer stack: REDIS_URL + ACME (PR #7, 2026-11-03)
+- `REDIS_URL` is **unused** by the backend (no Redis adapter wired into Socket.IO).
+  It is optional now: compose default `redis://cache:6379`, config.ts default the
+  same. Never make it a `:?` guard again — that caused a hard deploy failure.
+- **Caddy `/data` MUST be a named volume** (`caddy-data`, plus `caddy-config`).
+  Without it every container recreation forgets the certificate + ACME account and
+  re-requests one → Let's Encrypt "too many certificates (50) already issued".
+- `ZP_ACME_CA` selects the ACME directory (empty = LE production; set to
+  `https://acme-staging-v02.api.letsencrypt.org/directory` while testing).
+- **Compose-vs-Caddy interpolation trap:** the embedded Caddyfile is a
+  `configs.content` block, so Compose substitutes `$VAR` inside it. Caddy's native
+  `{$VAR:default}` is rewritten to `{:default}` (invalid Caddyfile). Use Compose
+  `${VAR:-default}` — same as the existing `ZP_SITE_ADDRESS`.
+- `COOKIE_SECURE` empty = derive from `APP_BASE_URL` scheme (Secure cookie over
+  plain HTTP is silently dropped → login breaks). A localhost `APP_BASE_URL` is a
+  **warning**, not fatal (internal plain-HTTP deploys need it). `config.warnings`.
+- **Canonical public URL is `https://zeropeek.xubi.org`** (Portainer CE 2.45.3).
+  `APP_BASE_URL` is NOT guarded: compose default `APP_BASE_URL:-https://zeropeek.xubi.org`
+  (PR #8), because the `:?` guard made the stack fail with
+  `required variable APP_BASE_URL is missing a value`. `CORS_ORIGIN` empty ⇒
+  defaults to `APP_BASE_URL` (same-origin), so it needs no entry.
+- `docker-compose.portainer.yml` compose `:?` guards that remain (all intentional,
+  exactly four): `POSTGRES_DB/USER/PASSWORD`, `SESSION_SECRET`. Everything else
+  has a default — never re-add a `:?` guard to a variable that has one.
+- **TLS needs container port 80 published** for ACME HTTP-01 + the HTTP→HTTPS
+  redirect; Caddy binds it only in TLS mode. Compose publishes
+  `'${ZP_HTTP_CHALLENGE_PORT:-${HTTP_PORT:-3737}}:80'` (PR #8). Nested default is
+  deliberate: plain-HTTP mode → `3737:80` twice → Compose **collapses** the dup
+  (no conflict, unchanged); TLS mode → default `443` **conflicts** with the
+  primary `443:443` (`Bind for 0.0.0.0:443 failed: port is already allocated`),
+  so TLS users set `ZP_HTTP_CHALLENGE_PORT=80`. A duplicate host port inside one
+  compose `ports:` list passes `config` but a genuine same-host-port pair fails at `up`.
+- **DATABASE_URL is derived, not required**: the backend builds it from
+  `POSTGRES_{USER,PASSWORD,DB}` with URL-safe encoding (verified: password
+  `p@ss:w/rd?#%!*z` → `p%40ss%3Aw%2Frd%3F%23%25%21%2Az`). Leave it empty.
+- **Existing Postgres volume:** `POSTGRES_*` apply only on first init of an empty
+  `db-data`; on a populated volume they are ignored, so the compose value does NOT
+  change the role/password. To fix a mismatch, put the volume's CURRENT password
+  into `POSTGRES_PASSWORD` — never `ALTER ROLE`, never `down -v`.
+- Regression guard `packages/backend/src/deployment.compose.test.ts` (PR #8)
+  parses `:?` vs `:-` from the compose file and asserts the four required vars are
+  documented in PORTAINER.md + ENVIRONMENT.md + `.env.portainer.example`, and that
+  APP_BASE_URL/DATABASE_URL/REDIS_URL/CORS_ORIGIN/COOKIE_SECURE stay unguarded.
+  Note `.env.portainer.example` has no Prettier parser, so it must not be passed
+  to a bare `prettier --check <file>` list (the repo-wide `format:check .` is fine).
+- Full-stack test recipe: build `zeropeek-backend:test`/`zeropeek-frontend:test`,
+  run `docker compose -f docker-compose.portainer.yml --env-file <env> -p zptest up -d`,
+  then `down -v`. Use `sudo docker` (the daemon runs; see below). Image vars are
+  `ZEROPEEK_BACKEND_IMAGE`/`ZEROPEEK_FRONTEND_IMAGE` + `ZEROPEEK_IMAGE_TAG`
+  (separate vars — a value like `repo:tag` in the image var is an invalid reference).
+- To run the DB-backed integration suites here: create a separate DB
+  (`CREATE DATABASE zeropeek_test`), forward it out with
+  `sudo docker run -d --network <proj>_zeropeek -p 15432:5432 alpine/socat
+  tcp-listen:5432,fork,reuseaddr tcp-connect:db:5432`, set `TEST_DATABASE_URL`,
+  `prisma migrate deploy`, then `npm test` → 61/61. `prisma migrate deploy` is
+  idempotent ("No pending migrations to apply" on the second run).
+
+## NoPeek reference project (github.com/dejowebdesign/ZeroPeek docs/analysis)
+- Reference app **NoPeek** lives at `https://nopeek.projekt-chrisb.de` (reachable).
+  No ZIP/source archive is stored in this repo or sandbox — analyse it by
+  fetching the **unminified** client assets (same method as `nopeek-audit.md`):
+  player at `/` (default ns), host at `/host`; assets player.js, host.js,
+  editor.js, common.js, clock.js, quizschema.js, avatars.js, branding.js,
+  app-config.js. Prior `/var/tmp/nopeek/` cache is wiped on sandbox restart.
+- NoPeek specifics worth remembering: Kahoot-style **clock-offset sync** (`clock`
+  ping/pong, best-of-N, re-sync after WS upgrade) drives an absolute `at`
+  timestamp; `leadMs` read-aloud lead phase; host events incl. `lock`/`close`/
+  `review`/`review-end`; player `avatar`/`qa:*`; `build` reload guard; 13 question
+  types (same set as ZeroPeek); team mode; QR code; animated board/podium;
+  per-type reveal views; CSV+Excel+print reports; homework mode; email 2FA.
+  Scoring = base + speed bonus with double/none; exact numbers are server-side.
+- ZeroPeek's analysis docs live in `docs/analysis/nopeek-comparison/` (PR #9,
+  branch `docs/nopeek-comparison`). Do NOT copy NoPeek's scoring formula or store
+  IPs — Q1/Q2/Q4/Q5/Q6/Q7 in `docs/architecture/README.md` gate those.
+- Known ZeroPeek gaps (verified in code, not placeholders): team mode is
+  data-only; `lead` phase declared but never entered; no QR; no clock sync; no
+  host review/shortcuts; report lacks flag/timing columns and Excel/print export;
+  `avatar` is an unvalidated free string; "too fast" rule implemented but off.
+
+## Docker in this sandbox
+- A dockerd is often **already running** (PID file `/var/run/docker.pid`).
+  `docker info` as the non-root user fails; use **`sudo docker ...`**. Only start
+  a daemon if `sudo docker info` fails, and do not delete a live `docker.pid`.
+- Frontend image smoke test: `sudo docker build -f docker/frontend.Dockerfile -t
+  <tag> .` then run on a spare port and probe `/`, `/host.html`, `/editor.html`,
+  `/admin.html` (all 200). `docker/Caddyfile.frontend` uses
+  `try_files {path} {path}.html {path}/index.html`, so both `/admin` and
+  `/admin.html` work but `/admin/` does not.
+- Pre-existing untracked workspace files (NOT from the repo): `.openhands/`,
+  `nopeek-audit.md`. `.openhands/memory/MEMORY.md` is tracked in git.

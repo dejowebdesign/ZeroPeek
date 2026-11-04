@@ -164,15 +164,6 @@ body::before {
   outline-offset: 4px;
 }
 
-.brand-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: var(--grad);
-  display: grid;
-  place-items: center;
-}
-
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
