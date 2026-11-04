@@ -135,6 +135,22 @@ body::before {
   letter-spacing: -0.02em;
 }
 
+/* The supplied logo is 3:1, so a fixed height keeps it proportional and lets the
+   width follow. `object-fit: contain` guarantees no distortion and keeps the
+   transparent areas intact. */
+.brand__logo {
+  display: block;
+  height: 30px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  flex: none;
+}
+
+.brand__name {
+  white-space: nowrap;
+}
+
 .brand-mark {
   width: 30px;
   height: 30px;
@@ -252,6 +268,18 @@ body::before {
   margin-bottom: var(--space-5);
 }
 
+/* Narrow screens: the logo shrinks a little and the header stacks, so the brand
+   never crowds the title or the action buttons. */
+@media (max-width: 520px) {
+  .brand__logo {
+    height: 24px;
+  }
+
+  .page-header {
+    align-items: flex-start;
+  }
+}
+
 .page-header__actions {
   display: flex;
   flex-wrap: wrap;
@@ -354,6 +382,12 @@ body::before {
 
 .join {
   width: min(440px, 100%);
+}
+
+/* In the centred auth card the logo sits above the form, slightly larger than in
+   the header, with breathing room before the title. */
+.join .brand__logo {
+  height: 40px;
 }
 
 .join__title {

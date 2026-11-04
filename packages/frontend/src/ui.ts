@@ -8,9 +8,27 @@
 import { el, render } from './dom.js';
 import { ApiError } from './api.js';
 
-/** The ZeroPeek wordmark. */
+/**
+ * The ZeroPeek wordmark: the logo asset beside the product name.
+ *
+ * The logo is served unchanged from `public/logo.png` (its transparent areas are
+ * kept, its colours and shapes are not altered). It is decorative here because
+ * the adjacent text already names the brand, so assistive technology reads the
+ * name once. `alt` stays empty on purpose.
+ */
 export function brand(): HTMLElement {
-  return el('span', { class: 'brand' }, 'ZeroPeek');
+  return el(
+    'span',
+    { class: 'brand' },
+    el('img', {
+      class: 'brand__logo',
+      src: '/logo.png',
+      alt: '',
+      'aria-hidden': 'true',
+      decoding: 'async',
+    }),
+    el('span', { class: 'brand__name' }, 'ZeroPeek'),
+  );
 }
 
 /** A page header with a brand, a title and optional right-hand actions. */
