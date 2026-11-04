@@ -9,37 +9,52 @@ import { el, render } from './dom.js';
 import { ApiError } from './api.js';
 
 /**
- * The ZeroPeek wordmark: the logo asset beside the product name.
+ * The ZeroPeek wordmark: the logo asset on its own.
  *
  * The logo is served unchanged from `public/logo.png` (its transparent areas are
- * kept, its colours and shapes are not altered). It is decorative here because
- * the adjacent text already names the brand, so assistive technology reads the
- * name once. `alt` stays empty on purpose.
+ * kept, its colours and shapes are not altered). It stands alone — no product
+ * name text is rendered next to it — so the image carries the brand on its own.
+ * `alt` stays empty on purpose: the surface's own heading names the page, and a
+ * decorative mark keeps screen-reader output clean.
+ *
+ * When `href` is given the logo becomes a link (used by the admin header to
+ * return to the dashboard). It is a real anchor, so middle-click and
+ * open-in-new-tab behave as users expect.
  */
-export function brand(): HTMLElement {
-  return el(
-    'span',
-    { class: 'brand' },
-    el('img', {
-      class: 'brand__logo',
-      src: '/logo.png',
-      alt: '',
-      'aria-hidden': 'true',
-      decoding: 'async',
-    }),
-    el('span', { class: 'brand__name' }, 'ZeroPeek'),
-  );
+export function brand(options: { href?: string } = {}): HTMLElement {
+  const logo = el('img', {
+    class: 'brand__logo',
+    src: '/logo.png',
+    alt: '',
+    'aria-hidden': 'true',
+    decoding: 'async',
+  });
+
+  if (options.href) {
+    return el(
+      'a',
+      { class: 'brand brand--link', href: options.href, 'aria-label': 'ZeroPeek home' },
+      logo,
+    );
+  }
+
+  return el('span', { class: 'brand' }, logo);
 }
 
 /** A page header with a brand, a title and optional right-hand actions. */
-export function pageHeader(title: string, actions: Node[] = [], subtitle?: string): HTMLElement {
+export function pageHeader(
+  title: string,
+  actions: Node[] = [],
+  subtitle?: string,
+  brandHref?: string,
+): HTMLElement {
   return el(
     'header',
     { class: 'page-header' },
     el(
       'div',
       { class: 'page-header__main' },
-      brand(),
+      brand(brandHref ? { href: brandHref } : {}),
       el('h1', { class: 'page-title' }, title),
       subtitle ? el('p', { class: 'muted' }, subtitle) : null,
     ),

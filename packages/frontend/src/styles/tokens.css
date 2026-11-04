@@ -147,8 +147,21 @@ body::before {
   flex: none;
 }
 
-.brand__name {
-  white-space: nowrap;
+/* Linked brand (admin header): keep the logo looking identical, but give it a
+   pointer and a visible focus ring for keyboard users. */
+.brand--link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.brand--link:hover .brand__logo {
+  opacity: 0.85;
+}
+
+.brand--link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
 }
 
 .brand-mark {
