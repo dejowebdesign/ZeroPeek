@@ -75,9 +75,9 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
   comfortable on one process; R-2 only matters for several hundred players.
 - **Engine tempo (by design):** `REVEAL_MS = 6000`, `BOARD_MS = 6000`, `ANSWER_GRACE_MS = 1500`;
   a full question cycle ≈ 12 s + answer time. Host can force "next" at any time.
-- **The Phase 1–5 concept docs were NEVER committed** (only in the working tree; PR #9 was
-  closed unmerged and no remote branch holds them). Phase 5b branches off `main` to commit them
-  together with the asset optimisation + `tools/loadtest.mjs`.
+- **The Phase 1–5 concept docs were first committed in Phase 5b** (they had existed only in the
+  working tree; PR #9 was closed unmerged). `main` now holds them via PR #16, extended by Phase 5c
+  (PR #17).
 - **Phase 1–5 concept deliverables** (docs only, no code): `docs/analysis/
   phase-1-technical-inventory.md`, `docs/concept/{design,game-design}-concept.md`,
   `docs/concept/README.md`, `docs/roadmap/technical-roadmap.md`, `docs/assets/ASSET-BRIEFING.md`,
@@ -85,6 +85,19 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
   They answer the blockwelt-heroes brief and list the
   open decisions; the project waits for the project owner's approval + character/beamer/audio assets before
   any Phase 6 implementation. **Do not start Phase 6 or generate any images/characters.**
+- **Phase 5b merged** (`main` = `f6582c4`, PR #16, "Konzeptüberarbeitung, Asset-Optimierung und
+  gemessene Kapazität"). **Phase 5c** (`docs/phase-5c-product-decisions`, PR #17) folds the owner's
+  **binding product decisions** into the docs — docs-only, no code/schema/migration/assets:
+  XP = quiz points + placement bonus 1500/1000/500; level curve L1→L10 = 10.000 each, L10→L11 =
+  11.000 then +1.000 each; voluntary registration with verified email; guest-account takeover of the
+  **just-finished round only** (one-time, server-side claim); items are **character-exclusive** and
+  visibly equippable; personal stats player-visible but quiz history **admin-only**; immutable
+  `GameSnapshot` per game (R-3 defused); random background once per round; show audio host-only;
+  default language German; Redis not required at start; 25 players + host (load-test ~35).
+  **Superseded — never resurrect:** `10 XP/answer`, `100 × (n−1)^1.5` 7-level curve, separate beamer
+  route/show-token, `GET /api/profile/history`, single global cosmetic catalog.
+- Owner is **Dejan Popovic** (sole decision-maker). **chrisB is NOT an approver/blocker** — one
+  factual mention remains that chrisB supplied the original NoPeek raw version.
 - Docs convention: new `.md` under `docs/` must pass `npm run format:check` (run
   `npx prettier --write` on them); tables get reflowed by Prettier, that is expected.
 - Frontend decision is **Vanilla TS + Vite multi-page** (player/host/editor), NOT Angular —

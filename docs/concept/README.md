@@ -17,6 +17,7 @@ verändert, keine Migration erstellt und kein Implementierungsbranch angelegt.
 | 5   | [`../assets/ASSET-BRIEFING.md`](../assets/ASSET-BRIEFING.md)                                         | 4     | Bild- und Audio-Anforderungen (Blöcke A–G)                                               |
 | 6   | [`../reports/phase-5-concept-report.md`](../reports/phase-5-concept-report.md)                       | 5     | Gesamtbericht und Freigabevorlage                                                        |
 | 7   | [`../reports/phase-5b-revision-and-first-works.md`](../reports/phase-5b-revision-and-first-works.md) | 5b    | Konzeptüberarbeitung, Designsystem/Performance, begrenzte erste Arbeiten                 |
+| 8   | [`../reports/phase-5c-product-decisions.md`](../reports/phase-5c-product-decisions.md)               | 5c    | Verbindliche Produktentscheidungen (XP, Level, Registrierung, Avatare, Snapshot)         |
 
 ## Grundsätze dieser Dokumente
 
@@ -35,6 +36,12 @@ Die begrenzten ersten Arbeiten der Phase 5b sind umgesetzt (Logo/Favicon optimie
 entfernt, Testlage mit PostgreSQL verifiziert, Lasttest-Werkzeug). Siehe
 `../reports/phase-5b-revision-and-first-works.md`.
 
-Entscheidungen und Assets gemäß `../reports/phase-5b-revision-and-first-works.md` §7 und
-`../reports/phase-5-concept-report.md` §9/§11 einholen, dann Freigabe für Phase 6.1 (Designsystem)
-erteilen. Phase 6.1 ist der einzige Schritt, der sofort und ohne Assets startbar ist.
+In **Phase 5c** wurden die **verbindlichen Produktentscheidungen** in die Konzeptunterlagen
+übernommen (XP = Spielpunkte, Platzierungsbonus, Levelkurve, freiwillige Registrierung,
+Gastkonto-Übernahme, charakterexklusive Gegenstände, persönliche Statistik, Quiz-Snapshot,
+Hintergrund Standard Zufall, Audio nur Host). Siehe `../reports/phase-5c-product-decisions.md`.
+
+**Offen:** die noch nicht gelieferten **Assets** (Charaktere, Gegenstände, Hintergründe, Audio) und
+die in `../roadmap/technical-roadmap.md` §19 gelisteten Restentscheidungen. Danach kann die Freigabe
+für Phase 6.1 (Designsystem) erteilt werden. Phase 6.1 ist der einzige Schritt, der sofort und ohne
+Assets startbar ist.

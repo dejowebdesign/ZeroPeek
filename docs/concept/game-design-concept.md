@@ -7,9 +7,10 @@
 **Grundlage:** `docs/analysis/phase-1-technical-inventory.md`, `docs/concept/design-concept.md`
 
 > **Kein Anwendungscode, kein Schema, keine Migration, keine Assets wurden geändert oder erzeugt.**
-> Alle Werte (XP, Schwellen, Seltenheiten) sind **Vorschläge** und ausdrücklich keine entschiedenen
-> Produktentscheidungen. Zahlen sind so gewählt, dass sie leicht anpassbar sind (Konfiguration, nicht
-> Code).
+> **Verbindliche Produktentscheidungen** (Phase 5c, 2026-11-04) sind im Text als **„Verbindlich"**
+> gekennzeichnet: XP-Berechnung, Levelkurve, Platzierungsbonus, Spielerregistrierung,
+> Gastkonto-Übernahme, charakterexklusive Gegenstände, Quiz-Snapshot und Hintergrundauswahl.
+> Alles andere bleibt **Vorschlag** oder **offene Frage**.
 
 ---
 
@@ -77,7 +78,10 @@ Jeder Charakter bekommt **rein kosmetische** Eigenschaften. **Keine spielerische
 
 ## 3. Avatar-System und Charaktereditor
 
-### 3.1 Anpassbare Kategorien (aus Briefing §14)
+### 3.1 Anpassbare Kategorien (aus Briefing §14) – Designidee
+
+> **Hinweis (Phase 5c):** Diese Tabelle ist eine **Designidee**. **Verbindlich** ist: Gegenstände sind
+> **charakterexklusiv** (§3.2). Welche Kategorien eine Figur hat, ergibt sich aus ihrem Katalog.
 
 | Kategorie           | Beispiele                                                                                           |
 | ------------------- | --------------------------------------------------------------------------------------------------- |
@@ -88,10 +92,60 @@ Jeder Charakter bekommt **rein kosmetische** Eigenschaften. **Keine spielerische
 | Seltene Gegenstände | goldene Spitzhacke, Diamant-Spitzhacke, seltene Rüstungen, exklusive Accessoires, besondere Effekte |
 | Farbe (wo passend)  | Fellfarbe (Pixel), Flügel-/Musterfarbe (Biene), Akzentfarbe                                         |
 
-### 3.2 Charakterbezogene Besonderheiten (Briefing §15)
+### 3.2 Charakterexklusive Gegenstände (verbindlich, Phase 5c)
 
-Nicht jeder Gegenstand passt zu jeder Figur. Vorschlag für die **Kompatibilitätsmatrix** (Auszug,
-vollständige Matrix als Tabelle im Konzept, Umsetzung erst nach Freigabe):
+**Verbindlich: Jeder Avatar besitzt seine eigenen Gegenstände.** Es gibt **keinen** allgemeinen
+Gegenstandskatalog, dessen Elemente beliebig auf allen Figuren getragen werden können.
+
+- Ein Gegenstand ist **ausschließlich für seinen vorgesehenen Charakter** verfügbar.
+- Die Kompatibilität steht in einem **zentralen, versionierten Katalog** (§7.2).
+- Ein Gegenstand wird auf einem anderen Avatar **gar nicht angeboten** (nicht nur ausgegraut), damit
+  keine falsche Kombination entsteht.
+- Die Originalfiguren bleiben in **Identität, Silhouette und Gestaltung** erhalten; der Cyber-Stil
+  wird **dezent** integriert.
+
+**Gegenstände müssen sichtbar getragen werden können.** Ein Gegenstand darf **nicht** nur als
+Inventar-Icon existieren, sondern muss am Avatar **tatsächlich sichtbar ausgerüstet** werden.
+Konzeptionell vorgesehen: charakterbezogene **Ausrüstungsslots**, zugehörige **Grafiklayer**,
+definierte **Positionen und Größen**, richtige **Ebenenreihenfolge**, charakterabhängige
+Kompatibilität und eine **Vorschau** im Avatar-Menü. Die genaue Grafik- und Layerarchitektur wird
+anhand der gelieferten Originalassets festgelegt (§3.4).
+
+**Beispiele für individuelle Ausrüstung** (Designidee; endgültige Gegenstände richten sich nach den
+Originalcharakteren):
+
+| Avatar      | Mögliche eigene Gegenstände                                    |
+| ----------- | -------------------------------------------------------------- |
+| Ethan       | Cyberbrille, Tech-Weste, Armband, Rucksack                     |
+| Maya        | Cybervisier, futuristische Kleidung, eigener Technik-Rucksack  |
+| Pixel       | Cyberhalsband, technisches Geschirr, passende Accessoires      |
+| Dr. Obscura | Technische Maske, Spezialmantel, individuelle Apparaturen      |
+| O-Bots      | Eigene Sensoren, Module, Aufsätze und technische Erweiterungen |
+
+**Anzahl und Umfang:** Geplant sind ungefähr **15 Avatare** aus dem Blockwelt-Helden-Universum
+(inkl. passender Tiere und Insekten). Die endgültige Charakterliste richtet sich nach den
+Originalassets des Projektverantwortlichen.
+
+**Inventar und Avatarwechsel (verbindlich):** Registrierte Spieler behalten **alle** freigeschalteten
+Gegenstände dauerhaft. Bei einem Avatarwechsel bleiben die Gegenstände erhalten; angezeigt wird die
+Ausrüstung des **ausgewählten** Charakters. Die Gegenstände eines anderen Charakters werden **nicht**
+automatisch übertragen.
+
+### 3.2a Kategorien und Kompatibilität (Vorschlag, aus Briefing §14/§15)
+
+Kategorien der Anpassung (aus Briefing §14):
+
+| Kategorie           | Beispiele                                                                                           |
+| ------------------- | --------------------------------------------------------------------------------------------------- |
+| Kopfbedeckung       | Basecap, Bauhelm, Krone, Zauberhut, Helme, besondere Kopfbedeckungen                                |
+| Brille              | Sonnenbrille, Schutzbrille, Fantasiebrille, futuristische Brille                                    |
+| Kleidung            | Hoodie, Abenteuerkleidung, Rüstung, Superhelden-Outfit, besondere Kostüme                           |
+| Werkzeug/Ausrüstung | Spitzhacke, Schaufel, Axt, Rucksack, Gürtel, Umhang                                                 |
+| Seltene Gegenstände | goldene Spitzhacke, Diamant-Spitzhacke, seltene Rüstungen, exklusive Accessoires, besondere Effekte |
+| Farbe (wo passend)  | Fellfarbe (Pixel), Flügel-/Musterfarbe (Biene), Akzentfarbe                                         |
+
+**Kompatibilitätsmatrix (Vorschlag, Auszug).** Sie zeigt, welche **Kategorie** für eine Figur
+grundsätzlich vorgesehen ist. Die konkreten **Einzelgegenstände** sind charakterexklusiv (§3.2).
 
 | Gegenstand-Kategorie | Ethan | Maya |      Pixel      |      Biene       | Dr. Obscura |      O-Bot      |
 | -------------------- | :---: | :--: | :-------------: | :--------------: | :---------: | :-------------: |
@@ -105,8 +159,8 @@ vollständige Matrix als Tabelle im Konzept, Umsetzung erst nach Freigabe):
 | Rucksack/Umhang      |   ✔   |  ✔   |  ✔ (Rucksack)   |        ✖         |      ✔      |        ✖        |
 | Effekt               |   ✔   |  ✔   |        ✔        |        ✔         |      ✔      |        ✔        |
 
-**Regel:** Ein nicht kompatibles Teil wird im Editor **gar nicht angeboten** (nicht nur ausgegraut),
-damit keine falsche Kombination entstehen kann (Briefing §53, Fehlerquelle 6).
+**Regel:** Ein nicht kompatibles Teil wird im Editor **gar nicht angeboten** (Briefing §53,
+Fehlerquelle 6).
 
 ### 3.3 Technische Architektur des Avatar-Editors (Briefing §16)
 
@@ -165,34 +219,128 @@ wird im Asset-Briefing dokumentiert, damit die Layer passend exportiert werden k
 
 ---
 
-## 4. Spielerprofile
+## 4. Spielerprofile, Registrierung und Gastkonto-Übernahme
 
-### 4.1 Gastspieler vs. registrierter Spieler (Briefing §11)
+### 4.1 Gastspieler vs. registrierter Spieler (Briefing §11, Phase 5c)
 
-| Merkmal             | Gastspieler                                                       | Registrierter Spieler     |
-| ------------------- | ----------------------------------------------------------------- | ------------------------- |
-| Beitritt            | PIN + Nickname, sofort                                            | Login, dann Beitritt      |
-| Profil              | temporär (nur im Spiel)                                           | dauerhaft                 |
-| Avatar              | Standardfigur, keine Auswahl                                      | eigene Figur + Ausrüstung |
-| Spielhistorie       | nein (nur Spielergebnis)                                          | ja                        |
-| XP / Level          | **nein**                                                          | ja                        |
-| Inventar / Erfolge  | **nein**                                                          | ja                        |
-| Späteres Verknüpfen | **konzeptionell berücksichtigt** (Konto übernimmt das Gastprofil) | –                         |
+| Merkmal               | Gastspieler                                                           | Registrierter Spieler          |
+| --------------------- | --------------------------------------------------------------------- | ------------------------------ |
+| Beitritt              | PIN + Nickname, sofort, **ohne Registrierung**                        | Login optional, dann Beitritt  |
+| Profil                | temporär (nur im Spiel)                                               | dauerhaft                      |
+| Avatar                | Standardfigur, keine Auswahl                                          | eigene Figur + Ausrüstung      |
+| Quizhistorie          | **nein**                                                              | **nein** (nur Administratoren) |
+| Persönliche Statistik | nur aktueller Punktestand im Spiel                                    | dauerhaft (siehe §4.7)         |
+| XP / Level            | **nein** (nur Anzeige während des Spiels)                             | ja                             |
+| Inventar / Erfolge    | **nein**                                                              | ja                             |
+| Späteres Verknüpfen   | **verbindlich**: Gastrunde kann auf ein neues Konto übertragen werden | –                              |
+
+**Verbindlich:** Die **Registrierung ist keine Voraussetzung** für die Teilnahme. Gäste spielen
+weiterhin ohne E-Mail und ohne Konto. Bestehende `ADMIN`/`TRAINER`-Konten bleiben unverändert.
 
 **Bestand:** Heute gibt es **nur** Gastspieler (`GamePlayer` ohne `User`-Bezug). Registrierte
-Spieler sind neu. Bestehende `ADMIN`/`TRAINER`-Konten bleiben unverändert.
+Spieler sind neu. Es gibt heute **keine** Rolle `PLAYER` (Enum `ADMIN`/`TRAINER`).
 
-### 4.2 Profilinhalt (Briefing §17)
+### 4.2 Registrierungsangebot (Briefing, Phase 5c – verbindlich)
 
-Benutzername, gewählter Charakter, aktueller Avatar, Gesamtpunktzahl, Erfahrungspunkte,
-Spielerlevel, Erfolge, Spielhistorie, richtige Antworten, Trefferquote, persönliche Bestleistungen,
-freigeschaltete Gegenstände.
+Die Registrierung wird an **zwei** Stellen aktiv angeboten.
 
-### 4.3 Darstellung
+**a) Beim Spielbeitritt** – dezenter Hinweis, der den Beitritt nicht verzögert:
+
+> „Erstelle dein kostenloses ZeroPeek-Konto und sichere deinen Fortschritt dauerhaft."
+
+Der Spieler wählt danach: **als Gast fortfahren**, **Konto erstellen** oder **anmelden**. Der
+Gastbeitritt muss weiterhin **sofort** möglich sein; das Angebot ist optional und abbrechbar.
+
+**b) Nach Spielende** – erneutes Angebot mit klarem Nutzen:
+
+- Erspielte XP dauerhaft sichern.
+- Persönliche Spielstatistik aufbauen.
+- Level und Fortschritt behalten.
+- Neue Gegenstände freischalten.
+- Eigenen Avatar ausstatten.
+
+Die Registrierung bleibt **freiwillig**.
+
+### 4.3 Kontoanforderungen (verbindlich)
+
+Ein Spielerkonto verwendet: **E-Mail**, **Passwort**, **E-Mail-Bestätigung** und **Anzeigename**.
+Die bestehende Authentifizierungsarchitektur (Argon2id, Server-Sessions, CSRF) wird **weiterverwendet**
+und nur um die Rolle `PLAYER` erweitert. Die bestehende Admin-/Traineranmeldung darf **nicht**
+beschädigt werden. `PLAYER` erhält **keine** Admin- oder Trainerrechte.
+
+### 4.4 Gastkonto-Übernahme (verbindlich, Phase 5c)
+
+Ein Gast soll seinen gerade erspielten Fortschritt **nicht verlieren**, wenn er sich erst nach dem
+Spiel registriert.
+
+**Übernahme nach Spielende:** Erstellt ein Gast nach Abschluss einer Runde ein Konto, wird ihm
+angeboten, **diese abgeschlossene Runde** seinem neuen Konto zuzuordnen. Übernommen werden:
+Quizpunkte, Platzierungsbonus, daraus resultierende XP, die gespielte Runde, die Platzierung, die
+Anzahl richtiger Antworten, die Anzahl beantworteter Fragen und die relevanten persönlichen
+Statistikwerte. Die Übernahme erfolgt **ausschließlich nach ausdrücklicher Zustimmung** des Spielers.
+
+**Registrierung während einer laufenden Runde:** Erstellt ein Gast mitten in einer Runde ein Konto,
+soll seine bestehende Teilnahme **direkt** mit dem neuen Konto verknüpft werden. Erhalten bleiben:
+aktueller Spielplatz, bereits beantwortete Fragen, aktueller Punktestand und die Verbindung zur
+laufenden Runde. Es darf **keine doppelte Spieleridentität** in der Lobby entstehen.
+
+**Sicherheit (verbindlich):**
+
+- **Zeitlich begrenzter** Gast-/Übernahmenachweis (kurzlebig, an die Runde gebunden).
+- **Einmalige Verwendung**; keine doppelte Übertragung derselben Runde.
+- **Serverseitige** Überprüfung; **kein** frei manipulierbarer XP-Wert vom Client.
+- Keine doppelte Gutschrift von XP oder Platzierungsboni.
+- Keine Übernahme **fremder** Spielersessions (kein Gast übernimmt die Runde eines anderen).
+
+**Abgrenzung (verbindlich):** Die Übernahme einer **gerade abgeschlossenen** Runde ist vorgesehen.
+Eine **unbegrenzte nachträgliche** Übertragung beliebiger früherer Gastspiele ist **nicht
+beschlossen**.
+
+### 4.5 Profilinhalt (Briefing §17)
+
+Anzeigename, gewählter Charakter, aktueller Avatar, Gesamtpunktzahl, Erfahrungspunkte, Spielerlevel,
+Erfolge, **persönliche Statistik** (§4.7), richtige Antworten, Trefferquote, persönliche
+Bestleistungen, freigeschaltete Gegenstände.
+
+### 4.6 Darstellung
 
 Großes, hochwertiges Charakterbild im Zentrum; Level und XP prominent; Statistiken als Kacheln;
 Erfolge als Galerie; gesperrte Erfolge als Silhouette mit Bedingung. Details siehe
 `design-concept.md` §8.8.
+
+### 4.7 Persönliche Spielstatistik (verbindlich, Phase 5c)
+
+#### 4.7.1 Abgrenzung zur Quizhistorie
+
+Die **persönliche Statistik** ist ausdrücklich **von der Quizhistorie zu unterscheiden**:
+
+| Bereich                   | Sichtbar für            | Inhalt                                                          |
+| ------------------------- | ----------------------- | --------------------------------------------------------------- |
+| **Persönliche Statistik** | den Spieler selbst      | zusammengefasster eigener Fortschritt (§4.7.2)                  |
+| **Quizhistorie**          | **nur Administratoren** | Fragen, Antworten, Spielberichte, Ergebnisse anderer Teilnehmer |
+
+**Verbindlich:** Spieler dürfen **keine** detaillierte Historie mit alten Fragen, Antworten,
+Spielberichten oder Ergebnissen anderer Teilnehmer einsehen. Die persönliche Statistik ist eine
+**Zusammenfassung des eigenen Fortschritts**, keine Freigabe der Quizhistorie.
+
+#### 4.7.2 Sichtbare persönliche Werte (verbindlich)
+
+Im Spielerprofil werden angezeigt:
+
+- Gesamtzahl gespielter Runden.
+- Anzahl gewonnener Spiele.
+- Anzahl der erreichten Podiumsplätze.
+- Anzahl richtiger Antworten.
+- Anzahl beantworteter Fragen.
+- Persönliche Trefferquote.
+- Aktueller Punktestand bzw. XP.
+- Aktuelles Level.
+- Fortschritt bis zum nächsten Level.
+- Anzahl freigeschalteter Gegenstände.
+- Ausgewählter Avatar und dessen Ausrüstung.
+
+**Regel:** Die Statistik wird **serverseitig** aus persistierten Daten berechnet und ist
+**nachvollziehbar** (Roadmap §6.8). Keine dieser Werte wird im Client berechnet oder gespeichert.
 
 ---
 
@@ -208,69 +356,108 @@ Erfolge als Galerie; gesperrte Erfolge als Silhouette mit Bedingung. Details sie
 **Regel:** Die beiden Werte werden **nie** vermischt. XP entsteht **nur** aus abgeschlossenen,
 serverseitig validierten Spielen. Ein Spielpunkt ist flüchtig, XP ist dauerhaft.
 
-### 5.2 XP-Quellen (Vorschlag)
+### 5.2 XP-Berechnung (verbindlich, Phase 5c)
 
-| Quelle                       | XP-Vorschlag             | Bedingung (serverseitig)                               |
-| ---------------------------- | ------------------------ | ------------------------------------------------------ |
-| Richtige Antwort             | 10                       | `PlayerAnswer.correctness >= 1`                        |
-| Teilweise richtige Antwort   | 4                        | `0 < correctness < 1`                                  |
-| Spiel abgeschlossen          | 25                       | Spiel erreicht `phase = end`                           |
-| Serie richtiger Antworten    | 5 × Serienlänge, max. 50 | aufeinanderfolgende richtige Antworten im selben Spiel |
-| Teilnahme (auch ohne Punkte) | 10                       | mindestens eine Antwort abgegeben                      |
-| Besondere Leistung           | je Erfolg (siehe §6)     | Erfolgsbedingung erfüllt                               |
-| Turnier-/Saisonerfolg        | später                   | nur nach Freigabe eines Turniermodus                   |
+**Die bisherige XP-Vorschlagsrechnung ist ersetzt.** Es gibt **keine** separate Umrechnung und
+**keinen** zusätzlichen Teilnahme- oder Leistungsbonus.
 
-**Anti-Missbrauch:** Alle Werte werden **serverseitig** berechnet, aus **persistierten**
-`PlayerAnswer`-Zeilen und einem als gültig erkannten Spielabschluss (§8).
+> **Verbindlich: Die XP entsprechen den Punkten, die ein Spieler im Quiz für seine Antworten
+> erhält.** Das bestehende Punktesystem und seine serverseitige Berechnung bleiben maßgeblich.
 
-### 5.3 Levelschwellen (Vorschlag)
+- Erreichte **Spielpunkte** werden bei registrierten Spielern nach Abschluss der Runde **als
+  dauerhafte XP** gutgeschrieben.
+- Beispiel: 8.500 Spielpunkte in einer Runde → **8.500 XP**.
+- Es entsteht **kein zweites** XP-Berechnungssystem.
 
-Formel-Vorschlag: `XP für Level n = 100 × (n−1)^1.5` (gerundet), damit frühe Level schnell und
-späte Level langsam gehen. Konkrete Tabelle:
+### 5.3 Platzierungsbonus (verbindlich, Phase 5c)
 
-| Level | Bezeichnung (Briefing §18) | XP ab (kumulativ) | XP bis |
-| ----- | -------------------------- | ----------------- | ------ |
-| 1     | Anfänger                   | 0                 | 99     |
-| 2     | Entdecker                  | 100               | 282    |
-| 3     | Abenteurer                 | 283               | 519    |
-| 4     | Blockwelt-Held             | 520               | 799    |
-| 5     | Meister                    | 800               | 1119   |
-| 6     | Champion                   | 1120              | 1478   |
-| 7     | Legende                    | 1479              | offen  |
+Zusätzlich erhalten die **drei Erstplatzierten** einen einmaligen Bonus:
 
-**Hinweis:** Die Schwellen sind bewusst klein gehalten, damit sie in Tests und Vorführungen schnell
-erreichbar sind. Sie sind reine Konfiguration und können ohne Codeänderung angepasst werden.
+| Platzierung    | Zusätzliche XP |
+| -------------- | -------------: |
+| 1. Platz       |       1.500 XP |
+| 2. Platz       |       1.000 XP |
+| 3. Platz       |         500 XP |
+| Weitere Plätze |           0 XP |
 
-### 5.4 Levelaufstieg
+**Beispiel:** Sieg mit 8.500 Punkten → 8.500 XP (Fragenpunkte) + 1.500 XP (Siegerbonus) =
+**10.000 XP Gesamtgutschrift**.
+
+- Der Platzierungsbonus wird **erst nach Spielabschluss** und Feststellung der **endgültigen
+  Platzierung** gutgeschrieben.
+- Die **Spielpunktzahl bleibt unverändert**; der Bonus wird **nicht** nachträglich in die
+  Spielwertung eingerechnet.
+
+**Gleichstand (verbindlich):** Bei identischer Platzierung erhalten **alle** betroffenen Spieler
+**denselben** Platzierungsbonus. Kein Spieler darf durch technischen Zufall oder willkürliche
+Reihenfolge benachteiligt werden. Die bestehende Ranglistenlogik ist zu prüfen und für diese Regel
+zu dokumentieren (Roadmap §6.8).
+
+**Gäste:** Gäste erhalten **keine** dauerhafte XP-Speicherung. Sie sehen ihren Punktestand während
+des Spiels und den Abschlussstand danach. Erstellen sie anschließend ein Konto, können XP und
+Statistik **dieser** Runde nach §4.4 übernommen werden.
+
+### 5.4 Levelkurve (verbindlich, Phase 5c)
+
+- Level 1 beginnt bei **0 XP**.
+- Die Aufstiege von Level 1 bis einschließlich Level 10 benötigen je **10.000 XP**.
+- Ab dem Aufstieg Level 10 → 11 steigt der Betrag auf **11.000 XP**.
+- Jeder weitere Aufstieg benötigt **1.000 XP mehr** als der vorherige.
+
+| Neues Level | XP für den Aufstieg | Gesamt-XP |
+| ----------: | ------------------: | --------: |
+|           1 |                   – |         0 |
+|           2 |              10.000 |    10.000 |
+|           3 |              10.000 |    20.000 |
+|           4 |              10.000 |    30.000 |
+|           5 |              10.000 |    40.000 |
+|           6 |              10.000 |    50.000 |
+|           7 |              10.000 |    60.000 |
+|           8 |              10.000 |    70.000 |
+|           9 |              10.000 |    80.000 |
+|          10 |              10.000 |    90.000 |
+|          11 |              11.000 |   101.000 |
+|          12 |              12.000 |   113.000 |
+|          13 |              13.000 |   126.000 |
+|          14 |              14.000 |   140.000 |
+|          15 |              15.000 |   155.000 |
+
+**Regel:** Die Berechnung wird **zentral und eindeutig** implementiert (eine Funktion in
+`@zeropeek/shared`, siehe §7.2). Es gibt **keine** mehrfach gepflegten Leveltabellen in
+verschiedenen Komponenten. Überschreitet eine XP-Gutschrift **mehrere** Levelgrenzen, müssen
+**alle** erreichten Level korrekt erkannt und ihre Belohnungen berücksichtigt werden (Roadmap §6.8).
+
+> **Ersetzt:** Die frühere Formel `100 × (n−1)^1.5` und die alte 7-Level-Tabelle gelten **nicht mehr**.
+
+### 5.5 Levelaufstieg
 
 - Beim Aufstieg: Animation, Levelname, Vorschau der nächsten Belohnung.
 - Der Aufstieg wird **serverseitig** festgestellt und mit dem Spielabschluss in einer Transaktion
   gespeichert, damit kein Client XP erfinden kann.
+- Levelbezeichnungen (Anzeige, Konfiguration): 1 Anfänger · 2 Entdecker · 3 Abenteurer ·
+  4 Blockwelt-Held · 5 Meister · 6 Champion · 7 Legende · danach fortlaufend „Legende Stufe n"
+  (Feinschliff durch den Projektverantwortlichen).
 
-### 5.5 Beispielrechnung (verbindlich nachvollziehbar)
+### 5.6 Beispielrechnung (verbindlich nachvollziehbar)
 
 Damit XP nicht interpretiert werden muss, hier ein **vollständiges, durchgerechnetes Beispiel**.
 Annahmen: Quiz mit **10 Fragen**, Zeitlimit je Frage 20 s, „zu schnell"-Regel **aus** (Bestand).
 
-| Ereignis im Spiel                                        | XP      |
-| -------------------------------------------------------- | ------- |
-| Teilnahme (mindestens eine Antwort abgegeben)            | +10     |
-| 7 richtige Antworten (7 × 10)                            | +70     |
-| 2 teilweise richtige Antworten (2 × 4)                   | +8      |
-| Längste Serie: 4 richtige in Folge (4 × 5, unter Cap 50) | +20     |
-| Spiel abgeschlossen (gültiges `phase = end`)             | +25     |
-| **Summe für dieses Spiel**                               | **133** |
+| Ereignis im Spiel                       | XP         |
+| --------------------------------------- | ---------- |
+| Spielpunkte aus allen Antworten (Summe) | 8.500      |
+| Platzierungsbonus (1. Platz)            | +1.500     |
+| **Summe für dieses Spiel**              | **10.000** |
 
-- Startet der Spieler bei **0 XP** (Level 1 „Anfänger"), steht er nach dem Spiel bei **133 XP** →
-  **Level 2 „Entdecker"** (100–282). Der Aufstieg wird einmalig verbucht.
+- Startet der Spieler bei **0 XP** (Level 1), steht er nach dem Spiel bei **10.000 XP** →
+  **Level 2**. Der Aufstieg wird einmalig verbucht.
 - **Idempotenz:** Wird dasselbe Spiel erneut als „abgeschlossen" gemeldet, entstehen **keine**
   weiteren XP. Der Anker ist eine `@@unique`-Sperre je (Spieler, Spiel) im XP-Ledger (§7.3).
 - **Reihenfolge:** XP werden **einmal**, am Spielende, in **einer** Transaktion berechnet und
   geschrieben – nicht je Antwort (verhindert Doppelvergabe und Rennen).
 
-> **Hinweis:** Die Zahlen (10/4/5/25/10) sind **Vorschläge** und reine Konfiguration. Sie werden vom
-> Projektverantwortlichen festgelegt (offene Entscheidung #9, Phase-5b-Bericht §7). Das Beispiel zeigt
-> die **Mechanik**, nicht einen beschlossenen Wert.
+> **Hinweis:** Die **Mechanik** ist verbindlich (Punkte = XP, Bonus 1500/1000/500, Levelkurve §5.4).
+> Die konkreten Erfolgs- und Belohnungsinhalte legt der Projektverantwortliche fest.
 
 ---
 
@@ -283,16 +470,37 @@ Annahmen: Quiz mit **10 Fragen**, Zeitlimit je Frage 20 s, „zu schnell"-Regel 
 - **Keine** manipulativen Mechaniken, kein unfairer Wettbewerb.
 - Gesperrte Gegenstände sind **sichtbar** mit verständlicher Freischaltbedingung.
 
-### 6.2 Belohnungsarten (Vorschlag)
+### 6.2 Belohnungsarten (Phase 5c)
 
-| Art                 | Beispiel                                    | Freischaltung                    |
-| ------------------- | ------------------------------------------- | -------------------------------- |
-| Level-Belohnung     | Bauhelm bei Level 3                         | Level erreicht                   |
-| Erfolgs-Belohnung   | goldene Spitzhacke für „10 Spiele gewonnen" | Erfolg erfüllt                   |
-| Serien-Belohnung    | Umhang für „10 richtige in Folge"           | Serie erreicht                   |
-| Teilnahme-Belohnung | Farbvariante für „10 Spiele gespielt"       | Anzahl Spiele                    |
-| Saison-Belohnung    | exklusiver Effekt                           | später, nur nach Freigabe        |
-| Besondere Figur     | Dr. Obscura, O-Bot                          | hohes Level oder seltener Erfolg |
+**Verbindlich:** **Jeder Levelaufstieg schaltet einen neuen Gegenstand frei.** Die Belohnungen sind
+**ausschließlich kosmetisch** – **keine** spielerischen Vorteile. Die konkrete Belohnungsliste legt
+der Projektverantwortliche fest. Mögliche Gegenstände: Cyberbrillen, futuristische Kleidung,
+Rucksäcke, technische Armbänder, Kopfhörer, charakterbezogene Werkzeuge, besondere Cyber-Accessoires,
+exklusive Farbvarianten.
+
+| Art                 | Beispiel                                       | Freischaltung                    |
+| ------------------- | ---------------------------------------------- | -------------------------------- |
+| **Level-Belohnung** | **je Levelaufstieg ein Gegenstand**            | Level erreicht                   |
+| Erfolgs-Belohnung   | besonderes Accessoire für „10 Spiele gewonnen" | Erfolg erfüllt                   |
+| Serien-Belohnung    | Umhang für „10 richtige in Folge"              | Serie erreicht                   |
+| Teilnahme-Belohnung | Farbvariante für „10 Spiele gespielt"          | Anzahl Spiele                    |
+| Saison-Belohnung    | exklusiver Effekt                              | später, nur nach Freigabe        |
+| Besondere Figur     | Dr. Obscura, O-Bot                             | hohes Level oder seltener Erfolg |
+
+**Verbindlich:** **Keine kaufbaren Vorteile, kein Echtgeld-Shop, keine Lootboxen.**
+
+### 6.2a Levelbelohnung und aktiver Avatar (verbindlich, Phase 5c)
+
+Ein Levelaufstieg schaltet einen Gegenstand aus dem **charakterbezogenen** Belohnungssystem frei
+(siehe §6.6). Weil Gegenstände **charakterexklusiv** sind, gilt für die Zuordnung:
+
+- Die Belohnung ist ein Gegenstand **für den aktuell gewählten Avatar**.
+- Bei einem Avatarwechsel bleibt der Gegenstand im Besitz und wird **beim Zurückwechseln** wieder
+  ausrüstbar; er wird **nicht** automatisch auf andere Charaktere übertragen.
+- Freischaltungen sind **deterministisch** und nachvollziehbar (kein Zufall, keine Lootbox).
+
+**Offen (Projektverantwortlicher):** die endgültige **Belohnungsmatrix** und die Zuordnung der
+einzelnen Gegenstände. OpenHands entwirft **keine** endgültigen Belohnungsassets.
 
 ### 6.3 Vorschlag für Erfolge (Auswahl)
 
@@ -317,37 +525,79 @@ Annahmen: Quiz mit **10 Fragen**, Zeitlimit je Frage 20 s, „zu schnell"-Regel 
 - Kein zufälliges Lootbox-System (manipulativ). Freischaltungen sind **deterministisch** und
   nachvollziehbar.
 
+### 6.5 Inventar und Avatar-Ausrüstung (verbindlich, Phase 5c)
+
+- **Registrierte** Spieler behalten alle freigeschalteten Gegenstände **dauerhaft**.
+- Ein **Avatarwechsel** löscht **keine** Gegenstände. Angezeigt wird die Ausrüstung des gewählten
+  Charakters; Gegenstände anderer Charaktere werden **nicht** übertragen.
+- Ausgerüstete Gegenstände sind am Avatar **sichtbar** (§3.2), nicht nur als Icon.
+- Keine unzulässige Kombination: Das Inventar bietet nur Gegenstände des **aktiven** Charakters an.
+
+### 6.6 Zuordnung Levelbelohnung → aktiver Avatar (verbindlich, Phase 5c)
+
+Ein Levelaufstieg schaltet einen Gegenstand des **charakterbezogenen** Katalogs frei. Damit die
+Zuordnung eindeutig ist:
+
+1. Der Katalog ist **pro Charakter** strukturiert: jeder Gegenstand hat `characterId` und einen
+   `unlockRule`-Eintrag (z. B. `level:5`).
+2. Beim Aufstieg wählt der Server den **nächsten noch gesperrten Levelgegenstand** des aktuell
+   gewählten Avatars (`PlayerProfile.selectedCharacterId`) aus.
+3. Ist für diesen Avatar auf dieser Stufe kein Gegenstand definiert, wird die Freischaltung
+   **aufgeschoben** und beim nächsten Aufstieg nachgeholt (kein Verlust).
+4. Wird der Avatar **gewechselt**, gelten die Freischaltungen weiter; die Zuordnung bleibt an den
+   Charakter gebunden, nicht an den Zeitpunkt.
+
+> **Offen:** Die **endgültige Belohnungsmatrix** und die Zuordnung der einzelnen Gegenstände legt der
+> Projektverantwortliche fest. OpenHands erstellt **keine** endgültigen Belohnungsassets.
+
 ---
 
 ## 7. Datenarchitektur (Vorschlag, additiv)
 
 **Grundsatz:** Vorhandene Modelle **erweitern**, keine Doppelsysteme. Keine bestehende Spalte ändern.
-Jede Migration wird dokumentiert und zur Freigabe vorgelegt.
+Jede Migration wird dokumentiert und zur Freigabe vorgelegt. **Keine** Migration in Phase 5c.
+
+**Speichern oder berechnen?** Grundregel: **Ereignisse** (Gutschriften, Besitz, Snapshots) werden
+**gespeichert**; **abgeleitete Kennzahlen** (Level, Trefferquote, Fortschritt) werden **berechnet**,
+nicht redundant gespeichert. `PlayerProfile.level` und `xp` sind die Ausnahme: Sie werden als
+**Materialisierung** des Ledgers gespeichert, damit Profilabfragen nicht jedes Mal den Ledger
+aggregieren müssen – der Ledger bleibt die Wahrheit.
 
 ### 7.1 Neue/erweiterte Modelle (Vorschlag)
 
-| Modell / Erweiterung              | Zweck                                                                                                                                       | Neu oder Erweiterung                              |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `User.role` um `PLAYER` erweitern | Registrierte Spieler sind weder Trainer noch Admin                                                                                          | **Erweiterung des Enums** (Migration)             |
-| `PlayerProfile`                   | 1:1 zu `User`; `xp`, `level`, `selectedCharacterId`, `avatarConfig` (JSONB), `totalScore`, `gamesPlayed`, `correctAnswers`, `answeredCount` | **neu**                                           |
-| `Character`                       | Katalog der Figuren: `id`, `name`, `rarity`, `unlockRule`                                                                                   | **neu** (oder Konstante in `shared`, siehe unten) |
-| `CosmeticItem`                    | Katalog der Gegenstände: `id`, `category`, `rarity`, `unlockRule`, `zIndex`, `characterCompat`                                              | **neu**                                           |
-| `PlayerInventory`                 | Besitz: `userId`, `itemId`, `acquiredAt`, `source`, `equipped`                                                                              | **neu**                                           |
-| `PlayerAchievement`               | Erfolge: `userId`, `achievementId`, `unlockedAt`, `progress`                                                                                | **neu**                                           |
-| `GamePlayer.userId?`              | Verknüpfung Gast→Konto (nullable, additiv)                                                                                                  | **Erweiterung**                                   |
-| `GamePlayer.characterId?`         | gewählte Figur im Spiel (nullable, additiv)                                                                                                 | **Erweiterung**                                   |
-| `XpLedger`                        | append-only XP-Protokoll: `userId`, `amount`, `reason`, `gameId`, `createdAt`                                                               | **neu** (Nachvollziehbarkeit, Anti-Doppelvergabe) |
+| Modell / Erweiterung              | Zweck                                                                                                                                                          | Neu oder Erweiterung                              |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `User.role` um `PLAYER` erweitern | Registrierte Spieler sind weder Trainer noch Admin; **keine** Admin-/Trainerrechte                                                                             | **Erweiterung des Enums** (Migration)             |
+| `User.emailVerifiedAt?`           | Bestätigung der E-Mail (verbindlich, §4.3)                                                                                                                     | **Erweiterung** (nullable)                        |
+| `PlayerProfile`                   | 1:1 zu `User`; `xp`, `level`, `selectedCharacterId`, `avatarConfig` (JSONB), `totalScore`, `gamesPlayed`, `wins`, `podiums`, `correctAnswers`, `answeredCount` | **neu**                                           |
+| `Character`                       | Katalog der Figuren: `id`, `name`, `rarity`, `unlockRule`                                                                                                      | **neu** (oder Konstante in `shared`, siehe unten) |
+| `CosmeticItem`                    | Katalog der Gegenstände: `id`, `characterId` (**charakterexklusiv**), `slot`, `rarity`, `unlockRule`, `zIndex`                                                 | **neu**                                           |
+| `PlayerInventory`                 | Besitz: `userId`, `itemId`, `acquiredAt`, `source`, `equipped`                                                                                                 | **neu**                                           |
+| `PlayerAchievement`               | Erfolge: `userId`, `achievementId`, `unlockedAt`, `progress`                                                                                                   | **neu**                                           |
+| `GamePlayer.userId?`              | Verknüpfung Gast→Konto (nullable, additiv)                                                                                                                     | **Erweiterung**                                   |
+| `GamePlayer.characterId?`         | gewählte Figur im Spiel (nullable, additiv)                                                                                                                    | **Erweiterung**                                   |
+| `XpLedger`                        | append-only XP-Protokoll: `userId`, `amount`, `reason`, `gameId`, `createdAt`                                                                                  | **neu** (Nachvollziehbarkeit, Anti-Doppelvergabe) |
+| `Game.guestClaim`                 | kurzlebiger, einmaliger Übernahmenachweis (Token-Hash, `expiresAt`, `usedAt`)                                                                                  | **neu** (Gastkonto-Übernahme, §4.4)               |
+| `GameSnapshot`                    | unveränderliche Quiz-Momentaufnahme je Spiel (§8.7)                                                                                                            | **neu**                                           |
+
+**Nicht gespeichert (berechnet):** Trefferquote (`correctAnswers / answeredCount`), Fortschritt bis
+zum nächsten Level (aus `xp` + Levelkurve §5.4), Ranglistenposition. **Nicht** redundant gespeichert,
+um Widersprüche zu vermeiden.
 
 ### 7.2 Katalogdaten: Datenbank oder Code?
 
-**Vorschlag:** **Figuren und Gegenstände als Katalog in `@zeropeek/shared`** (Konstanten) statt in
-der Datenbank. Begründung: Der Katalog ist Produktdefinition, ändert sich selten, muss auf **Client
-und Server** identisch sein (Kompatibilitätsmatrix, Darstellung), und `shared` ist bereits die
-einzige Wahrheit für solche Verträge. Die **Datenbank** speichert nur **Besitz und Zustand**
-(`PlayerInventory`, `PlayerAchievement`, `PlayerProfile`).
+**Vorschlag:** **Figuren und Gegenstände als Katalog in `@zeropeek/shared`** (Konstanten), **pro
+Charakter versioniert** (charakterexklusive Gegenstände, §3.2). Begründung: Der Katalog ist
+Produktdefinition, ändert sich selten, muss auf **Client und Server** identisch sein
+(Kompatibilitätsmatrix, Darstellung), und `shared` ist bereits die einzige Wahrheit für solche
+Verträge. Die **Datenbank** speichert nur **Besitz und Zustand** (`PlayerInventory`,
+`PlayerAchievement`, `PlayerProfile`).
+
+Die **Levelkurve** (§5.4) wird als **eine** Funktion in `shared` implementiert (z. B.
+`levelForXp(xp)`, `xpForLevel(n)`); es gibt **keine** zweite Leveltabelle in einer anderen Komponente.
 
 Vorteil: keine Migration für einen neuen Hut; der Client kennt ihn sofort; die Kompatibilitätsmatrix
-bleibt an einer Stelle.
+bleibt an einer Stelle. **Offene Frage:** Katalog in `shared` oder in der Datenbank (siehe §16).
 
 ### 7.3 Anti-Manipulation (Briefing §20)
 
@@ -361,9 +611,12 @@ bleibt an einer Stelle.
 | Mehrfaches Einlösen                     | `PlayerInventory` mit `@@unique([userId, itemId])`; XP über `XpLedger` idempotent          |
 | XP im Client                            | Client **kann** XP nicht setzen; es gibt keinen Schreibendpunkt dafür                      |
 | Wiederholtes Speichern desselben Spiels | XP-Vergabe genau **einmal** je Spiel (`XpLedger` mit `@@unique([userId, gameId, reason])`) |
+| Doppelte Gastkonto-Übernahme            | `Game.guestClaim` einmalig (`usedAt`) + `XpLedger`-Unique; serverseitige Prüfung           |
+| Übernahme fremder Gastrunde             | Übernahmenachweis ist an **Session und Runde** gebunden, nicht nur an die Spiel-ID         |
+| Manipulierte Charakterausrüstung        | `PlayerInventory` nur serverseitig schreibbar; Ausrüstung gegen den Katalog validiert      |
 
 **Wichtig:** Der XP-Vergabezeitpunkt ist der **Spielabschluss**. Er wird serverseitig im Motor
-ausgelöst (`end`), in einer **Transaktion** mit der Erfolgsprüfung.
+ausgelöst (`end`), in einer **Transaktion** mit der Erfolgsprüfung und der Platzierungsbonus-Berechnung.
 
 ---
 
@@ -435,6 +688,24 @@ Fortsetzen neu startet. Das ist eine echte Motor-Erweiterung und braucht Freigab
 (übersprungene Frage darf nicht als „unanswered" gewertet werden, sonst verfälscht es Statistiken).
 Freigabe nötig.
 
+### 8.7 Unveränderliche Quizhistorie – Quiz-Snapshot (verbindlich, Phase 5c)
+
+**Verbindlich:** Beim **Start** einer Spielrunde wird eine **unveränderliche Momentaufnahme** des
+verwendeten Quiz erstellt. Sie enthält mindestens: Fragen, Antwortmöglichkeiten, korrekte Lösungen,
+Fragetypen, Reihenfolge und die relevanten Einstellungen.
+
+- Spätere Änderungen am ursprünglichen Quiz dürfen die **bereits gespielte** Runde **nicht** verändern.
+- Auch das **Löschen** eines Quiz darf **keine** historischen Spielergebnisse zerstören.
+- Die bereits identifizierte Gefahr (R-3: `quizService.updateQuiz` löscht und erstellt Fragen neu;
+  `PlayerAnswer.questionId` ist `onDelete: Cascade`) wird damit technisch **entschärft**.
+
+**Vorgesehene Umsetzung (Konzept, Roadmap §6.4):** eine `GameSnapshot`-Tabelle, die beim
+`host:start` einmalig die Fragen-/Antwortstruktur des Quiz **kopiert** (JSONB oder normalisiert).
+Die Spielrunde liest Fragen danach **aus dem Snapshot**, nicht aus dem live editierbaren Quiz. Das
+ist eine additive Schemaerweiterung und wird **erst nach Freigabe** migriert.
+
+> **Keine** Migration und **keine** Codeänderung in Phase 5c.
+
 ---
 
 ## 9. Zusätzliche Spielmodi (Briefing §23)
@@ -483,21 +754,21 @@ Sicherheitsthema.
 
 ### 10.2 Die 13 Show-Szenen (Briefing §26)
 
-| #   | Szene                | Inhalt                                                | Animation               |
-| --- | -------------------- | ----------------------------------------------------- | ----------------------- |
-| 1   | Begrüßung            | Logo, Titel, „Gleich geht's los", Hintergrundbild     | Fade-in                 |
-| 2   | Spielerbeitritt      | PIN riesig, URL, „Tritt bei", wachsende Avatar-Wand   | Pop je Beitritt         |
-| 3   | Teilnehmerübersicht  | Alle Spieler mit Avatar und Name in einem Raster      | Gestaffeltes Einblenden |
-| 4   | Spielstart-Countdown | 3 – 2 – 1 – Los!                                      | `count-tick`, `pop`     |
-| 5   | Fragenanzeige        | Frage groß, Frage x/y, Kategorie                      | `slide-up`              |
-| 6   | Antwortmöglichkeiten | Optionen groß, farbcodiert, nummeriert                | Gestaffelt              |
-| 7   | Countdown            | Ring + Zahl, ruhige Farbänderung bei wenig Zeit       | `count-tick`            |
-| 8   | Antwortauflösung     | Richtige Antwort hervorgehoben, Verteilung als Balken | `reveal-bars`           |
-| 9   | Punktevergabe        | Punkte steigen, Avatare reagieren                     | `score-count-up`        |
-| 10  | Zwischenrangliste    | Rangliste mit Avataren, Rangwechsel animiert          | `rank-shift`            |
-| 11  | Finalrunde           | Ankündigung, besonderer Hintergrund                   | Dramatik-Puls           |
-| 12  | Gewinnerpodium       | 1./2./3. mit Avatar, Krone, Punkten                   | `podium-rise`           |
-| 13  | Abschluss            | Dank, Statistiken, Ausblick                           | Fade-in                 |
+| #   | Szene                | Inhalt                                                           | Animation               |
+| --- | -------------------- | ---------------------------------------------------------------- | ----------------------- |
+| 1   | Begrüßung            | Logo, Titel, „Gleich geht's los", Hintergrundbild                | Fade-in                 |
+| 2   | Spielerbeitritt      | PIN riesig, **QR-Code**, URL, „Tritt bei", wachsende Avatar-Wand | Pop je Beitritt         |
+| 3   | Teilnehmerübersicht  | Alle Spieler mit Avatar und Name in einem Raster                 | Gestaffeltes Einblenden |
+| 4   | Spielstart-Countdown | 3 – 2 – 1 – Los!                                                 | `count-tick`, `pop`     |
+| 5   | Fragenanzeige        | Frage groß, Frage x/y, Kategorie                                 | `slide-up`              |
+| 6   | Antwortmöglichkeiten | Optionen groß, farbcodiert, nummeriert                           | Gestaffelt              |
+| 7   | Countdown            | Ring + Zahl, ruhige Farbänderung bei wenig Zeit                  | `count-tick`            |
+| 8   | Antwortauflösung     | Richtige Antwort hervorgehoben, Verteilung als Balken            | `reveal-bars`           |
+| 9   | Punktevergabe        | Punkte steigen, Avatare reagieren                                | `score-count-up`        |
+| 10  | Zwischenrangliste    | Rangliste mit Avataren, Rangwechsel animiert                     | `rank-shift`            |
+| 11  | Finalrunde           | Ankündigung, besonderer Hintergrund                              | Dramatik-Puls           |
+| 12  | Gewinnerpodium       | 1./2./3. mit Avatar, Krone, Punkten                              | `podium-rise`           |
+| 13  | Abschluss            | Dank, Statistiken, Ausblick                                      | Fade-in                 |
 
 **Regel:** Frage und Antworten stehen **immer im Vordergrund** (Briefing §28). Hintergrundbilder
 sind nie so kontrastreich, dass Text schwer lesbar wird.
@@ -516,6 +787,25 @@ sind nie so kontrastreich, dass Text schwer lesbar wird.
 Der Beamer nutzt eine **Show-Skala** (über `clamp` und `vmin`), damit die Darstellung auf 1280×720,
 1920×1080, 2560×1440 und 4:3 gleich gut wirkt. Keine Navigationsmenüs, keine kleinen Texte.
 
+### 10.5 Hintergrundauswahl (verbindlich, Phase 5c)
+
+Die Auswahl des Spielhintergrunds erhält als **Standardwert: ZUFALL**.
+
+- **Zufallsverhalten:** Bei „Zufall" wird **genau einmal** für die jeweilige Spielrunde ein
+  Hintergrund bestimmt. **Alle** Teilnehmer und die Host-/Beamer-Ansicht sehen **denselben**
+  Hintergrund. Er bleibt während der **gesamten** Runde bestehen.
+- **Kein** neuer Hintergrund bei jedem Spielerbeitritt oder jedem Fragenwechsel.
+- **Manuelle Auswahl:** Der Host kann **vor Spielbeginn** einen konkreten Hintergrund wählen. Ein
+  Wechsel während einer laufenden Runde ist nur durch eine **bewusste Host-Aktion** möglich.
+- **Stilrichtung (verbindlich):** sehr dunkel, Wireframe-Linien, perspektivische Räume, dezente
+  geometrische Architektur, gedämpfte Farbgebung. **Keine** gerenderten 3D-Objekte, **keine**
+  realistischen 3D-Räume, **keine** grellen Neonflächen.
+- **Mögliche Umgebungen:** Retro Grid, Future Classroom, Quiz Arena, Spaceship Bridge, Simulation
+  Room, Blockwelt Future World.
+
+**Verbindlich:** Es wird **keine** eigene Beamer-Anwendung eingeführt. Die bestehende kombinierte
+Host-/Beamer-Ansicht bleibt erhalten (§10.1).
+
 ---
 
 ## 11. Sounddesign
@@ -528,11 +818,13 @@ Der Beamer nutzt eine **Show-Skala** (über `clamp` und `vmin`), damit die Darst
 | **Spiel** | Spielstart, Countdown, richtige Antwort, falsche Antwort, Punktegewinn, Rangwechsel, Finalrunde, Sieger |
 | **Musik** | ruhige Spielmusik, spannungsaufbauende Quizmusik, dynamische Finalmusik, Siegermusik                    |
 
-### 11.2 Audioanforderungen (Briefing §34)
+### 11.2 Audioanforderungen (Briefing §34, Phase 5c)
 
+- **Verbindlich: Spielaudio läuft ausschließlich über die Host-/Beamer-Ansicht.** Spieler-Telefone
+  spielen **keine** Show-Musik ab; sie haben höchstens **lokale UI-Effekte** (z. B. Klick), die sie
+  selbst regeln können.
 - Musik und Effekte **getrennt** regelbar.
 - Host steuert die zentrale Show-Musik.
-- Spieler regeln ihre **lokale** Lautstärke individuell.
 - Stummschaltung möglich.
 - **Browser-Autoplay beachten:** Audio startet erst nach einer Nutzerinteraktion; sonst Hinweis
   „Ton aktivieren".
@@ -541,10 +833,13 @@ Der Beamer nutzt eine **Show-Skala** (über `clamp` und `vmin`), damit die Darst
   Sperre während der Wiedergabe).
 - Keine übermäßige CPU-/Netzwerklast (kleine Dateien, kurze Effekte).
 
+> **Offen (praktisch zu testen):** Ob und wie die Audioübertragung im Zoom-Betrieb hörbar ankommt,
+> wird später **praktisch geprüft** – nicht im Konzept entschieden.
+
 ### 11.3 Audio-Asset-Liste
 
-Siehe `docs/assets/ASSET-BRIEFING.md`, Block E. Es werden **keine** urheberrechtlich geschützten
-Stücke verwendet. Benötigte Dateien werden gesondert angefordert.
+Siehe `docs/assets/ASSET-BRIEFING.md`, Blöcke F (Soundeffekte) und G (Musik). Es werden **keine**
+urheberrechtlich geschützten Stücke verwendet. Benötigte Dateien werden gesondert angefordert.
 
 ### 11.4 Technischer Vorschlag (Konzept)
 
@@ -606,6 +901,8 @@ Freigabe.
 | Schutz vor unberechtigten Admin-Aktionen | **Bestand** (letzter Admin, Selbstschutz)                                     |
 | **Rate-Limit auf Socket-Events**         | **fehlt** (R-6) → Vorschlag: Limit für `join`/`answer`/`rejoin`               |
 | **Spielerkonto-Missbrauch**              | **neu**: Registrierung mit Rate-Limit, Captcha optional (Freigabe)            |
+| **Gastkonto-Übernahme**                  | **neu**: einmaliger, kurzlebiger, serverseitig geprüfter Übernahmenachweis    |
+| **E-Mail-Bestätigung**                   | **neu**: Bestätigungspflicht für Spielerkonten (§4.3)                         |
 
 **Datenschutz:** Q5 (IP-Speicherung) ist offen. Vorschlag: **keine** IP-Speicherung; Identifikation
 über Konto und Spiel-Token. Das entspricht der Data-Minimisation aus ADR 0006.
@@ -625,41 +922,74 @@ Siehe `design-concept.md` §11. Ergänzend für das Spiel:
 
 ## 15. Priorisierung und Bewertung (Briefing §40)
 
-| Funktion                      | Spielermehrwert | Aufwand | Risiko  | Abhängigkeit                         | Entwicklungs-Priorität |
-| ----------------------------- | --------------- | ------- | ------- | ------------------------------------ | ---------------------- |
-| Designsystem                  | hoch            | mittel  | niedrig | –                                    | **6.1 (zuerst)**       |
-| Navigation/Responsive         | hoch            | mittel  | niedrig | Designsystem                         | **6.2**                |
-| Login/Registrierung           | hoch            | mittel  | mittel  | Spielerkonto                         | **6.3**                |
-| Quizverwaltung/Editor         | mittel          | mittel  | mittel  | R-3-Entscheidung                     | **6.4**                |
-| Admin/Host                    | mittel          | mittel  | niedrig | Designsystem                         | **6.5**                |
-| Spielerprofile                | hoch            | mittel  | mittel  | Spielerkonto                         | **6.6**                |
-| Charakter-/Avatar-System      | **sehr hoch**   | hoch    | mittel  | **Charakter-Assets**                 | **6.7**                |
-| Inventar/Belohnungen/XP       | hoch            | mittel  | mittel  | Profile, Anti-Manipulation           | **6.8**                |
-| Beamer/Game-Show              | hoch            | hoch    | mittel  | Beamer-Grafiken                      | **6.9**                |
-| Hintergrundbilder             | mittel          | niedrig | niedrig | **Bilder (Projektverantwortlicher)** | **6.10**               |
-| Sound/Musik                   | mittel          | mittel  | niedrig | **Audio (Projektverantwortlicher)**  | **6.11**               |
-| Statistiken/Ranglisten global | mittel          | mittel  | mittel  | Aggregation                          | **6.12**               |
-| Team-Modus                    | hoch            | mittel  | mittel  | `team`-Feld                          | 6.12                   |
-| Finalrunde                    | hoch            | mittel  | mittel  | Show + Motor                         | 6.12                   |
-| Turnier/K.-o.                 | mittel          | hoch    | hoch    | Finalrunde                           | später                 |
-| Einzelspieler                 | mittel          | hoch    | hoch    | neue Maschine                        | später                 |
+| Funktion                      | Spielermehrwert | Aufwand | Risiko   | Abhängigkeit                           | Entwicklungs-Priorität |
+| ----------------------------- | --------------- | ------- | -------- | -------------------------------------- | ---------------------- |
+| Designsystem                  | hoch            | mittel  | niedrig  | –                                      | **6.1 (zuerst)**       |
+| Navigation/Responsive         | hoch            | mittel  | niedrig  | Designsystem                           | **6.2**                |
+| Login/Registrierung           | hoch            | mittel  | mittel   | Spielerkonto, Rolle `PLAYER`           | **6.3**                |
+| Quizverwaltung/Editor         | mittel          | mittel  | mittel   | Quiz-Snapshot (§8.7)                   | **6.4**                |
+| Admin/Host                    | mittel          | mittel  | niedrig  | Designsystem                           | **6.5**                |
+| Spielerprofile                | hoch            | mittel  | mittel   | Spielerkonto                           | **6.6**                |
+| Charakter-/Avatar-System      | **sehr hoch**   | hoch    | mittel   | **Charakter-Assets**, Katalog          | **6.7**                |
+| Inventar/Belohnungen/XP/Level | hoch            | mittel  | mittel   | Profile, Anti-Manipulation, Levelkurve | **6.8**                |
+| Gastkonto-Übernahme           | hoch            | mittel  | **hoch** | Spielerkonto, XP-Ledger, Nachweis      | **6.8**                |
+| Beamer/Game-Show              | hoch            | hoch    | mittel   | Beamer-Grafiken                        | **6.9**                |
+| Hintergrundbilder/-auswahl    | mittel          | niedrig | niedrig  | **Bilder (Projektverantwortlicher)**   | **6.10**               |
+| Sound/Musik                   | mittel          | mittel  | niedrig  | **Audio (Projektverantwortlicher)**    | **6.11**               |
+| Statistiken/Ranglisten global | mittel          | mittel  | mittel   | Aggregation                            | **6.12**               |
+| Team-Modus                    | hoch            | mittel  | mittel   | `team`-Feld                            | 6.12                   |
+| Finalrunde                    | hoch            | mittel  | mittel   | Show + Motor                           | 6.12                   |
+| Turnier/K.-o.                 | mittel          | hoch    | hoch     | Finalrunde                             | später                 |
+| Einzelspieler                 | mittel          | hoch    | hoch     | neue Maschine                          | später                 |
 
 **Regel:** Grundlegende Systeme zuerst. Keine Show ohne Charaktere; keine Charaktere ohne Assets.
+Die **Gastkonto-Übernahme** hat ein **hohes** Risiko (Doppelgutschrift, Fremdübernahme) und hängt am
+XP-Ledger; sie wird daher zusammen mit XP/Level in **6.8** umgesetzt, nicht vorher.
 
 ---
 
-## 16. Offene Fragen (Spiel)
+## 16. Verbindliche Entscheidungen und offene Fragen (Spiel)
 
-1. **XP-Werte, Levelschwellen, Erfolge** (§5, §6): genehmigen oder anpassen?
-2. **Katalog in `shared` oder in der Datenbank** (§7.2)?
-3. **Rolle `PLAYER`** einführen (Enum-Erweiterung, Migration)?
-4. **R-3** (Historieverlust beim Quiz-Bearbeiten): Quiz-Snapshot je Spiel einführen?
-5. **R-4/R-5** (Zustandswiederherstellung, Reconnect): umsetzen?
-6. **Pause/Überspringen** (§8.5, §8.6): gewünscht?
-7. **Clock-Sync** (§12.3): einführen?
-8. **Redis-Adapter oder bewusst eine Instanz** (§12.4)?
-9. **Spielmodi-Priorisierung** (§9): bestätigen?
-10. **IP-Speicherung** (Q5): endgültig ausschließen?
+### 16.1 Verbindlich (Phase 5c, 2026-11-04)
 
-> **Entfallen:** „Beamer als eigene Route mit Show-Token" – die kombinierte Host-/Beamer-Ansicht
-> bleibt verbindlich (§10.1).
+| Thema                 | Entscheidung                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| Spielerregistrierung  | **Freiwillig**; Angebot beim Beitritt **und** nach Spielende; Gastzugang ohne Konto bleibt        |
+| Kontoanforderungen    | E-Mail + Passwort + **E-Mail-Bestätigung** + Anzeigename                                          |
+| Rolle `PLAYER`        | Wird in die Planung aufgenommen; **keine** Admin-/Trainerrechte                                   |
+| Gastkonto-Übernahme   | **Verbindlich** für die **gerade abgeschlossene** Runde; einmalig, serverseitig, mit Nachweis     |
+| XP-Berechnung         | **XP = im Quiz erreichte Spielpunkte**; keine zweite XP-Formel                                    |
+| Platzierungsbonus     | 1./2./3. Platz = 1.500/1.000/500 XP; **nicht** in die Spielwertung eingerechnet; Gleichstand fair |
+| Levelkurve            | Level 1 = 0 XP; L1→L10 je 10.000; ab L10→L11 +11.000, danach je +1.000                            |
+| Levelbelohnung        | **Jeder Levelaufstieg** schaltet einen Gegenstand frei; rein kosmetisch                           |
+| Gegenstände           | **Charakterexklusiv**; sichtbar am Avatar tragbar; zentraler, versionierter Katalog               |
+| Persönliche Statistik | Eigener Fortschritt sichtbar; **Quizhistorie nur Administratoren**                                |
+| Quizhistorie          | **Unveränderlicher Quiz-Snapshot** je Spiel (§8.7)                                                |
+| Hintergrundauswahl    | **Standard Zufall**; genau einmal je Runde; Host kann vorab wählen                                |
+| Sprache               | **Deutsch** standardmäßig, Englisch auswählbar; zentrale Übersetzungsarchitektur                  |
+| Quizfragen            | **Keine** automatische Übersetzung oder Veränderung                                               |
+| Host                  | Spielleiter, **kein** Mitspieler                                                                  |
+| Host/Beamer           | **Bestehende kombinierte Ansicht** bleibt; keine eigene Beamer-Anwendung                          |
+| Spielaudio            | **Ausschließlich** Host-/Beamer-Ansicht                                                           |
+| QR-Code               | Spielcode **und** QR-Code in der Lobby                                                            |
+| Wiederverbindung      | Für Gäste **und** registrierte Spieler                                                            |
+| Redis                 | Zum Start **nicht** erforderlich                                                                  |
+| Self-Hosting          | Schlanke Einzelinstanz                                                                            |
+| Monitoring            | **Keine** zusätzliche Infrastruktur                                                               |
+| Backups               | **Keine** neue Backup-Architektur im Projektumfang                                                |
+| Performance           | **25 Spieler + Host** als reguläres Ziel; Belastungstest ~**35 Spieler + Host**                   |
+
+### 16.2 Offene Fragen (nicht beschlossen)
+
+1. **Katalog in `shared` oder in der Datenbank** (§7.2)?
+2. **Endgültige Belohnungsmatrix** und Gegenstandszuordnung (§6.6)?
+3. **Erfolgsnamen und -bedingungen** (§6.3): bestätigen?
+4. **R-4/R-5** (Zustandswiederherstellung, Reconnect): umsetzen?
+5. **Pause/Überspringen** (§8.5, §8.6): gewünscht?
+6. **Clock-Sync** (§12.3): einführen?
+7. **Spielmodi-Priorisierung** (§9): bestätigen?
+8. **IP-Speicherung** (Q5): endgültig ausschließen?
+9. **Levelbezeichnungen** ab Level 7 („Legende Stufe n"): bestätigen?
+
+> **Entfallen:** „Beamer als eigene Route mit Show-Token" (§10.1) und die früheren XP-Vorschläge
+> (§5.2/§5.3) – beide durch verbindliche Entscheidungen ersetzt.

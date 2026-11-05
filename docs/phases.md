@@ -15,6 +15,24 @@ work pauses for explicit approval before the next phase begins.
 | 7     | Users & reports    | Roles, sessions, reports, statistics, CSV/Excel export                       |
 | 8     | Tests & deployment | Unit/integration/socket/E2E/load tests, security audit, production prep      |
 
+## Concept and planning phases (current status)
+
+The concept work runs alongside the delivery phases above and is **not** an implementation phase.
+Nothing is implemented until the project owner approves it.
+
+| Phase | Scope                      | Status                                                                         |
+| ----- | -------------------------- | ------------------------------------------------------------------------------ |
+| 1     | Technical inventory        | Done – `docs/analysis/phase-1-technical-inventory.md`                          |
+| 2     | Product and design concept | Done – `docs/concept/design-concept.md`, `docs/concept/game-design-concept.md` |
+| 3     | Technical roadmap          | Done – `docs/roadmap/technical-roadmap.md`                                     |
+| 4     | Asset briefing             | Done – `docs/assets/ASSET-BRIEFING.md`                                         |
+| 5     | Concept report (approval)  | Done – `docs/reports/phase-5-concept-report.md`                                |
+| 5b    | Revision and first works   | Done (merged, PR #16) – `docs/reports/phase-5b-revision-and-first-works.md`    |
+| 5c    | Binding product decisions  | Done (this change) – `docs/reports/phase-5c-product-decisions.md`              |
+| 6.1–  | Implementation             | **Not started. Requires explicit approval by the project owner.**              |
+
+See `docs/concept/README.md` for the reading order.
+
 ## Phase 0 – definition of done
 
 - Repository structure created and documented.
