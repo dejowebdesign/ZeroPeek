@@ -19,6 +19,7 @@ import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
 import { questionResult, solutionText } from '../questionView.js';
+import { leaderboardRow, podiumPlace, questionDisplayOptions } from '../showView.js';
 import {
   brand,
   button,
@@ -75,6 +76,8 @@ let me: MeResponse['user'] = null;
 let timerHandle: number | null = null;
 /** The node showing the running answer count, while a question is open. */
 let answerCountNode: HTMLElement | null = null;
+/** Players seen in the lobby, used to seed the answer count before the first answer. */
+let lobbyPlayerCount = 0;
 
 /** Stop the countdown timer, if running. */
 function stopTimer(): void {
@@ -349,6 +352,7 @@ async function showHome(): Promise<void> {
 function showLobby(game: HostGame, initialPlayers: PublicPlayer[] = []): void {
   const players = el('ul', { class: 'lobby__players' });
   const paint = (list: PublicPlayer[]): void => {
+    lobbyPlayerCount = list.length;
     players.replaceChildren(
       ...list.map((player) =>
         el('li', { class: 'lobby__player' }, el('span', null, player.nickname)),
@@ -398,7 +402,13 @@ function showLobby(game: HostGame, initialPlayers: PublicPlayer[] = []): void {
 /** The beamer question screen with a live timer and a running answer count. */
 function showQuestion(game: HostGame, question: PublicQuestion): void {
   const timer = countdown(question.timeLimit, 1);
-  const count = el('p', { class: 'muted' }, '0 answers');
+  const count = el('p', { class: 'show__answers muted' }, '0 answers');
+  answerCountNode = count;
+  // The server only emits `host:answers` on the first answer, so seed the total
+  // from the lobby size to keep the wording stable before anyone answers.
+  if (lobbyPlayerCount) count.textContent = `0 / ${lobbyPlayerCount} answers`;
+
+  const options = questionDisplayOptions(question);
 
   render(
     app,
@@ -407,7 +417,7 @@ function showQuestion(game: HostGame, question: PublicQuestion): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: 'card question anim-fade-in' },
+        { class: 'show__board card question anim-fade-in' },
         el(
           'div',
           { class: 'question__meta muted' },
@@ -416,9 +426,23 @@ function showQuestion(game: HostGame, question: PublicQuestion): void {
         el('h2', { class: 'question__prompt' }, question.text),
         timer,
         count,
+        options.length
+          ? el(
+              'div',
+              { class: 'show__options' },
+              ...options.map((label, index) =>
+                el(
+                  'div',
+                  { class: 'show__option' },
+                  el('span', { class: 'option__key' }, String(index + 1)),
+                  el('span', { class: 'show__option-label' }, label),
+                ),
+              ),
+            )
+          : null,
         el(
           'div',
-          { class: 'lobby__actions' },
+          { class: 'show__controls' },
           button('Reveal', {
             variant: 'primary',
             onClick: async () => {
@@ -444,6 +468,7 @@ function showReveal(
   distribution: Record<string, number>,
 ): void {
   stopTimer();
+  answerCountNode = null;
   render(
     app,
     el(
@@ -451,7 +476,7 @@ function showReveal(
       { class: 'centered show' },
       el(
         'div',
-        { class: 'card question anim-fade-in' },
+        { class: 'show__board card question anim-fade-in' },
         questionResult(
           { text: question.text, type: question.type, display: questionDisplay(question) },
           distribution,
@@ -459,7 +484,7 @@ function showReveal(
         ),
         el(
           'div',
-          { class: 'lobby__actions' },
+          { class: 'show__controls' },
           button('Leaderboard', {
             variant: 'primary',
             onClick: async () => {
@@ -479,6 +504,7 @@ function showReveal(
 /** The leaderboard screen. */
 function showBoard(game: HostGame, players: PublicPlayer[]): void {
   stopTimer();
+  answerCountNode = null;
   render(
     app,
     el(
@@ -486,25 +512,13 @@ function showBoard(game: HostGame, players: PublicPlayer[]): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: 'card anim-fade-in' },
-        el('h2', null, 'Leaderboard'),
-        el('p', { class: 'lobby__actions' }, chip(`${players.length} player(s)`, 'cyan')),
-        el(
-          'ol',
-          { class: 'leaderboard' },
-          ...players.map((player, index) =>
-            el(
-              'li',
-              { class: 'leaderboard__row' },
-              el('span', { class: 'leaderboard__rank' }, String(index + 1)),
-              el('span', { class: 'leaderboard__name' }, player.nickname),
-              el('span', { class: 'leaderboard__score' }, String(player.score)),
-            ),
-          ),
-        ),
+        { class: 'show__board card anim-fade-in' },
+        el('h2', { class: 'show__title' }, 'Leaderboard'),
+        el('p', { class: 'show__meta' }, chip(`${players.length} player(s)`, 'cyan')),
+        el('ol', { class: 'leaderboard leaderboard--show' }, ...players.map(leaderboardRow)),
         el(
           'div',
-          { class: 'lobby__actions' },
+          { class: 'show__controls' },
           button('Next question', {
             variant: 'primary',
             onClick: async () => {
@@ -536,9 +550,12 @@ function showBoard(game: HostGame, players: PublicPlayer[]): void {
   );
 }
 
-/** The final podium. */
+/** The final results: a podium for the top three plus the full ranking. */
 function showPodium(game: HostGame, players: PublicPlayer[]): void {
   stopTimer();
+  answerCountNode = null;
+  const [first, second, third, ...rest] = players;
+
   render(
     app,
     el(
@@ -546,24 +563,26 @@ function showPodium(game: HostGame, players: PublicPlayer[]): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: 'card anim-pop' },
-        el('h2', null, 'Final results'),
+        { class: 'show__board card anim-pop' },
+        el('h2', { class: 'show__title' }, 'Final results'),
+        first ? el('p', { class: 'show__winner' }, `Winner: ${first.nickname}`) : null,
         el(
           'ol',
-          { class: 'leaderboard' },
-          ...players.map((player, index) =>
-            el(
-              'li',
-              { class: 'leaderboard__row' },
-              el('span', { class: 'leaderboard__rank' }, String(index + 1)),
-              el('span', { class: 'leaderboard__name' }, player.nickname),
-              el('span', { class: 'leaderboard__score' }, String(player.score)),
-            ),
-          ),
+          { class: 'podium' },
+          second ? podiumPlace(second, 2) : null,
+          first ? podiumPlace(first, 1) : null,
+          third ? podiumPlace(third, 3) : null,
         ),
+        rest.length
+          ? el(
+              'ol',
+              { class: 'leaderboard leaderboard--show' },
+              ...rest.map((player, index) => leaderboardRow(player, index + 3)),
+            )
+          : null,
         el(
           'div',
-          { class: 'lobby__actions' },
+          { class: 'show__controls' },
           button('Back to home', { variant: 'primary', onClick: () => void showHome() }),
         ),
       ),

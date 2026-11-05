@@ -149,6 +149,22 @@ describe('design-system components', () => {
     'anim-pop',
     'anim-shake',
     'show',
+    // Beamer surface (Phase 6.1 fine-tuning).
+    'show__board',
+    'show__title',
+    'show__meta',
+    'show__answers',
+    'show__options',
+    'show__option',
+    'show__option-label',
+    'show__controls',
+    'show__winner',
+    'leaderboard--show',
+    'podium',
+    'podium__place',
+    'podium__rank',
+    'podium__name',
+    'podium__score',
   ];
 
   for (const name of classes) {
@@ -156,6 +172,42 @@ describe('design-system components', () => {
       expect(tokens).toContain(`.${name}`);
     });
   }
+});
+
+describe('beamer surface (Phase 6.1 fine-tuning)', () => {
+  it('scales the prompt and answers with the show type tokens', () => {
+    const block = tokens.slice(tokens.indexOf('.show .question__prompt'));
+    expect(block).toContain('var(--type-show-question)');
+    expect(tokens).toContain('var(--type-show-answer)');
+    expect(tokens).toContain('var(--type-show-score)');
+    expect(tokens).toContain('var(--type-show-name)');
+    expect(tokens).toContain('var(--type-show-rank)');
+  });
+
+  it('lays the answers out as a two-column board that stacks on small screens', () => {
+    const options = tokens.slice(tokens.indexOf('.show__options'));
+    expect(options).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(tokens).toMatch(
+      /@media \(max-width: 640px\) \{\s*\.show__options \{\s*grid-template-columns: 1fr;/,
+    );
+  });
+
+  it('draws the podium accents from existing tokens', () => {
+    const podium = tokens.slice(tokens.indexOf('.podium__place--1'));
+    expect(podium).toContain('var(--rarity-legendary)');
+    expect(podium).toContain('var(--brand-silver)');
+    expect(podium).toContain('var(--podium-bronze)');
+  });
+
+  it('keeps the countdown a borderless gradient ring, not an image', () => {
+    const countdown = tokens.slice(
+      tokens.indexOf('.countdown {'),
+      tokens.indexOf('.countdown__value'),
+    );
+    expect(countdown).toContain('conic-gradient');
+    expect(countdown).toContain('var(--progress)');
+    expect(countdown).not.toContain('url(');
+  });
 });
 
 describe('fallbacks and accessibility', () => {

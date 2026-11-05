@@ -132,9 +132,15 @@
   --type-help: 0.75rem;
   --type-number: 1.6rem;
   --type-score: clamp(2rem, 5vw, 3rem);
-  --type-countdown: clamp(2.5rem, 10vw, 6rem);
-  --type-show-question: clamp(1.75rem, 3.5vw, 3.25rem);
-  --type-show-answer: clamp(1.25rem, 2vw, 2rem);
+  --type-countdown: clamp(2.25rem, 7vmin, 4rem);
+  /* Show type mixes vw and vh so a short projector (720p) shrinks the board
+     instead of pushing the controls below the fold. */
+  --type-show-question: clamp(1.6rem, 2.4vw + 1.4vh, 3.4rem);
+  --type-show-answer: clamp(1.05rem, 1.1vw + 0.8vh, 2rem);
+  --type-show-meta: clamp(0.8rem, 0.7vw + 0.5vh, 1.05rem);
+  --type-show-score: clamp(1.25rem, 1.3vw + 0.9vh, 2.4rem);
+  --type-show-rank: clamp(1.05rem, 1.1vw + 0.7vh, 1.95rem);
+  --type-show-name: clamp(0.95rem, 0.9vw + 0.6vh, 1.7rem);
   --weight-page: 750;
   --weight-section: 700;
   --weight-card: 650;
@@ -142,6 +148,16 @@
   --weight-score: 800;
   --leading-tight: 1.15;
   --leading-body: 1.5;
+
+  /* Presentation (beamer) geometry. The show surface sizes itself from the
+     viewport so it fills a projector without overflowing a small window. */
+  --show-measure: min(94vw, 1500px);
+  --show-gap: clamp(var(--space-2), 0.6vw + 0.6vh, var(--space-5));
+  --show-pad: clamp(var(--space-3), 0.8vw + 0.9vh, var(--space-6));
+
+  /* Podium accents. Gold reuses the legendary rarity colour; silver reuses the
+     brand silver; bronze is the one value with no existing token. */
+  --podium-bronze: #c98b5e;
 
   /* Motion library (concept §7.2). The set is closed: a new animation either
      reuses one of these or is added here with a reason. */
@@ -1237,40 +1253,66 @@ body::before {
 /* ---------- countdown ---------- */
 
 /**
- * The countdown reads as a wireframe instrument: a large tabular number inside a
- * thin ring. The ring is a conic gradient driven by the `--progress` custom
- * property, so the animation is a single custom-property update and never
- * touches layout.
+ * The countdown reads as a wireframe instrument: a tabular number inside a
+ * thin, technical ring. Three layers, all drawn with gradients, so there is no
+ * image and no per-frame layout work:
+ *
+ *   ::before  the open ring track and its progress arc (conic gradient on
+ *             `--progress`, the property `startTimer` already updates)
+ *   ::after   a faint static tick ring, for the wireframe instrument look
+ *   the number itself, on a light glass disc so it stays readable
  */
 .countdown {
   --progress: 1;
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(120px, 22vmin, 200px);
+  width: clamp(96px, 17vmin, 168px);
   aspect-ratio: 1;
-  border-radius: 50%;
-  background: conic-gradient(
-      from -90deg,
-      var(--accent-2) calc(var(--progress) * 360deg),
-      var(--glass-input) 0
-    )
-    border-box;
-  border: 6px solid transparent;
 }
 
+/* The ring: a 3px arc, leaving most of the circle open like a dial. */
 .countdown::before {
   content: '';
   position: absolute;
-  inset: 6px;
+  inset: 0;
   border-radius: 50%;
-  background: var(--glass-card);
-  backdrop-filter: blur(var(--blur-card));
-  -webkit-backdrop-filter: blur(var(--blur-card));
+  background: conic-gradient(
+    from -90deg,
+    var(--accent-2) calc(var(--progress) * 360deg),
+    rgba(34, 211, 238, 0.12) 0
+  );
+  -webkit-mask: radial-gradient(closest-side, transparent 87%, #000 88%);
+  mask: radial-gradient(closest-side, transparent 87%, #000 88%);
+  filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.35));
+}
+
+/* The tick ring: 12 faint radial marks, a static technical detail. */
+.countdown::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 255, 255, 0.16) 0deg 0.6deg,
+    transparent 0.6deg 30deg
+  );
+  -webkit-mask: radial-gradient(closest-side, transparent 80%, #000 81%);
+  mask: radial-gradient(closest-side, transparent 80%, #000 81%);
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 .countdown__value {
   position: relative;
+  display: grid;
+  place-items: center;
+  width: 72%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--glass-input);
+  border: var(--hairline) solid var(--border);
   font-size: var(--type-countdown);
   font-weight: var(--weight-score);
   line-height: 1;
@@ -1447,31 +1489,244 @@ body::before {
 /* ---------- beamer / show surface (concept §9.5) ---------- */
 
 /**
- * The host page doubles as the beamer, so the presentation uses a dedicated
- * scale rather than the normal breakpoints: everything on the show surface is
- * sized with `clamp` + `vmin` so it stays readable from a distance and on 4:3
- * projectors. `--show-scale` is the single knob.
+ * The host page doubles as the beamer. `.show` is the presentation surface: it
+ * sizes itself from the viewport (`--show-measure`, `--show-gap`) and scales its
+ * type through the `--type-show-*` tokens, so it fills a projector and stays
+ * readable from a distance without overflowing a small window. The host
+ * controls inside `.show__controls` keep their normal button size.
  */
 .show {
-  --show-scale: clamp(1rem, 1.1vmin + 0.7rem, 1.5rem);
   display: grid;
-  gap: var(--space-5);
+  gap: var(--show-gap);
   width: 100%;
+  max-width: var(--show-measure);
   text-align: center;
 }
 
+/* The presentation surface keeps a tighter frame than a content page, and it
+   stretches to fill it, so the board (not empty margin) owns the projector. */
+.centered.show {
+  justify-items: stretch;
+  padding: clamp(var(--space-2), 1.4vw, var(--space-4));
+}
+
+.show__board {
+  display: grid;
+  justify-items: center;
+  gap: var(--show-gap);
+  width: 100%;
+  max-width: min(100%, 1200px);
+  padding: var(--show-pad) var(--show-pad);
+}
+
+.show__title {
+  margin: 0;
+  font-size: var(--type-show-answer);
+  font-weight: var(--weight-section);
+  letter-spacing: 0.01em;
+}
+
+.show__meta,
+.show__answers {
+  margin: 0;
+  font-size: var(--type-show-meta);
+}
+
+.show .question__meta {
+  font-size: var(--type-show-meta);
+}
+
 .show .question__prompt {
+  margin: 0;
+  max-width: 46ch;
   font-size: var(--type-show-question);
   font-weight: var(--weight-section);
   line-height: var(--leading-tight);
+  text-wrap: balance;
 }
 
-.show .option {
+.show .question__solution {
+  margin: 0;
   font-size: var(--type-show-answer);
 }
 
-.show .question__timer {
-  font-size: var(--type-countdown);
+.show .question__result {
+  width: 100%;
+}
+
+.show .bar__head {
+  font-size: var(--type-show-meta);
+}
+
+.show .bar__track {
+  height: clamp(14px, 1.4vw, 26px);
+}
+
+/* Answers: a two-column grid reads as a 2x2 board on a projector and stacks on
+   a narrow window. Two columns for any option count keeps the rhythm even. */
+.show__options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--show-gap);
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .show__options {
+    grid-template-columns: 1fr;
+  }
+}
+
+.show__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  text-align: left;
+  padding: clamp(var(--space-3), 1vw, var(--space-5)) clamp(var(--space-4), 1.4vw, var(--space-5));
+  border-radius: var(--radius);
+  background: var(--glass-raised);
+  border: var(--hairline) solid var(--border-strong);
+  box-shadow: var(--shadow-btn);
+  font-size: var(--type-show-answer);
+  font-weight: 600;
+}
+
+.show__option-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.show .option__key {
+  width: clamp(32px, 3vw, 44px);
+  height: clamp(32px, 3vw, 44px);
+  border-radius: 10px;
+  font-size: var(--type-show-meta);
+}
+
+/* Host controls keep the standard button size; they only wrap and centre. */
+.show__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: center;
+  margin-top: var(--space-2);
+}
+
+/* Leaderboard on the beamer: roomier rows and larger type. */
+.leaderboard--show {
+  width: 100%;
+  margin: 0;
+}
+
+.leaderboard--show .leaderboard__row {
+  grid-template-columns: clamp(2.2rem, 3.4vw, 3.6rem) 1fr auto;
+  gap: var(--show-gap);
+  margin-bottom: var(--space-1);
+  padding: clamp(var(--space-1), 0.5vw + 0.5vh, var(--space-4))
+    clamp(var(--space-3), 1vw, var(--space-5));
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius);
+}
+
+.leaderboard--show .leaderboard__rank {
+  font-size: var(--type-show-rank);
+  color: var(--accent-2);
+}
+
+.leaderboard--show .leaderboard__name {
+  font-size: var(--type-show-name);
+  font-weight: var(--weight-card);
+  overflow-wrap: anywhere;
+}
+
+.leaderboard--show .leaderboard__score {
+  font-size: var(--type-show-score);
+  font-weight: var(--weight-score);
+}
+
+/* Final results: a three-step podium, first place tallest and gold. */
+.show__winner {
+  margin: 0;
+  font-size: var(--type-show-score);
+  font-weight: var(--weight-score);
+  color: var(--rarity-legendary);
+  letter-spacing: -0.01em;
+}
+
+.podium {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--show-gap);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.podium__place {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: clamp(var(--space-3), 1.2vw, var(--space-5)) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--glass-raised);
+  border: var(--hairline) solid var(--border-strong);
+  border-top-width: 3px;
+}
+
+.podium__place--1 {
+  min-height: clamp(96px, 7vw + 5vh, 190px);
+  border-top-color: var(--rarity-legendary);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--rarity-legendary) 35%, transparent),
+    0 24px 60px -28px rgba(251, 191, 36, 0.5);
+}
+
+.podium__place--2 {
+  min-height: clamp(84px, 6vw + 4vh, 160px);
+  border-top-color: var(--brand-silver);
+}
+
+.podium__place--3 {
+  min-height: clamp(74px, 5vw + 3.5vh, 142px);
+  border-top-color: var(--podium-bronze);
+}
+
+.podium__rank {
+  font-size: var(--type-show-rank);
+  font-weight: var(--weight-score);
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.podium__place--1 .podium__rank {
+  color: var(--rarity-legendary);
+}
+
+.podium__name {
+  font-size: var(--type-show-name);
+  font-weight: var(--weight-card);
+  overflow-wrap: anywhere;
+}
+
+.podium__score {
+  font-size: var(--type-show-score);
+  font-weight: var(--weight-score);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Narrow windows: the podium stacks and first place stays on top. */
+@media (max-width: 640px) {
+  .podium {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .podium__place--1 {
+    order: -1;
+  }
 }
 
 /* ---------- tables become cards on small screens (concept §9.6) ---------- */
