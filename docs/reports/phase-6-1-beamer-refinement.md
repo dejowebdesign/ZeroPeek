@@ -375,8 +375,8 @@ repository root was changed.
 ## 8. Known limitations
 
 1. **Answer board is a fixed 2-column grid** for every option count. Four options give a clean
-   2×2; a question with 5–6 options will fill 2+2+1 / 2+2+2 rather than switching to a single
-   column. This is a deliberate choice, flagged as an open question below.
+   2×2. _Resolved:_ a question may now hold at most four options (see
+   `docs/reports/fix-host-player-layout-regression.md`), so the board is always a clean 2×2.
 2. **The podium stacks on phone-width viewports** (390×844) instead of showing three side-by-side
    steps. This is intended — the podium is a beamer surface — but it means the phone layout of the
    host page shows a list-like podium.
@@ -391,8 +391,9 @@ repository root was changed.
 
 ## 9. Open questions for the owner
 
-1. Is the 2-column answer board the right call for 5–6 option questions, or should it fall back to
-   a single column above four options?
+1. ~~Is the 2-column answer board the right call for 5–6 option questions, or should it fall back
+   to a single column above four options?~~ _Resolved:_ questions are capped at four options, so the
+   2×2 board is always correct. See `docs/reports/fix-host-player-layout-regression.md`.
 2. Should the countdown ring be larger on the beamer, or is the current size right for a projector?
 3. Should the podium show avatars once the character system exists (Phase 6.7)?
 

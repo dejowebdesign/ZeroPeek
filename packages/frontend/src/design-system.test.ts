@@ -149,6 +149,8 @@ describe('design-system components', () => {
     'anim-pop',
     'anim-shake',
     'show',
+    // Player answer board (regression fix).
+    'question__input',
     // Beamer surface (Phase 6.1 fine-tuning).
     'show__board',
     'show__title',
@@ -207,6 +209,28 @@ describe('beamer surface (Phase 6.1 fine-tuning)', () => {
     expect(countdown).toContain('conic-gradient');
     expect(countdown).toContain('var(--progress)');
     expect(countdown).not.toContain('url(');
+  });
+});
+
+describe('host/player layout regression fix', () => {
+  it('centres the presentation surface in the viewport', () => {
+    // `justify-items` centres the section's children; `margin-inline: auto`
+    // centres the section itself inside `<main>`. Without both, the `max-width`
+    // on `.show` pins the whole beamer board to the left edge.
+    const block = tokens.slice(tokens.indexOf('.centered.show'), tokens.indexOf('.show__board'));
+    expect(block).toContain('justify-items: center');
+    expect(block).toContain('margin-inline: auto');
+  });
+
+  it('lays the player answer buttons out as a two-column board', () => {
+    // Scoped with `:has()` so only option-based question types get the grid;
+    // text, slider, order, scale and idea inputs keep their own layout.
+    const block = tokens.slice(tokens.indexOf('.question__input:has(> .option)'));
+    expect(block).toContain('display: grid');
+    expect(block).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(tokens).toMatch(
+      /@media \(max-width: 640px\) \{\s*\.question__input:has\(> \.option\) \{\s*grid-template-columns: 1fr;/,
+    );
   });
 });
 

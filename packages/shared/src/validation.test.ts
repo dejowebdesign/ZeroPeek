@@ -163,6 +163,54 @@ describe('validateQuestion', () => {
     expect(validateQuestion(broken).map((i) => i.path)).toContain('question.options');
   });
 
+  it('accepts a question with exactly four options', () => {
+    const question: Question = {
+      ...VALID_EXAMPLES.single,
+      options: ['A', 'B', 'C', 'D'],
+      correctIndex: 3,
+    } as Question;
+    expect(validateQuestion(question)).toEqual([]);
+  });
+
+  it('rejects a question with more than four options', () => {
+    for (const type of ['single', 'multiple', 'poll'] as const) {
+      const broken: Question = {
+        ...VALID_EXAMPLES[type],
+        options: ['A', 'B', 'C', 'D', 'E'],
+      } as Question;
+      expect(
+        validateQuestion(broken).map((i) => i.path),
+        type,
+      ).toContain('question.options');
+    }
+  });
+
+  it('rejects an imported quiz whose question has five options', () => {
+    const quiz: Quiz = {
+      id: 'q',
+      title: 'Imported',
+      description: '',
+      theme: 'standard',
+      defaultTimeLimit: 20,
+      questions: [
+        {
+          ...VALID_EXAMPLES.single,
+          options: ['A', 'B', 'C', 'D', 'E'],
+        } as Question,
+      ],
+    };
+    expect(validateQuiz(quiz).ok).toBe(false);
+  });
+
+  it('names the four-option ceiling in the message', () => {
+    const broken: Question = {
+      ...VALID_EXAMPLES.poll,
+      options: ['A', 'B', 'C', 'D', 'E'],
+    } as Question;
+    const message = validateQuestion(broken).find((i) => i.path === 'question.options')?.message;
+    expect(message).toContain('4');
+  });
+
   it('rejects a multiple-choice question where every option is correct', () => {
     const broken: Question = {
       ...VALID_EXAMPLES.multiple,
