@@ -28,8 +28,9 @@ Nothing is implemented until the project owner approves it.
 | 4     | Asset briefing             | Done – `docs/assets/ASSET-BRIEFING.md`                                         |
 | 5     | Concept report (approval)  | Done – `docs/reports/phase-5-concept-report.md`                                |
 | 5b    | Revision and first works   | Done (merged, PR #16) – `docs/reports/phase-5b-revision-and-first-works.md`    |
-| 5c    | Binding product decisions  | Done (this change) – `docs/reports/phase-5c-product-decisions.md`              |
-| 6.1–  | Implementation             | **Not started. Requires explicit approval by the project owner.**              |
+| 5c    | Binding product decisions  | Done (PR #17) – `docs/reports/phase-5c-product-decisions.md`                   |
+| 6.1   | Design system              | Done (this change) – `docs/design/design-system.md`                            |
+| 6.2–  | Implementation             | **Not started. Requires explicit approval by the project owner.**              |
 
 See `docs/concept/README.md` for the reading order.
 

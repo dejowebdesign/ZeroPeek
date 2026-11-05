@@ -12,7 +12,7 @@ import type { OwnResult, PublicPlayer, PublicQuestion } from '@zeropeek/shared';
 import { el, render } from '../dom.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { questionInput, questionPrompt } from '../questionView.js';
-import { brand, button, errorText, field, notice, spinner } from '../ui.js';
+import { brand, button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
 
 const STORAGE_KEY = 'zeropeek.player';
 
@@ -67,7 +67,7 @@ const app: HTMLElement = appElement;
       variant: 'primary',
       onClick: async () => {
         feedback.replaceChildren();
-        submit.disabled = true;
+        setBusy(submit, true);
         try {
           const result = await request<{ playerId: string; gameId: string; token: string }>(
             socket,
@@ -79,7 +79,7 @@ const app: HTMLElement = appElement;
         } catch (error) {
           feedback.replaceChildren(notice(errorText(error), 'error'));
         } finally {
-          submit.disabled = false;
+          setBusy(submit, false);
         }
       },
     });
@@ -127,7 +127,11 @@ const app: HTMLElement = appElement;
           el('h1', { class: 'join__title' }, `You're in, ${session?.nickname ?? 'player'}!`),
           el('p', { class: 'muted' }, 'Look at the big screen. The game starts soon.'),
           players.length
-            ? el('p', { class: 'muted' }, `${players.length} player(s) joined.`)
+            ? el(
+                'div',
+                { class: 'lobby__actions' },
+                chip(`${players.length} player(s) joined`, 'cyan'),
+              )
             : spinner('Waiting for the host…'),
         ),
       ),
@@ -186,6 +190,12 @@ const app: HTMLElement = appElement;
         : result.outcome === 'wrong'
           ? 'Wrong answer'
           : 'No answer';
+    const outcomeChip =
+      result.outcome === 'correct'
+        ? chip('Correct', 'ok', true)
+        : result.outcome === 'wrong'
+          ? chip('Wrong', 'bad', true)
+          : chip('No answer', 'muted', true);
     render(
       app,
       el(
@@ -193,9 +203,15 @@ const app: HTMLElement = appElement;
         { class: 'centered' },
         el(
           'div',
-          { class: 'card' },
+          { class: 'card anim-slide-up' },
           el('p', { class: `notice ${tone}` }, headline),
-          el('p', { class: 'muted' }, `Score: ${result.score} · Rank ${result.rank}`),
+          el(
+            'p',
+            { class: 'lobby__actions' },
+            outcomeChip,
+            chip(`Score ${result.score}`, 'accent'),
+            chip(`Rank ${result.rank}`, 'cyan'),
+          ),
           el(
             'p',
             { class: 'muted', style: { fontSize: '0.75rem' } },

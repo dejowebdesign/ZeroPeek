@@ -21,7 +21,17 @@ import { del, get, post, put, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
 import { questionForm, newQuestion } from '../questionForm.js';
 import { questionResult, solutionText } from '../questionView.js';
-import { button, errorText, field, pageHeader, toast } from '../ui.js';
+import {
+  button,
+  confirmDialog,
+  dialog,
+  emptyState,
+  errorText,
+  field,
+  pageHeader,
+  skeleton,
+  toast,
+} from '../ui.js';
 
 interface QuizSummary {
   id: string;
@@ -52,7 +62,10 @@ const app: HTMLElement = appElement;
   /** The quiz list screen. */
   async function showList(): Promise<void> {
     current = null;
-    render(app, el('p', { class: 'muted' }, 'Loading quizzes…'));
+    render(
+      app,
+      el('section', { class: 'wrap' }, skeleton('card'), skeleton('card'), skeleton('card')),
+    );
     try {
       const { quizzes } = await get<{ quizzes: QuizSummary[] }>('/api/quizzes');
       render(
@@ -65,7 +78,11 @@ const app: HTMLElement = appElement;
             button('Import', { onClick: () => void importQuiz() }),
           ]),
           quizzes.length === 0
-            ? el('p', { class: 'muted' }, 'No quizzes yet. Create your first one.')
+            ? emptyState(
+                'No quizzes yet',
+                'Create your first quiz or import one.',
+                button('New quiz', { variant: 'primary', onClick: () => void createQuiz() }),
+              )
             : el(
                 'ul',
                 { class: 'quiz-list' },
@@ -105,15 +122,23 @@ const app: HTMLElement = appElement;
                       }),
                       button('Delete', {
                         variant: 'danger',
-                        onClick: async () => {
-                          if (!confirm(`Delete "${quiz.title}"?`)) return;
-                          try {
-                            await del(`/api/quizzes/${quiz.id}`);
-                            toast('Quiz deleted.', 'success');
-                            await showList();
-                          } catch (error) {
-                            handleAuth(error);
-                          }
+                        onClick: () => {
+                          confirmDialog({
+                            title: 'Delete this quiz?',
+                            body: `"${quiz.title}" and its questions will be removed. Finished games keep their own record. This cannot be undone.`,
+                            confirmLabel: 'Delete quiz',
+                            onConfirm: () => {
+                              void (async () => {
+                                try {
+                                  await del(`/api/quizzes/${quiz.id}`);
+                                  toast('Quiz deleted.', 'success');
+                                  await showList();
+                                } catch (error) {
+                                  handleAuth(error);
+                                }
+                              })();
+                            },
+                          });
                         },
                       }),
                     ),
@@ -188,7 +213,7 @@ const app: HTMLElement = appElement;
         ...quiz.questions.map((question, index) =>
           el(
             'article',
-            { class: 'editor__question card' },
+            { class: 'editor__question card anim-fade-in' },
             el(
               'header',
               { class: 'editor__question-head' },
@@ -243,7 +268,7 @@ const app: HTMLElement = appElement;
         ),
       );
       if (quiz.questions.length === 0) {
-        list.append(el('p', { class: 'muted' }, 'No questions yet. Add one below.'));
+        list.append(emptyState('No questions yet', 'Add your first question below.'));
       }
     };
 
@@ -320,31 +345,21 @@ const app: HTMLElement = appElement;
 
   /** Show a preview of one question as the player would see it. */
   function previewQuestion(question: Question): void {
-    const dialog = el(
-      'div',
-      { class: 'overlay' },
-      el(
+    const label = QUESTION_TYPES[question.type as QuestionType]?.label ?? question.type;
+    const { close } = dialog({
+      title: 'Preview',
+      body: el(
         'div',
-        { class: 'card overlay__panel' },
-        el('h2', null, 'Preview'),
-        el(
-          'p',
-          { class: 'muted' },
-          QUESTION_TYPES[question.type as QuestionType]?.label ?? question.type,
-        ),
+        null,
+        el('p', { class: 'muted' }, label),
         questionResult(
           { text: question.text, type: question.type, display: questionDisplay(question) },
           {},
           solutionText(question),
         ),
-        el(
-          'div',
-          { class: 'overlay__actions' },
-          button('Close', { onClick: () => dialog.remove() }),
-        ),
       ),
-    );
-    document.body.append(dialog);
+      actions: [button('Close', { variant: 'ghost', onClick: () => close() })],
+    });
   }
 
   // Bootstrap the CSRF token before any write. The editor is its own page, so

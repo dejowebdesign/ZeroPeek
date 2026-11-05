@@ -14,7 +14,17 @@
 
 import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
-import { button, errorText, field, notice, pageHeader, toast } from '../ui.js';
+import {
+  button,
+  chip,
+  dialog,
+  errorText,
+  field,
+  notice,
+  pageHeader,
+  skeleton,
+  toast,
+} from '../ui.js';
 
 type UserRole = 'ADMIN' | 'TRAINER';
 
@@ -100,16 +110,22 @@ function row(user: User, list: HTMLElement): HTMLElement {
     null,
     el(
       'td',
-      null,
+      { 'data-label': 'User' },
       el('strong', null, user.username),
       isSelf ? el('span', { class: 'muted' }, ' (you)') : null,
       user.email ? el('div', { class: 'muted' }, user.email) : null,
     ),
-    el('td', null, roleSelect),
-    el('td', null, toggle),
     el(
       'td',
-      null,
+      { 'data-label': 'Role' },
+      roleSelect,
+      ' ',
+      chip(user.role === 'ADMIN' ? 'Admin' : 'Trainer', user.role === 'ADMIN' ? 'accent' : 'cyan'),
+    ),
+    el('td', { 'data-label': 'Disabled' }, toggle),
+    el(
+      'td',
+      { 'data-label': 'Password' },
       button('Reset password', {
         onClick: () => resetPassword(user, list),
       }),
@@ -130,35 +146,26 @@ async function mutate(action: () => Promise<void>, success: string): Promise<voi
 /** Ask for a new password in a modal and send it to the server. */
 function resetPassword(user: User, list: HTMLElement): void {
   const password = el('input', { class: 'input', type: 'password', autocomplete: 'new-password' });
-  const dialog = el(
-    'div',
-    { class: 'overlay' },
-    el(
-      'form',
-      {
-        class: 'card overlay__panel',
-        onsubmit: (event: Event) => {
-          event.preventDefault();
-          const value = password.value;
-          if (!value) return;
-          void mutate(async () => {
-            await post(`/api/admin/users/${user.id}/password`, { password: value });
-            dialog.remove();
-            await refresh(list);
-          }, `Password reset for ${user.username}.`);
-        },
-      },
-      el('h2', null, `Reset password for ${user.username}`),
-      field('New password', password),
-      el(
-        'div',
-        { class: 'overlay__actions' },
-        button('Cancel', { onClick: () => dialog.remove() }),
-        button('Save', { type: 'submit', variant: 'primary' }),
-      ),
-    ),
-  );
-  document.body.append(dialog);
+  const form = el('form', null, field('New password', password));
+  const submit = button('Save', {
+    variant: 'primary',
+    onClick: () => form.requestSubmit(),
+  });
+  const { close } = dialog({
+    title: `Reset password for ${user.username}`,
+    body: form,
+    actions: [button('Cancel', { variant: 'ghost', onClick: () => close() }), submit],
+  });
+  form.addEventListener('submit', (event: Event) => {
+    event.preventDefault();
+    const value = password.value;
+    if (!value) return;
+    void mutate(async () => {
+      await post(`/api/admin/users/${user.id}/password`, { password: value });
+      close();
+      await refresh(list);
+    }, `Password reset for ${user.username}.`);
+  });
   password.focus();
 }
 
@@ -242,6 +249,15 @@ async function showUsers(): Promise<void> {
     ),
   );
 
+  // Show placeholders while the first load is in flight, so the table never
+  // appears as an empty box.
+  list.replaceChildren(
+    el(
+      'tr',
+      null,
+      el('td', { colspan: '4' }, skeleton('text'), skeleton('text'), skeleton('text')),
+    ),
+  );
   await refresh(list);
 }
 

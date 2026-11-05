@@ -63,6 +63,101 @@
   --space-6: 2rem;
   --space-7: 3rem;
 
+  /* ---------------------------------------------------------------------------
+     Phase 6.1 – design-system extensions.
+
+     Everything below is *additive*. Every token above keeps its value, so the
+     existing surfaces cannot shift. The values follow the approved design
+     concept (`docs/concept/design-concept.md` §3–§7) and the Phase 5c product
+     decisions. The written reference is `docs/design/design-system.md`.
+     --------------------------------------------------------------------------- */
+
+  /* Brand accent ladder, measured from the supplied logo (Phase 5b). These sit
+     *beside* `--accent`/`--accent-2`; they never replace them. */
+  --brand-cyan: #15dbee;
+  --brand-violet: #7c3aed;
+  --brand-magenta: #de4ef1;
+  --brand-indigo: #5815bf;
+  --brand-silver: #e2e8f0;
+
+  /* Rarity accents (inventory, achievements, level rewards – later phases). */
+  --rarity-rare: #7c5cff;
+  --rarity-epic: #c084fc;
+  --rarity-legendary: #fbbf24;
+  --rarity-exclusive: #22d3ee;
+
+  /* Extra neutral surface: cards inside cards, alternating table rows. */
+  --bg-3: #14142a;
+
+  /* Glass tiers. Each pairs a fill with a blur radius; a tier is never used
+     without its partner value. */
+  --glass-card: rgba(255, 255, 255, 0.045);
+  --glass-raised: rgba(255, 255, 255, 0.075);
+  --glass-dialog: rgba(14, 14, 26, 0.92);
+  --glass-nav: rgba(10, 10, 20, 0.72);
+  --glass-input: rgba(255, 255, 255, 0.06);
+  --glass-overlay: rgba(4, 4, 10, 0.72);
+  --blur-card: 16px;
+  --blur-raised: 20px;
+  --blur-dialog: 24px;
+  --blur-nav: 18px;
+  --blur-input: 10px;
+  --blur-overlay: 6px;
+  /* Opaque replacement used wherever blur is unavailable or unwanted. */
+  --glass-fallback: #12121f;
+
+  /* Elevation tiers. `--shadow` above stays the standard card. */
+  --inset-light: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-raised: var(--inset-light), 0 24px 60px -24px rgba(0, 0, 0, 0.75);
+  --shadow-dialog: 0 30px 80px -30px rgba(0, 0, 0, 0.85);
+  --shadow-nav: 0 8px 30px -12px rgba(0, 0, 0, 0.6);
+  --shadow-btn: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 8px 18px -10px rgba(0, 0, 0, 0.8);
+
+  /* Focus ring, shared by every interactive element. */
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  /* Geometry. */
+  --radius-pill: 999px;
+  --hairline: 1px;
+  --tap: 44px;
+
+  /* Typographic roles (concept §5.2). Sizes are applied to the existing
+     classes rather than to parallel utility classes, so there is one source. */
+  --type-page: clamp(1.6rem, 3vw, 2.25rem);
+  --type-section: 1.15rem;
+  --type-card: 1.05rem;
+  --type-body: 0.95rem;
+  --type-label: 0.8rem;
+  --type-help: 0.75rem;
+  --type-number: 1.6rem;
+  --type-score: clamp(2rem, 5vw, 3rem);
+  --type-countdown: clamp(2.5rem, 10vw, 6rem);
+  --type-show-question: clamp(1.75rem, 3.5vw, 3.25rem);
+  --type-show-answer: clamp(1.25rem, 2vw, 2rem);
+  --weight-page: 750;
+  --weight-section: 700;
+  --weight-card: 650;
+  --weight-number: 750;
+  --weight-score: 800;
+  --leading-tight: 1.15;
+  --leading-body: 1.5;
+
+  /* Motion library (concept §7.2). The set is closed: a new animation either
+     reuses one of these or is added here with a reason. */
+  --dur-slow: 400ms;
+  --dur-show: 600ms;
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+  /* Wireframe backdrop. Deliberately faint: it must never compete with the
+     content, and it is static (no permanent animation). */
+  --wire-cell: 64px;
+  --wire-line: rgba(34, 211, 238, 0.085);
+  --wire-line-2: rgba(124, 92, 255, 0.07);
+  --wire-horizon: rgba(34, 211, 238, 0.16);
+  --wire-opacity: 0.85;
+
   color-scheme: dark;
 }
 
@@ -126,6 +221,16 @@ body::before {
 
 /* ---------- primitives ---------- */
 
+/**
+ * Shared focus ring. One definition for every interactive element, so keyboard
+ * focus looks identical everywhere and can never be styled away locally.
+ */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius-sm);
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
@@ -164,24 +269,64 @@ body::before {
   outline-offset: 4px;
 }
 
+/**
+ * Glass card – the standard surface. The fill and blur come from the paired
+ * glass tokens, so every card in the product is the same glass. The inset light
+ * edge is what makes it read as a raised pane rather than a flat box.
+ */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass-card);
+  border: var(--hairline) solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(var(--blur-card));
+  -webkit-backdrop-filter: blur(var(--blur-card));
   padding: var(--space-5);
 }
 
+/** A card that lifts on hover and invites a click. */
+.card--interactive {
+  cursor: pointer;
+  transition:
+    transform var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.card--interactive:hover,
+.card--interactive:focus-visible {
+  background: var(--glass-raised);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-raised);
+  transform: translateY(-2px);
+}
+
+/** A stronger pane for a card that should stand out (e.g. a dialog carrier). */
+.card--raised {
+  background: var(--glass-raised);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-raised);
+  backdrop-filter: blur(var(--blur-raised));
+  -webkit-backdrop-filter: blur(var(--blur-raised));
+}
+
+/**
+ * Buttons.
+ *
+ * The default button is deliberately quiet: a glass fill, a hairline and a soft
+ * drop shadow give it a slight 3D lift without a glowing outline. Only the
+ * primary action carries the brand gradient; secondary and destructive actions
+ * stay restrained.
+ */
 .btn {
   appearance: none;
-  border: 1px solid var(--border-strong);
-  background: var(--surface-2);
+  border: var(--hairline) solid var(--border-strong);
+  background: var(--glass-raised);
   color: var(--text);
   font: inherit;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: var(--type-body);
   padding: 0.7rem 1.15rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -189,30 +334,107 @@ body::before {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  min-height: var(--tap);
+  box-shadow: var(--shadow-btn);
   transition:
     transform var(--dur-fast) var(--ease),
     background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
 }
 
 .btn:hover {
-  background: rgba(255, 255, 255, 0.11);
+  background: color-mix(in srgb, var(--glass-raised) 60%, rgba(255, 255, 255, 0.14));
   border-color: rgba(255, 255, 255, 0.24);
 }
 
 .btn:active {
-  transform: scale(0.97);
+  transform: translateY(1px) scale(0.99);
+  box-shadow: none;
 }
 
 .btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   pointer-events: none;
+  box-shadow: none;
 }
 
+/** Primary action: the only button with the brand gradient and a lit edge. */
 .btn-primary {
   background: var(--grad);
   border-color: transparent;
   color: #fff;
+  box-shadow:
+    var(--inset-light),
+    0 10px 24px -12px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.btn-primary:hover {
+  background: var(--grad);
+  border-color: transparent;
+  filter: brightness(1.08);
+}
+
+/** Secondary action: a cyan-tinted outline, still quiet. */
+.btn-secondary {
+  border-color: color-mix(in srgb, var(--accent-2) 45%, var(--border-strong));
+  color: color-mix(in srgb, var(--accent-2) 82%, var(--text));
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+}
+
+/** Tertiary / ghost: no fill, no shadow – for low-emphasis actions. */
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.btn-ghost:hover {
+  background: var(--glass-raised);
+  border-color: var(--border);
+}
+
+/** Destructive action: danger-tinted border and text, never a full red fill. */
+.btn-danger {
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--border-strong));
+  color: color-mix(in srgb, var(--bad) 78%, var(--text));
+}
+
+.btn-danger:hover {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+}
+
+/** Compact button for table rows and inline controls. */
+.btn-sm {
+  min-height: 34px;
+  padding: 0.4rem 0.7rem;
+  font-size: var(--type-label);
+}
+
+/**
+ * A button that is busy shows a spinner and stays locked, so a slow action can
+ * never be submitted twice.
+ */
+.btn--loading {
+  position: relative;
+  color: transparent;
+  pointer-events: none;
+}
+
+.btn--loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
 }
 
 .input {
@@ -220,19 +442,39 @@ body::before {
   width: 100%;
   font: inherit;
   color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
+  background: var(--glass-input);
+  border: var(--hairline) solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 0.75rem 0.9rem;
+  min-height: var(--tap);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
 }
 
 .input::placeholder {
   color: var(--faint);
 }
 
+.input:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
 .input:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-width) solid var(--accent);
   outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+/** Invalid input: danger border plus a field-level message below it. */
+.input--invalid,
+.input[aria-invalid='true'] {
+  border-color: color-mix(in srgb, var(--bad) 65%, transparent);
+}
+
+.field__error {
+  color: color-mix(in srgb, var(--bad) 82%, var(--text));
+  font-size: var(--type-help);
 }
 
 .wrap {
@@ -259,7 +501,8 @@ body::before {
 
 .section-title {
   margin: var(--space-6) 0 var(--space-3);
-  font-size: 1.1rem;
+  font-size: var(--type-section);
+  font-weight: var(--weight-section);
   letter-spacing: -0.01em;
 }
 
@@ -292,7 +535,9 @@ body::before {
 
 .page-title {
   margin: var(--space-3) 0 0;
-  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-size: var(--type-page);
+  font-weight: var(--weight-page);
+  line-height: var(--leading-tight);
   letter-spacing: -0.03em;
 }
 
@@ -301,7 +546,7 @@ body::before {
   flex-direction: column;
   gap: 0.35rem;
   margin-top: var(--space-3);
-  font-size: 0.85rem;
+  font-size: var(--type-label);
 }
 
 .field__label {
@@ -310,7 +555,7 @@ body::before {
 }
 
 .field__hint {
-  font-size: 0.75rem;
+  font-size: var(--type-help);
 }
 
 .grid {
@@ -330,9 +575,9 @@ body::before {
   margin: var(--space-3) 0 0;
   padding: 0.7rem 0.9rem;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface-2);
-  font-size: 0.9rem;
+  border: var(--hairline) solid var(--border-strong);
+  background: var(--glass-raised);
+  font-size: var(--type-body);
 }
 
 .notice--error {
@@ -352,10 +597,11 @@ body::before {
   z-index: 50;
   padding: 0.8rem 1.1rem;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: rgba(14, 14, 26, 0.92);
-  backdrop-filter: blur(14px);
-  box-shadow: var(--shadow);
+  border: var(--hairline) solid var(--border-strong);
+  background: var(--glass-dialog);
+  backdrop-filter: blur(var(--blur-nav));
+  -webkit-backdrop-filter: blur(var(--blur-nav));
+  box-shadow: var(--shadow-raised);
   animation: toast-in var(--dur) var(--spring);
 }
 
@@ -445,8 +691,9 @@ body::before {
   font: inherit;
   font-weight: 600;
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  background: var(--glass-raised);
+  border: var(--hairline) solid var(--border-strong);
+  box-shadow: var(--shadow-btn);
   border-radius: var(--radius);
   padding: 0.95rem 1.1rem;
   margin-bottom: var(--space-2);
@@ -502,9 +749,9 @@ body::before {
   gap: var(--space-3);
   padding: 0.6rem 0.8rem;
   margin-bottom: var(--space-2);
-  border: 1px solid var(--border-strong);
+  border: var(--hairline) solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  background: var(--glass-raised);
 }
 
 .order-item__controls {
@@ -525,10 +772,13 @@ body::before {
   min-width: 46px;
   padding: 0.7rem 0;
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  background: var(--glass-raised);
+  border: var(--hairline) solid var(--border-strong);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
 
 .scale-step:hover {
@@ -562,14 +812,15 @@ body::before {
 
 .bar__track {
   height: 12px;
-  border-radius: 999px;
-  background: var(--surface-2);
+  border-radius: var(--radius-pill);
+  background: var(--glass-input);
+  border: var(--hairline) solid var(--border);
   overflow: hidden;
 }
 
 .bar__fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--grad);
   transition: width var(--dur) var(--ease);
 }
@@ -589,7 +840,7 @@ body::before {
   gap: var(--space-3);
   padding: 0.6rem 0.8rem;
   border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  background: var(--glass-raised);
   margin-bottom: var(--space-2);
 }
 
@@ -639,9 +890,9 @@ body::before {
 
 .lobby__player {
   padding: 0.4rem 0.8rem;
-  border-radius: 999px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--glass-raised);
+  border: var(--hairline) solid var(--border-strong);
   font-weight: 600;
 }
 
@@ -727,9 +978,9 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0.3rem 0.6rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--accent) 24%, transparent);
-  border: 1px solid var(--border-strong);
+  border: var(--hairline) solid var(--border-strong);
 }
 
 .editor__controls {
@@ -769,18 +1020,505 @@ body::before {
   display: grid;
   place-items: center;
   padding: var(--space-5);
-  background: rgba(4, 4, 10, 0.72);
-  backdrop-filter: blur(6px);
+  background: var(--glass-overlay);
+  backdrop-filter: blur(var(--blur-overlay));
+  -webkit-backdrop-filter: blur(var(--blur-overlay));
 }
 
 .overlay__panel {
   width: min(560px, 100%);
   max-height: 80dvh;
   overflow: auto;
+  background: var(--glass-dialog);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-dialog);
+  backdrop-filter: blur(var(--blur-dialog));
+  -webkit-backdrop-filter: blur(var(--blur-dialog));
 }
 
 .overlay__actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   justify-content: flex-end;
   margin-top: var(--space-4);
+}
+
+/* ---------------------------------------------------------------------------
+   Phase 6.1 – reusable design-system components.
+   Every class below is produced by `ui.ts`; the styling lives here so the whole
+   product shares one visual language.
+   --------------------------------------------------------------------------- */
+
+/* ---------- chip / badge / status ---------- */
+
+/**
+ * A chip carries a short label with an optional leading glyph. Colour is never
+ * the only signal: a status chip always pairs its colour with a dot and text.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-pill);
+  border: var(--hairline) solid var(--border-strong);
+  background: var(--glass-raised);
+  font-size: var(--type-label);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.chip--accent {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.chip--cyan {
+  border-color: color-mix(in srgb, var(--accent-2) 50%, transparent);
+  background: color-mix(in srgb, var(--accent-2) 16%, transparent);
+}
+
+.chip--ok {
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+.chip--warn {
+  border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+
+.chip--bad {
+  border-color: color-mix(in srgb, var(--bad) 50%, transparent);
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+}
+
+.chip--muted {
+  color: var(--muted);
+}
+
+/** The leading dot: the non-colour half of a status signal. */
+.chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+/* ---------- progress ---------- */
+
+.progress {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.progress__track {
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-input);
+  border: var(--hairline) solid var(--border);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--grad);
+  transition: width var(--dur-slow) var(--ease);
+}
+
+.progress__label {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--type-help);
+  color: var(--muted);
+}
+
+/* ---------- stat tile ---------- */
+
+.stat {
+  display: grid;
+  gap: 0.15rem;
+  padding: var(--space-4);
+}
+
+.stat__value {
+  font-size: var(--type-number);
+  font-weight: var(--weight-number);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat__label {
+  font-size: var(--type-label);
+  color: var(--muted);
+}
+
+/* ---------- dialog (modal) ---------- */
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--glass-overlay);
+  backdrop-filter: blur(var(--blur-overlay));
+  -webkit-backdrop-filter: blur(var(--blur-overlay));
+}
+
+.dialog__panel {
+  width: min(520px, 100%);
+  max-height: 85dvh;
+  overflow: auto;
+  background: var(--glass-dialog);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-dialog);
+  backdrop-filter: blur(var(--blur-dialog));
+  -webkit-backdrop-filter: blur(var(--blur-dialog));
+}
+
+.dialog__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--type-card);
+  font-weight: var(--weight-card);
+}
+
+.dialog__body {
+  color: var(--muted);
+  font-size: var(--type-body);
+  line-height: var(--leading-body);
+}
+
+.dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-5);
+}
+
+/* ---------- skeleton ---------- */
+
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--glass-raised) 0%,
+    color-mix(in srgb, var(--glass-raised) 40%, rgba(255, 255, 255, 0.16)) 50%,
+    var(--glass-raised) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sheen 1.4s var(--ease) infinite;
+}
+
+.skeleton--text {
+  height: 0.9rem;
+  margin: 0.35rem 0;
+}
+
+.skeleton--card {
+  height: 84px;
+}
+
+@keyframes skeleton-sheen {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ---------- countdown ---------- */
+
+/**
+ * The countdown reads as a wireframe instrument: a large tabular number inside a
+ * thin ring. The ring is a conic gradient driven by the `--progress` custom
+ * property, so the animation is a single custom-property update and never
+ * touches layout.
+ */
+.countdown {
+  --progress: 1;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(120px, 22vmin, 200px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(
+      from -90deg,
+      var(--accent-2) calc(var(--progress) * 360deg),
+      var(--glass-input) 0
+    )
+    border-box;
+  border: 6px solid transparent;
+}
+
+.countdown::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--glass-card);
+  backdrop-filter: blur(var(--blur-card));
+  -webkit-backdrop-filter: blur(var(--blur-card));
+}
+
+.countdown__value {
+  position: relative;
+  font-size: var(--type-countdown);
+  font-weight: var(--weight-score);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+/* ---------- empty state ---------- */
+
+.empty {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  padding: var(--space-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+
+.empty__title {
+  color: var(--text);
+  font-weight: var(--weight-card);
+}
+
+/* ---------- animation utilities (closed library, concept §7.2) ---------- */
+
+.anim-fade-in {
+  animation: fade-in var(--dur) var(--ease);
+}
+
+.anim-slide-up {
+  animation: slide-up 220ms var(--ease);
+}
+
+.anim-pop {
+  animation: pop 200ms var(--spring);
+}
+
+.anim-shake {
+  animation: shake 300ms linear;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Fallbacks (concept §12). Blur is expensive and unavailable on some devices;
+   the glass then becomes opaque so contrast is guaranteed, and motion is
+   replaced by instant state changes.
+   --------------------------------------------------------------------------- */
+
+@supports not (backdrop-filter: blur(1px)) {
+  .card,
+  .card--raised,
+  .overlay__panel,
+  .dialog__panel,
+  .toast,
+  .countdown::before {
+    background: var(--glass-fallback);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .card,
+  .card--raised,
+  .overlay__panel,
+  .dialog__panel,
+  .toast,
+  .countdown::before {
+    background: var(--glass-fallback);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border: rgba(255, 255, 255, 0.22);
+    --border-strong: rgba(255, 255, 255, 0.34);
+    --muted: #b8b8cc;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade-in,
+  .anim-slide-up,
+  .anim-pop,
+  .anim-shake,
+  .skeleton,
+  .toast,
+  .spinner {
+    animation: none;
+  }
+
+  .card--interactive:hover,
+  .card--interactive:focus-visible {
+    transform: none;
+  }
+
+  .btn:active {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive layout (concept §9). Breakpoints: ≤480 compact, 481–767 mobile,
+   768–1023 tablet, 1024–1439 desktop, ≥1440 wide, ≥1600 beamer. The rules here
+   only adjust spacing and turn tables into stacked cards; no surface is removed.
+   --------------------------------------------------------------------------- */
+
+/* Compact and mobile: tighten the page gutters and stack page headers. */
+@media (max-width: 767px) {
+  .wrap {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .grid--2,
+  .grid--3 {
+    grid-template-columns: 1fr;
+  }
+
+  .quiz-list__item,
+  .report-list__item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quiz-list__actions {
+    justify-content: stretch;
+  }
+
+  .quiz-list__actions .btn {
+    flex: 1;
+  }
+}
+
+/* Wide and beamer: larger gutters and a wider measure for long lists. */
+@media (min-width: 1440px) {
+  :root {
+    --content-max: 1320px;
+  }
+}
+
+/* ---------- beamer / show surface (concept §9.5) ---------- */
+
+/**
+ * The host page doubles as the beamer, so the presentation uses a dedicated
+ * scale rather than the normal breakpoints: everything on the show surface is
+ * sized with `clamp` + `vmin` so it stays readable from a distance and on 4:3
+ * projectors. `--show-scale` is the single knob.
+ */
+.show {
+  --show-scale: clamp(1rem, 1.1vmin + 0.7rem, 1.5rem);
+  display: grid;
+  gap: var(--space-5);
+  width: 100%;
+  text-align: center;
+}
+
+.show .question__prompt {
+  font-size: var(--type-show-question);
+  font-weight: var(--weight-section);
+  line-height: var(--leading-tight);
+}
+
+.show .option {
+  font-size: var(--type-show-answer);
+}
+
+.show .question__timer {
+  font-size: var(--type-countdown);
+}
+
+/* ---------- tables become cards on small screens (concept §9.6) ---------- */
+
+/**
+ * A report table keeps its semantics on desktop. On phones the same markup is
+ * restyled as stacked cards, so there is never a horizontal scrollbar and no
+ * duplicate markup is needed. The header row is hidden and each cell carries its
+ * own label from `data-label`.
+ */
+@media (max-width: 767px) {
+  .report-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .report-table,
+  .report-table tbody,
+  .report-table tr,
+  .report-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .report-table tr {
+    margin-bottom: var(--space-3);
+    padding: var(--space-3);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--glass-raised);
+  }
+
+  .report-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    border-bottom: none;
+    padding: 0.3rem 0;
+  }
+
+  .report-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: 600;
+  }
 }

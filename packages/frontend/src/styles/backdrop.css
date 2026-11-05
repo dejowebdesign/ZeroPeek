@@ -1,0 +1,165 @@
+/**
+ * ZeroPeek design system – wireframe backdrop (Phase 6.1).
+ *
+ * The spatial depth of the interface comes from lines and perspective only:
+ * a receding floor grid, a horizon line and a faint upper scan. There are no
+ * rendered 3D rooms and no images — it is CSS gradients on two fixed
+ * pseudo-elements, so it costs nothing to download and never scales a bitmap.
+ *
+ * Layer order (all behind the content, none interactive):
+ *   html::before  horizon line + upper scan lines
+ *   body::before  ambient aurora (defined in tokens.css)
+ *   body::after   perspective floor grid
+ *
+ * Everything here is static. The only animation is the login starfield, which
+ * is confined to `.centered` and disabled under `prefers-reduced-motion`.
+ */
+
+/* ---------- horizon + upper scan ---------- */
+
+html::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    /* horizon line */
+    linear-gradient(
+      to bottom,
+      transparent calc(62% - 1px),
+      var(--wire-horizon) 62%,
+      transparent calc(62% + 1px)
+    ),
+    /* faint ceiling scan lines, fading out towards the horizon */
+    repeating-linear-gradient(to bottom, var(--wire-line-2) 0 1px, transparent 1px 96px);
+  background-size:
+    100% 100%,
+    100% 62%;
+  background-repeat: no-repeat;
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 62%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 62%);
+  opacity: var(--wire-opacity);
+}
+
+/* ---------- perspective floor grid ---------- */
+
+body::after {
+  content: '';
+  position: fixed;
+  left: -40%;
+  right: -40%;
+  bottom: -6%;
+  height: 86vh;
+  z-index: -1;
+  pointer-events: none;
+  transform: perspective(520px) rotateX(64deg);
+  transform-origin: 50% 100%;
+  background-image:
+    repeating-linear-gradient(to right, var(--wire-line) 0 1px, transparent 1px var(--wire-cell)),
+    repeating-linear-gradient(to bottom, var(--wire-line) 0 1px, transparent 1px var(--wire-cell));
+  /* Fade the far edge so the grid dissolves into the horizon instead of
+     ending on a hard line. */
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.35) 45%, transparent 82%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.35) 45%, transparent 82%);
+  opacity: var(--wire-opacity);
+}
+
+/* Wider viewports get a coarser, calmer grid so the lines stay few. */
+@media (min-width: 1440px) {
+  :root {
+    --wire-cell: 80px;
+  }
+}
+
+/* On small screens the grid is tightened and slightly dimmed; a phone screen has
+   far less room for lines before the content suffers. */
+@media (max-width: 767px) {
+  :root {
+    --wire-cell: 48px;
+    --wire-opacity: 0.6;
+  }
+}
+
+/* ---------- login / join starfield ---------- */
+
+/**
+ * Foundation for the animated starfield the concept reserves for the login and
+ * join surfaces (concept §8.2, briefing §10). It is prepared here as a reusable
+ * layer; the full login experience is Phase 6.3.
+ *
+ * Three tiled star layers of different sizes and colours give the depth and the
+ * variety of star sizes; two of them drift very slowly. The whole field is one
+ * repeating background, so the particle count is bounded by the tile size, not
+ * by the viewport.
+ */
+.centered {
+  position: relative;
+  isolation: isolate;
+}
+
+.centered::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image:
+    radial-gradient(1px 1px at 24px 36px, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 132px 88px, rgba(226, 232, 240, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 76px 152px, var(--brand-cyan), transparent),
+    radial-gradient(2px 2px at 196px 48px, rgba(222, 78, 241, 0.75), transparent),
+    radial-gradient(1px 1px at 44px 208px, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 168px 196px, rgba(124, 92, 255, 0.85), transparent);
+  background-size:
+    240px 240px,
+    240px 240px,
+    320px 320px,
+    400px 400px,
+    240px 240px,
+    320px 320px;
+  background-repeat: repeat;
+  animation: star-drift 90s linear infinite;
+}
+
+@keyframes star-drift {
+  from {
+    background-position:
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0;
+  }
+  to {
+    background-position:
+      0 -240px,
+      0 -240px,
+      -160px -320px,
+      0 -400px,
+      0 -240px,
+      -160px -320px;
+  }
+}
+
+/* ---------- reduced motion / reduced transparency ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .centered::before {
+    animation: none;
+  }
+}
+
+/**
+ * Without `backdrop-filter` the glass tiers would be nearly invisible, so every
+ * glass surface falls back to an opaque fill (see components.css). The wireframe
+ * itself is cheap enough to keep, but it is dimmed so the opaque cards keep
+ * their contrast.
+ */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --wire-opacity: 0.4;
+  }
+}
