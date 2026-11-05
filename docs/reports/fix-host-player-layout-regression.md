@@ -9,14 +9,14 @@
 
 PR #19 added `max-width: var(--show-measure)` to `.show` and `justify-items: stretch`
 to `.centered.show`. The section is a grid item of `<main>`; `justify-items` aligns the
-section's *children*, not the section itself. With a `max-width` and no centring of the
+section's _children_, not the section itself. With a `max-width` and no centring of the
 section, the presentation surface collapsed to its content width and stayed anchored to
 the left edge of `<main>`.
 
-| Viewport | Board left (before) | Board right (before) | L/R margin |
-| -------- | ------------------- | -------------------- | ---------- |
-| 1920×1080 | 16 | 1216 | 16 / 704 |
-| 1366×768 | 16 | 1216 | 16 / 150 |
+| Viewport  | Board left (before) | Board right (before) | L/R margin |
+| --------- | ------------------- | -------------------- | ---------- |
+| 1920×1080 | 16                  | 1216                 | 16 / 704   |
+| 1366×768  | 16                  | 1216                 | 16 / 150   |
 
 The player answer buttons were never in a grid: `.question__input` had no CSS rule at
 all, so the `.option` buttons stacked full-width, one per row.
@@ -37,14 +37,14 @@ presentation width (`--show-measure`) and the board size are unchanged.
 
 Measured board centre vs. viewport centre, after the fix:
 
-| Viewport | Board centre | Viewport centre | Result |
-| -------- | ------------ | --------------- | ------ |
-| 390×844 | 196 | 195 | centred |
-| 768×1024 | 384 | 384 | centred |
-| 1024×768 | 512 | 512 | centred |
-| 1280×720 | 640 | 640 | centred |
-| 1366×768 | 683 | 683 | centred |
-| 1920×1080 | 960 | 960 | centred |
+| Viewport  | Board centre | Viewport centre | Result  |
+| --------- | ------------ | --------------- | ------- |
+| 390×844   | 196          | 195             | centred |
+| 768×1024  | 384          | 384             | centred |
+| 1024×768  | 512          | 512             | centred |
+| 1280×720  | 640          | 640             | centred |
+| 1366×768  | 683          | 683             | centred |
+| 1920×1080 | 960          | 960             | centred |
 
 ## 3. F2 — player answer grid
 
@@ -76,14 +76,14 @@ nothing regresses.
 
 Measured:
 
-| Viewport | Grid | Overflow X | Overflow Y |
-| -------- | ---- | ---------- | ---------- |
-| 390×844 | 1×4 | no | no |
-| 768×1024 | 2×2 | no | no |
-| 1024×768 | 2×2 | no | no |
-| 1280×720 | 2×2 | no | no |
-| 1366×768 | 2×2 | no | no |
-| 1920×1080 | 2×2 | no | no |
+| Viewport  | Grid | Overflow X | Overflow Y |
+| --------- | ---- | ---------- | ---------- |
+| 390×844   | 1×4  | no         | no         |
+| 768×1024  | 2×2  | no         | no         |
+| 1024×768  | 2×2  | no         | no         |
+| 1280×720  | 2×2  | no         | no         |
+| 1366×768  | 2×2  | no         | no         |
+| 1920×1080 | 2×2  | no         | no         |
 
 ## 4. F3 — a question has at most four answers
 
