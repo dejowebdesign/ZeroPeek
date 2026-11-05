@@ -470,12 +470,19 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   live in `src/showView.ts` (pure, unit-tested) because `pages/host.ts` opens a socket on
   import. `answerCountNode` in `host.ts` must be assigned in `showQuestion` and nulled in
   every other screen, or the live answer count silently stops updating.
-- **Verifying layout in this sandbox:** no playwright/puppeteer; `/usr/bin/chromium
-  --headless=new --no-sandbox --disable-gpu --virtual-time-budget=2500 --dump-dom` works.
-  Render the REAL modules with
+- **TEXT-ONLY VERIFICATION (owner rule, 2026-11-05, mandatory):** chrisB forbids all image
+  work on ZeroPeek — **no screenshots, no PNG/JPEG creation, no image analysis/processing, no
+  visual browser checks, no images in docs or PRs**. Verify with text/tables/measurements
+  only. Use `/usr/bin/chromium --headless=new --no-sandbox --disable-gpu
+  --window-size=W,H --virtual-time-budget=2500 --dump-dom`; render the REAL modules with
   `npx esbuild <entry.ts> --bundle --format=esm --alias:@zp-frontend=./packages/frontend/src`
-  into `dist/`, then read back a `data-json` attribute with `getBoundingClientRect`.
-  No PIL/numpy → decode PNGs by hand (`zlib` + PNG unfilter) for pixel checks.
+  into a scratch page under `dist/`, write `getBoundingClientRect()`/`scrollHeight` into a
+  `data-json` attribute, read it back with `--dump-dom`, then delete the scratch page.
+  **Never pass `--screenshot`.**
+- **Token-diff gotcha:** to prove the Phase 0 tokens are unchanged, extract the first `:root`
+  block (`git show <base>:…/tokens.css`) and parse `--name: value;` in Python. A raw
+  `grep -oP -- "--muted:\s*\K[^;]+"` over the whole file matches a *later* redefinition and
+  gives a false "differs". Parse the block, not the file.
 
 ## Git / push in this sandbox
 - `git push -u origin <branch>` **prompts for a username** (no credential helper) and hangs.
