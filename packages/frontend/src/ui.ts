@@ -11,9 +11,9 @@ import { ApiError } from './api.js';
 /**
  * The ZeroPeek wordmark: the logo asset on its own.
  *
- * The logo is served unchanged from `public/logo.png` (its transparent areas are
- * kept, its colours and shapes are not altered). It stands alone — no product
- * name text is rendered next to it — so the image carries the brand on its own.
+ * The logo is served as-is from `public/logo.png`; its transparent areas and its
+ * colours and shapes are not altered. It stands alone — no product name text is
+ * rendered next to it — so the image carries the brand on its own.
  * `alt` stays empty on purpose: the surface's own heading names the page, and a
  * decorative mark keeps screen-reader output clean.
  *
