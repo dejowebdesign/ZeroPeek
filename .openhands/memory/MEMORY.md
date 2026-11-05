@@ -464,6 +464,18 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   **No `innerHTML` anywhere** — CSP is `script-src 'self'`/`style-src 'self'` (guard test).
 - Extending the system: add a token, add the component to `ui.ts` + CSS + `ui.test.ts`,
   and register its class in `design-system.test.ts`. Never hard-code a value.
+- **Show/beamer sizing rule:** `--type-show-*`, `--show-gap`, `--show-pad` and the podium
+  `min-height` mix **`vw + vh`** so a 720p projector shrinks the board instead of scrolling
+  it. `.show__options` is a fixed 2-column grid (stacks < 640px). Beamer markup builders
+  live in `src/showView.ts` (pure, unit-tested) because `pages/host.ts` opens a socket on
+  import. `answerCountNode` in `host.ts` must be assigned in `showQuestion` and nulled in
+  every other screen, or the live answer count silently stops updating.
+- **Verifying layout in this sandbox:** no playwright/puppeteer; `/usr/bin/chromium
+  --headless=new --no-sandbox --disable-gpu --virtual-time-budget=2500 --dump-dom` works.
+  Render the REAL modules with
+  `npx esbuild <entry.ts> --bundle --format=esm --alias:@zp-frontend=./packages/frontend/src`
+  into `dist/`, then read back a `data-json` attribute with `getBoundingClientRect`.
+  No PIL/numpy → decode PNGs by hand (`zlib` + PNG unfilter) for pixel checks.
 
 ## Git / push in this sandbox
 - `git push -u origin <branch>` **prompts for a username** (no credential helper) and hangs.
