@@ -315,12 +315,20 @@ Responsive, technische Abhängigkeiten. **Alle hier genannten neuen Bereiche sin
 - **Login-Layout:** Zentrierte Milchglaskarte auf animiertem Sternenhimmel (Kapitel 10 im Briefing,
   siehe `docs/concept/game-design-concept.md` §10). Logo oben, Titel, Benutzername, Passwort,
   Primäraktion, Link „Passwort vergessen?" (später), Link „Als Gast beitreten".
-- **Registrierung (neu):** Benutzername, E-Mail (optional), Passwort mit Stärkeanzeige und
-  Mindestlänge (10 Zeichen, wie Bestand), Bestätigung. Danach direkt in die Charakterauswahl.
+- **Registrierung (neu, verbindlich):** Anzeigename, **E-Mail (Pflicht)**, Passwort mit Stärkeanzeige
+  und Mindestlänge (10 Zeichen, wie Bestand), Bestätigung, **E-Mail-Bestätigung**. Danach direkt in
+  die Charakterauswahl.
+- **Registrierungsangebot beim Spielbeitritt (verbindlich):** dezenter Hinweis, der den Beitritt
+  **nicht verzögert**: „Erstelle dein kostenloses ZeroPeek-Konto und sichere deinen Fortschritt
+  dauerhaft." Auswahl: **als Gast fortfahren**, **Konto erstellen**, **anmelden**. Der Gastbeitritt
+  bleibt sofort möglich.
+- **Registrierungsangebot nach Spielende (verbindlich):** erneutes Angebot mit Nutzenliste (XP
+  sichern, Statistik aufbauen, Level behalten, Gegenstände freischalten, Avatar ausstatten). Ein Gast
+  kann die **gerade abgeschlossene** Runde übernehmen (`game-design-concept.md` §4.4).
 - **Gastspieler:** Kein Konto, nur Nickname + PIN. Temp-Avatar (Standardfigur mit Zufallsfarbe).
-  Hinweis: „Als Gast spielst du ohne Fortschritt."
+  Hinweis: „Als Gast spielst du ohne dauerhaften Fortschritt."
 - **Zustände:** Leerlauf, Validierungsfehler (feldnah), Laden, gesperrt (disabled-Konto),
-  E-Mail bereits vergeben, Erfolg.
+  E-Mail bereits vergeben, **E-Mail unbestätigt**, Erfolg.
 - **Abhängigkeiten:** Registrierung braucht ein Spielerkonto-Modell (neu, §7.1 im
   Game-Design-Konzept). Bestehende Auth (Argon2id, Sessions, CSRF) wird **erweitert, nicht ersetzt**.
 - **Wichtig:** Bestehende Konten und Rollen bleiben unverändert. Registrierte Spieler sind **keine**
@@ -379,8 +387,9 @@ Responsive, technische Abhängigkeiten. **Alle hier genannten neuen Bereiche sin
   einer festen Stelle; Tastaturkürzel (neu, nur Host) mit sichtbarer Übersicht.
 - **Abhängigkeiten:** Pause/Fortsetzen existiert heute **nicht** und braucht Motor-Erweiterung
   (Freigabe nötig, §42 im Briefing). Überspringen existiert heute **nicht**.
-- **Wichtig:** Die Host-Steuerung ist **nicht** der Beamer. Beide können auf demselben Gerät sein,
-  müssen aber nicht (§9).
+- **Verbindlich (Phase 5c):** Die Host-Steuerung und die Präsentationsfläche sind **dieselbe
+  kombinierte Ansicht** (§8.14). Es gibt **keine** separate Beamer-Anwendung. Steuerung und Anzeige
+  sind auf derselben Seite visuell klar getrennt (z. B. ein-/ausblendbare Steuerleiste).
 
 ### 8.7 Spieleroberfläche
 
@@ -392,28 +401,39 @@ Responsive, technische Abhängigkeiten. **Alle hier genannten neuen Bereiche sin
   deutlich, mit Farbwechsel beim Wählen. Kein Doppeltippen.
 - **Zustände:** getrennt/verbunden, „warten auf Host", „Zeit abgelaufen", „bereits geantwortet",
   Fehler.
+- **Registrierungsangebot (verbindlich, Phase 5c):** Beim Beitritt ein **dezenter, abbrechbarer**
+  Hinweis („Konto erstellen und Fortschritt sichern"), der den Beitritt **nicht verzögert**. Am
+  **Spielende** ein erneutes Angebot mit Nutzenliste; ein Gast kann die **gerade abgeschlossene**
+  Runde übernehmen (`game-design-concept.md` §4.2/§4.4).
 - **Abhängigkeiten:** `questionInput` (vorhanden) bleibt die Basis; die Darstellung wird
   erweitert (Avatar, Animationen), die Eingabelogik nicht verändert.
 
 ### 8.8 Spielerprofil (neu)
 
-- **Zweck:** Fortschritt sichtbar machen – Charakter, Level, XP, Erfolge, Statistik, Historie.
+- **Zweck:** Fortschritt sichtbar machen – Charakter, Level, XP, Erfolge, **persönliche Statistik**.
 - **Layout:** Kopf mit großem Charakterbild (der gewählte Held), Name, Level, XP-Leiste zur nächsten
-  Stufe. Darunter Kacheln: Gesamtpunktzahl, Trefferquote, Spiele, beste Serie, längste Serie,
-  persönliche Bestleistungen; Liste „Letzte Spiele"; Galerie „Erfolge"; Vorschau „Nächste
-  Belohnung".
+  Stufe. Darunter Kacheln: Gesamtpunktzahl, Trefferquote, Spiele, **gewonnene Spiele**,
+  **Podiumsplätze**, beste Serie, längste Serie, persönliche Bestleistungen; Galerie „Erfolge";
+  Vorschau „Nächste Belohnung".
+- **Verbindlich (Phase 5c):** Das Profil zeigt **nur die persönliche Statistik** (eigener
+  Fortschritt). Die **Quizhistorie** (alte Fragen, Antworten, Spielberichte, Ergebnisse anderer)
+  bleibt **ausschließlich Administratoren** vorbehalten – sie erscheint **nicht** im Spielerprofil.
 - **Zustände:** neu (noch keine Spiele), teilweise, voll; gesperrte Erfolge als Silhouette mit
   Bedingung.
 - **Abhängigkeiten:** Braucht Spielerkonto + XP/Level/Statistik (neu). Daten kommen ausschließlich
-  serverseitig (§17 im Briefing).
+  serverseitig (§17 im Briefing; `game-design-concept.md` §4.7).
 
 ### 8.9 Blockwelt-Helden-Charakterauswahl (neu)
 
-- **Zweck:** Aus den verbindlichen Figuren wählen.
+- **Zweck:** Aus den verbindlichen Figuren wählen (ca. **15** geplant, endgültige Liste nach
+  Originalassets).
 - **Layout:** Raster von Charakterkarten (Ethan, Maya, Pixel, Biene; Dr. Obscura und O-Bots als
   besondere/freischaltbare). Jede Karte: Figur, Name, kurze Eigenschaft, Sperrzustand.
 - **Interaktionen:** Auswählen → Bestätigen. Gesperrte zeigen die Freischaltbedingung.
 - **Zustände:** verfügbar, gesperrt (mit Bedingung), ausgewählt, wird geladen.
+- **Verbindlich (Phase 5c):** Jeder Charakter hat **eigene** Gegenstände. Beim Wechsel wird die
+  Ausrüstung des gewählten Charakters angezeigt; Gegenstände anderer Charaktere werden **nicht**
+  übertragen (`game-design-concept.md` §3.2).
 - **Abhängigkeiten:** Braucht die Charakter-Assets (fehlen, R-10) und ein Charaktermodell (neu).
 
 ### 8.10 Avatar-Editor (neu)
@@ -423,17 +443,22 @@ Responsive, technische Abhängigkeiten. **Alle hier genannten neuen Bereiche sin
   Kleidung, Werkzeug, Zubehör, Farbe, Effekt), darunter die Auswahl je Kategorie. Links ein
   „Zufällig"-Button.
 - **Interaktionen:** Sofortige Vorschau beim Wechsel; „Speichern"; „Zurücksetzen".
-- **Zustände:** Vorschau lädt, inkompatibles Teil wird **nicht** angeboten (Kompatibilitätsmatrix),
-  gespeichert, Fehler.
-- **Abhängigkeiten:** Braucht Gegenstands-Assets und ein modulares Layer-Modell (neu, §16 im
-  Briefing). Renderingverfahren siehe Game-Design-Konzept §14 (Entscheidung **nach** Prüfung der
-  tatsächlichen Architektur – nicht geraten).
+- **Zustände:** Vorschau lädt, inkompatibles Teil wird **nicht** angeboten (charakterexklusiv,
+  `game-design-concept.md` §3.2), gespeichert, Fehler.
+- **Verbindlich (Phase 5c):** Gegenstände sind **charakterexklusiv** und müssen am Avatar **sichtbar**
+  ausgerüstet werden (Ausrüstungsslots, Grafiklayer, Position, Größe, Ebenenreihenfolge). Rendering
+  als **PNG-Layer-Stapel**; endgültige Layerarchitektur **nach** Prüfung der Originalassets
+  (`game-design-concept.md` §3.3/§3.4).
+- **Abhängigkeiten:** Braucht Gegenstands-Assets (pro Charakter) und ein modulares Layer-Modell (neu).
 
 ### 8.11 Inventar (neu)
 
 - **Zweck:** Besitz, Freischaltung, Ausrüstung.
 - **Layout:** Filter nach Kategorie/Seltenheit/Besitz; Raster aus Gegenstandskarten; gesperrte
   sichtbar mit Bedingung; Detailansicht mit „Ausrüsten"/„Ansehen".
+- **Verbindlich (Phase 5c):** Das Inventar zeigt die Gegenstände des **aktiven** Charakters. Ein
+  Avatarwechsel löscht **keine** Gegenstände; er zeigt die jeweilige Ausrüstung. **Jeder
+  Levelaufstieg** schaltet einen neuen Gegenstand frei (`game-design-concept.md` §6.2/§6.5).
 - **Zustände:** besessen/ausgerüstet/gesperrt/neu.
 - **Abhängigkeiten:** Inventar-Modell (neu), serverseitige Freischaltung (§17).
 
@@ -460,6 +485,9 @@ Siehe `docs/concept/game-design-concept.md` §10 (13 Szenen) und §26 im Briefin
 - **Verbindlich:** Die **bestehende kombinierte Host-/Beamer-Ansicht bleibt erhalten** – die
   Host-Seite ist zugleich die Präsentationsfläche. Es wird **keine** separate Beamer-Surface und
   **keine** eigene Route eingeführt.
+- **Hintergrund (verbindlich, Phase 5c):** Standard ist **Zufall**; genau **einmal** je Runde
+  bestimmt, für alle gleich, bleibt die ganze Runde. Der Host kann **vorab** einen konkreten
+  Hintergrund wählen. Stil: dunkel, Wireframe, dezente Architektur (`game-design-concept.md` §10.5).
 - **Abhängigkeiten:** Beamer-Grafiken (fehlen, R-10) und die Show-Animationen. Innerhalb der
   bestehenden Host-Seite werden Steuerung und Anzeige visuell klar getrennt.
 
@@ -616,11 +644,11 @@ adressieren.**
 ## 14. Offene Designfragen
 
 1. **Schrift:** System-Stack beibehalten oder eine lokal gehostete Anzeigeschrift einführen?
-2. **Sprache:** Englisch beibehalten oder Deutsch/i18n vorbereiten?
-3. **Farbzusätze** (§3.2) und **Glasvarianten** (§4): genehmigen oder anpassen?
-4. **Autospeichern** (§8.4): erst nach Entscheidung zu R-3?
-5. **Navigation:** Seitenleiste auf Desktop – gewünscht, oder Kopfzeile wie heute?
-6. **Startseite** (§8.1): als neue konsolidierende Seite – gewünscht, oder bestehende Seiten belassen?
+2. **Farbzusätze** (§3.2) und **Glasvarianten** (§4): genehmigen oder anpassen?
+3. **Autospeichern** (§8.4): erst nach Entscheidung zum Quiz-Snapshot?
+4. **Navigation:** Seitenleiste auf Desktop – gewünscht, oder Kopfzeile wie heute?
+5. **Startseite** (§8.1): als neue konsolidierende Seite – gewünscht, oder bestehende Seiten belassen?
 
-> **Entfallen:** „Beamer als eigene Surface mit eigener Route" – die kombinierte Host-/Beamer-Ansicht
-> bleibt verbindlich (§8.14).
+> **Bereits entschieden (Phase 5c):** **Sprache** = Deutsch standardmäßig, Englisch auswählbar
+> (zentrale Übersetzungsarchitektur). **Host/Beamer** = bestehende kombinierte Ansicht. Der
+> **Beamer als eigene Surface mit eigener Route** entfällt (§8.14).

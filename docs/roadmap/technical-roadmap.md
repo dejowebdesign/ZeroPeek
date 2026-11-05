@@ -54,9 +54,10 @@ unabhängige Arbeit vorgezogen, nicht die abhängige).
 
 | Phase | Braucht zwingend                                          | Ohne das blockiert     |
 | ----- | --------------------------------------------------------- | ---------------------- |
-| 6.3   | Entscheidung: Rolle `PLAYER`, Spielerkonto-Modell         | 6.6, 6.7, 6.8          |
-| 6.4   | Entscheidung R-3 (Historieverlust)                        | Autospeichern, Reports |
+| 6.3   | Rolle `PLAYER`, Spielerkonto-Modell, E-Mail-Bestätigung   | 6.6, 6.7, 6.8          |
+| 6.4   | Quiz-Snapshot (verbindlich, §8.7)                         | Autospeichern, Reports |
 | 6.7   | **Charakter-Assets des Projektverantwortlichen** (fehlen) | 6.7, 6.10              |
+| 6.8   | Levelkurve + XP-Ledger; Gastkonto-Übernahme               | 6.8, 6.12              |
 | 6.9   | Beamer-Grafiken (kombinierte Host-Ansicht bleibt)         | 6.10                   |
 | 6.11  | **Audio-Assets des Projektverantwortlichen** (fehlen)     | 6.11                   |
 | 6.12  | Entscheidungen zu Modi/Redis                              | 6.12                   |
@@ -105,42 +106,50 @@ bleiben gültig. Die Navigation ist **zusätzlich**, kein Ersatz.
 
 ## 4. Phase 6.3 – Login, Registrierung, Sternenhimmel
 
-| Punkt                      | Inhalt                                                                                                                                |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **Ziel**                   | Animierter Sternenhimmel, Glas-Login, Registrierung für Spieler, Gastzugang unverändert.                                              |
-| **Betroffene Komponenten** | Login-Screen (`host.ts` heute), neue Registrierung, `tokens.css`, neue Sternenkomponente                                              |
-| **Betroffene Dateien**     | `pages/host.ts` (Login), neue `pages/auth.ts`/`login`-Komponente, `styles/*`, neue `starfield.ts`                                     |
-| **Datenmodelle**           | **`User.role` um `PLAYER` erweitern** (Enum-Migration); ggf. `PlayerProfile` (siehe 6.6)                                              |
-| **API-Änderungen**         | **Neu:** `POST /api/auth/register` (Spieler). Bestehendes `login`/`logout`/`me` unverändert.                                          |
-| **Abhängigkeiten**         | 6.1, 6.2; Entscheidung zur Rolle `PLAYER`                                                                                             |
-| **Risiken**                | Bestehende Auth darf nicht verändert werden; Enum-Erweiterung muss additiv sein; Sternenhimmel-Performance                            |
-| **Teststrategie**          | Unit: Validierung (Passwort ≥ 10, Benutzername); Integration: Registrierung, Login, CSRF; `prefers-reduced-motion`                    |
-| **Abnahmekriterien**       | Bestehende Konten funktionieren unverändert; neue Spieler können sich registrieren; Gastzugang unverändert; Sternenhimmel abschaltbar |
-| **Aufwand**                | mittel                                                                                                                                |
+| Punkt                      | Inhalt                                                                                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Ziel**                   | Animierter Sternenhimmel, Glas-Login, freiwillige Spielerregistrierung (verbindlich), Gastzugang unverändert.                                                                                                |
+| **Betroffene Komponenten** | Login-Screen (`host.ts` heute), neue Registrierung, `tokens.css`, neue Sternenkomponente, Registrierungshinweise (Beitritt/Spielende)                                                                        |
+| **Betroffene Dateien**     | `pages/host.ts` (Login), neue `pages/auth.ts`/`login`-Komponente, `styles/*`, neue `starfield.ts`                                                                                                            |
+| **Datenmodelle**           | **`User.role` um `PLAYER` erweitern** (Enum-Migration); `User.emailVerifiedAt?`; ggf. `PlayerProfile` (siehe 6.6)                                                                                            |
+| **API-Änderungen**         | **Neu:** `POST /api/auth/register` (Spieler), **E-Mail-Bestätigung** (`verify`). Bestehendes `login`/`logout`/`me` unverändert.                                                                              |
+| **Abhängigkeiten**         | 6.1, 6.2; Rolle `PLAYER` (verbindlich)                                                                                                                                                                       |
+| **Risiken**                | Bestehende Auth darf nicht verändert werden; Enum-Erweiterung muss additiv sein; Sternenhimmel-Performance                                                                                                   |
+| **Teststrategie**          | Unit: Validierung (Passwort ≥ 10, E-Mail); Integration: Registrierung, E-Mail-Bestätigung, Login, CSRF; `prefers-reduced-motion`                                                                             |
+| **Abnahmekriterien**       | Bestehende Konten funktionieren unverändert; Spieler können sich registrieren (mit Bestätigung); **Gastbeitritt sofort und ohne Konto**; Angebot beim Beitritt und nach Spielende; Sternenhimmel abschaltbar |
+| **Aufwand**                | mittel                                                                                                                                                                                                       |
 
 **Bestandsschutz:** Die vorhandene Auth-Logik (Argon2id, Sessions, CSRF, Guards) wird **nicht**
 ersetzt. `register` ist **additiv**. Die Rolle `PLAYER` hat **keine** Admin-/Trainerrechte.
+
+**Verbindlich (Phase 5c):** Registrierung ist **freiwillig** und wird beim **Beitritt** und nach
+**Spielende** angeboten; sie darf den Gastbeitritt **nicht verzögern** (`game-design-concept.md`
+§4.2).
 
 ---
 
 ## 5. Phase 6.4 – Quizverwaltung und Editor
 
-| Punkt                      | Inhalt                                                                                                             |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **Ziel**                   | Modernisierte Verwaltung und Editor mit Drag-and-drop, Kategorien, Schwierigkeit, Vorschau.                        |
-| **Betroffene Komponenten** | `pages/editor.ts`, `questionForm.ts`, `questionView.ts`, `quizRoutes.ts`, `quizService.ts`                         |
-| **Betroffene Dateien**     | `pages/editor.ts`, `questionForm.ts`, `styles/tokens.css`, `schema.prisma`, `mappers.ts`                           |
-| **Datenmodelle**           | **Additiv:** `Quiz.category?`, `Quiz.difficulty?`, `Question.category?`/`difficulty?` (oder im Payload)            |
-| **API-Änderungen**         | Additive Felder in bestehenden Quiz-Endpunkten; Import/Export bleiben kompatibel                                   |
-| **Abhängigkeiten**         | 6.1, 6.2; **Entscheidung R-3**                                                                                     |
-| **Risiken**                | **R-3 (Historieverlust)**; Drag-and-drop ohne Tastatur-Alternative (Barrierefreiheit); Import alter Dateien        |
-| **Teststrategie**          | Unit: Reihenfolge, Validierung; Integration: CRUD unverändert, 13 Typen lesbar; Import/Export-Rundlauf             |
-| **Abnahmekriterien**       | Bestehende Quizze unverändert lesbar/speicherbar; Import/Export funktioniert; Fragen/Antworten bleiben unverändert |
-| **Aufwand**                | mittel                                                                                                             |
+| Punkt                      | Inhalt                                                                                                                                                            |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Modernisierte Verwaltung und Editor mit Drag-and-drop, Kategorien, Schwierigkeit, Vorschau; **Quiz-Snapshot je Spiel**.                                           |
+| **Betroffene Komponenten** | `pages/editor.ts`, `questionForm.ts`, `questionView.ts`, `quizRoutes.ts`, `quizService.ts`, neue Snapshot-Logik                                                   |
+| **Betroffene Dateien**     | `pages/editor.ts`, `questionForm.ts`, `styles/tokens.css`, `schema.prisma`, `mappers.ts`, `services/engine.ts`                                                    |
+| **Datenmodelle**           | **Additiv:** `Quiz.category?`, `Quiz.difficulty?`, `Question.category?`/`difficulty?`; **Neu:** `GameSnapshot`                                                    |
+| **API-Änderungen**         | Additive Felder in bestehenden Quiz-Endpunkten; Import/Export bleiben kompatibel                                                                                  |
+| **Abhängigkeiten**         | 6.1, 6.2; **Quiz-Snapshot (verbindlich)**                                                                                                                         |
+| **Risiken**                | **R-3 (Historieverlust)**; Drag-and-drop ohne Tastatur-Alternative (Barrierefreiheit); Import alter Dateien                                                       |
+| **Teststrategie**          | Unit: Reihenfolge, Validierung; Integration: CRUD unverändert, 13 Typen lesbar; Import/Export-Rundlauf; Snapshot bleibt nach Quiz-Änderung/-Löschung unverändert  |
+| **Abnahmekriterien**       | Bestehende Quizze unverändert lesbar/speicherbar; Import/Export funktioniert; Fragen/Antworten bleiben unverändert; **abgeschlossene Runden sind unveränderlich** |
+| **Aufwand**                | mittel                                                                                                                                                            |
 
 **Bestandsschutz (kritisch):** Fragen und Antworten bestehender Quizze werden **nicht** verändert.
-Import/Export bleiben erhalten. Wegen **R-3** wird **Autospeichern für die Fragenliste erst nach
-einer Entscheidung** eingeführt (sonst häufigere kaskadierende Löschungen).
+Import/Export bleiben erhalten.
+
+**Verbindlich (Phase 5c):** Beim Spielstart wird eine **unveränderliche Momentaufnahme** des Quiz
+erstellt (`GameSnapshot`). Spätere Quizänderungen oder das Löschen eines Quiz dürfen **keine**
+historischen Spielergebnisse verändern oder zerstören (`game-design-concept.md` §8.7). Damit ist
+**R-3 technisch entschärft**. Autospeichern wird dadurch möglich, ohne die Historie zu gefährden.
 
 ---
 
@@ -165,64 +174,99 @@ einer Entscheidung** eingeführt (sonst häufigere kaskadierende Löschungen).
 
 ## 7. Phase 6.6 – Spielerprofile
 
-| Punkt                      | Inhalt                                                                                         |
-| -------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Ziel**                   | Dauerhaftes Spielerprofil mit Fortschritt, Statistik, Historie.                                |
-| **Betroffene Komponenten** | neue `pages/profile.ts`, `PlayerProfile`-Modell, neue Service-/Route-Module                    |
-| **Betroffene Dateien**     | `schema.prisma`, neue `services/profileService.ts`, neue `routes/profileRoutes.ts`, neue Seite |
-| **Datenmodelle**           | **Neu:** `PlayerProfile`; **Erweiterung:** `GamePlayer.userId?`                                |
-| **API-Änderungen**         | **Neu:** `GET /api/profile`, `GET /api/profile/history`, `PUT /api/profile` (Charakterwahl)    |
-| **Abhängigkeiten**         | 6.3 (Spielerkonto)                                                                             |
-| **Risiken**                | Profile dürfen keine XP vom Client annehmen; Fremdzugriff auf fremdes Profil verhindern        |
-| **Teststrategie**          | Integration: Profil nur für eigenen Nutzer; XP nur serverseitig; Unit: Statistikberechnung     |
-| **Abnahmekriterien**       | Profil zeigt korrekte, serverseitig berechnete Werte; keine Manipulation möglich               |
-| **Aufwand**                | mittel                                                                                         |
+| Punkt                      | Inhalt                                                                                                                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Dauerhaftes Spielerprofil mit Fortschritt und **persönlicher Statistik**.                                                                                                  |
+| **Betroffene Komponenten** | neue `pages/profile.ts`, `PlayerProfile`-Modell, neue Service-/Route-Module                                                                                                |
+| **Betroffene Dateien**     | `schema.prisma`, neue `services/profileService.ts`, neue `routes/profileRoutes.ts`, neue Seite                                                                             |
+| **Datenmodelle**           | **Neu:** `PlayerProfile`; **Erweiterung:** `GamePlayer.userId?`                                                                                                            |
+| **API-Änderungen**         | **Neu:** `GET /api/profile`, `PUT /api/profile` (Charakterwahl). **Kein** Spieler-Zugriff auf die Quizhistorie.                                                            |
+| **Abhängigkeiten**         | 6.3 (Spielerkonto)                                                                                                                                                         |
+| **Risiken**                | Profile dürfen keine XP vom Client annehmen; Fremdzugriff auf fremdes Profil verhindern                                                                                    |
+| **Teststrategie**          | Integration: Profil nur für eigenen Nutzer; XP nur serverseitig; Unit: Statistikberechnung                                                                                 |
+| **Abnahmekriterien**       | Profil zeigt korrekte, serverseitig berechnete Werte (inkl. gewonnene Spiele, Podiumsplätze, Trefferquote); keine Manipulation möglich; **keine Quizhistorie für Spieler** |
+| **Aufwand**                | mittel                                                                                                                                                                     |
 
 **Migration:** Additiv (`PlayerProfile` neu, `GamePlayer.userId` nullable). Keine bestehende Spalte
 wird geändert. Bestehende `GamePlayer`-Zeilen bleiben ohne `userId` (Gast).
+
+**Verbindlich (Phase 5c):** Die **persönliche Statistik** ist von der **Quizhistorie** getrennt. Die
+Historie (alte Fragen/Antworten, Ergebnisse anderer) bleibt **ausschließlich Administratoren**
+vorbehalten (`game-design-concept.md` §4.7). Ein früherer `GET /api/profile/history` entfällt.
 
 ---
 
 ## 8. Phase 6.7 – Blockwelt-Helden-Avatar-System
 
-| Punkt                      | Inhalt                                                                                                           |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **Ziel**                   | Charakterauswahl und modularer Avatar-Editor mit Kompatibilitätsmatrix.                                          |
-| **Betroffene Komponenten** | neue `pages/characters.ts`, `pages/avatar.ts`, `shared`-Katalog, Layer-Rendering                                 |
-| **Betroffene Dateien**     | `packages/shared/src/characters.ts` (neu), `packages/shared/src/cosmetics.ts` (neu), neue Seiten, `styles/*`     |
-| **Datenmodelle**           | `PlayerProfile.selectedCharacterId`, `PlayerProfile.avatarConfig` (JSONB)                                        |
-| **API-Änderungen**         | `PUT /api/profile/avatar` (serverseitig validiert gegen Kompatibilitätsmatrix)                                   |
-| **Abhängigkeiten**         | **Charakter-Assets des Projektverantwortlichen** (fehlen), 6.6                                                   |
-| **Risiken**                | Fehlende Assets blockieren; falsche Kombinationen; Schärfe auf Mobil                                             |
-| **Teststrategie**          | Unit: Kompatibilitätsmatrix, Layer-Reihenfolge; Integration: Avatar-Speicherung validiert; visuell Desktop/Mobil |
-| **Abnahmekriterien**       | Nur kompatible Teile wählbar; Avatar serverseitig validiert; scharf auf Desktop und Mobil                        |
-| **Aufwand**                | hoch                                                                                                             |
+| Punkt                      | Inhalt                                                                                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Charakterauswahl und modularer Avatar-Editor mit **charakterexklusiven** Gegenständen und sichtbarer Ausrüstung.                                      |
+| **Betroffene Komponenten** | neue `pages/characters.ts`, `pages/avatar.ts`, `shared`-Katalog, Layer-Rendering                                                                      |
+| **Betroffene Dateien**     | `packages/shared/src/characters.ts` (neu), `packages/shared/src/cosmetics.ts` (neu), neue Seiten, `styles/*`                                          |
+| **Datenmodelle**           | `PlayerProfile.selectedCharacterId`, `PlayerProfile.avatarConfig` (JSONB)                                                                             |
+| **API-Änderungen**         | `PUT /api/profile/avatar` (serverseitig validiert gegen den **charakterexklusiven** Katalog)                                                          |
+| **Abhängigkeiten**         | **Charakter-Assets des Projektverantwortlichen** (fehlen), 6.6                                                                                        |
+| **Risiken**                | Fehlende Assets blockieren; falsche Kombinationen; Schärfe auf Mobil; fehlende Layer pro Gegenstand                                                   |
+| **Teststrategie**          | Unit: Katalog je Charakter, Layer-Reihenfolge, Ablehnung fremder Gegenstände; Integration: Avatar-Speicherung validiert; visuell Desktop/Mobil        |
+| **Abnahmekriterien**       | Gegenstände sind **nur dem vorgesehenen Charakter** zugeordnet; sichtbar am Avatar tragbar; Avatarwechsel löscht nichts; scharf auf Desktop und Mobil |
+| **Aufwand**                | hoch                                                                                                                                                  |
 
-**Blockiert bis Assets vorliegen.** Unabhängige Arbeit (Katalog, Matrix, Validierung) kann
+**Blockiert bis Assets vorliegen.** Unabhängige Arbeit (Katalogstruktur, Matrix, Validierung) kann
 vorbereitet werden, die Darstellung nicht.
 
-**Renderingverfahren:** Entscheidung **nach** Prüfung echter Assets; Empfehlung PNG-Layer
-(game-design-concept §3.3). Keine Neugestaltung der Figuren.
+**Verbindlich (Phase 5c):** **Jeder Avatar besitzt seine eigenen Gegenstände** (kein allgemeiner
+Katalog). Ein Gegenstand ist **charakterexklusiv** und muss **sichtbar** ausrüstbar sein
+(Ausrüstungsslots, Layer, Position, Größe, Ebenenreihenfolge). Die endgültige **Layerarchitektur**
+wird anhand der gelieferten Originalassets festgelegt; Empfehlung **PNG-Layer-Stapelung**
+(`game-design-concept.md` §3.2/§3.3). Keine Neugestaltung der Figuren.
 
 ---
 
-## 9. Phase 6.8 – Inventar, XP und Belohnungen
+## 9. Phase 6.8 – Inventar, XP, Level, Belohnungen und Gastkonto-Übernahme
 
-| Punkt                      | Inhalt                                                                                         |
-| -------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Ziel**                   | Inventar, XP/Level, Erfolge, Freischaltungen – alles serverseitig und manipulationssicher.     |
-| **Betroffene Komponenten** | neue `pages/inventory.ts`, `services/progressService.ts`, Motor-Anbindung am Spielende         |
-| **Betroffene Dateien**     | `schema.prisma`, neue Services/Routen, `services/engine.ts` (nur Haken am `end`)               |
-| **Datenmodelle**           | **Neu:** `PlayerInventory`, `PlayerAchievement`, `XpLedger`                                    |
-| **API-Änderungen**         | **Neu:** `GET /api/inventory`, `POST /api/inventory/equip`, `GET /api/achievements`            |
-| **Abhängigkeiten**         | 6.6, 6.7; Anti-Manipulations-Entscheidungen                                                    |
-| **Risiken**                | Doppelte XP-Vergabe, doppeltes Einlösen, manipulierte Bedingungen                              |
-| **Teststrategie**          | Integration: XP genau einmal je Spiel; Erfolg genau einmal; `@@unique` verhindert Doppelbesitz |
-| **Abnahmekriterien**       | XP/Inventar nur serverseitig; idempotent; keine Client-Schreibpfade                            |
-| **Aufwand**                | mittel                                                                                         |
+| Punkt                      | Inhalt                                                                                                                                                                                                                           |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Inventar, XP/Level, Erfolge, Freischaltungen und **Gastkonto-Übernahme** – alles serverseitig und manipulationssicher.                                                                                                           |
+| **Betroffene Komponenten** | neue `pages/inventory.ts`, `services/progressService.ts`, Motor-Anbindung am Spielende, Übernahme-Endpunkt                                                                                                                       |
+| **Betroffene Dateien**     | `schema.prisma`, neue Services/Routen, `services/engine.ts` (nur Haken am `end`), `shared`-Levelfunktion                                                                                                                         |
+| **Datenmodelle**           | **Neu:** `PlayerInventory`, `PlayerAchievement`, `XpLedger`, `Game.guestClaim`; **Erweiterung:** `GamePlayer.userId?`                                                                                                            |
+| **API-Änderungen**         | **Neu:** `GET /api/inventory`, `POST /api/inventory/equip`, `GET /api/achievements`, `POST /api/auth/claim-guest-round`                                                                                                          |
+| **Abhängigkeiten**         | 6.6, 6.7; Levelkurve + XP-Ledger; Anti-Manipulations-Entscheidungen                                                                                                                                                              |
+| **Risiken**                | Doppelte XP-Vergabe, doppeltes Einlösen, manipulierte Bedingungen, **doppelte/fremde Gastübernahme**, Gleichstand                                                                                                                |
+| **Teststrategie**          | Integration: XP genau einmal je Spiel; Erfolg genau einmal; `@@unique` verhindert Doppelbesitz; **Übernahme nur einmal und nur für den Berechtigten**; mehrere Levelaufstiege aus einer Gutschrift; Gleichstand → gleicher Bonus |
+| **Abnahmekriterien**       | XP/Inventar nur serverseitig; idempotent; keine Client-Schreibpfade; Gastübernahme einmalig und sicher; Levelkurve korrekt                                                                                                       |
+| **Aufwand**                | mittel bis hoch (Übernahme ist der riskanteste Teil)                                                                                                                                                                             |
 
 **Bestandsschutz:** Die Punktevergabe im Spiel bleibt unverändert. XP ist ein **zusätzlicher**
 Vorgang beim Spielende, in einer Transaktion.
+
+### 9.1 Verbindliche XP-Regeln (Phase 5c)
+
+- **XP = erreichte Spielpunkte.** Keine zweite XP-Formel; das bestehende Punktesystem bleibt
+  maßgeblich (`game-design-concept.md` §5.2).
+- **Platzierungsbonus** zusätzlich: 1. Platz **1.500**, 2. Platz **1.000**, 3. Platz **500** XP.
+  Wird **nach** Feststellung der endgültigen Platzierung gutgeschrieben und **nicht** in die
+  Spielwertung eingerechnet (`game-design-concept.md` §5.3).
+- **Gleichstand:** Alle gleichplatzierten Spieler erhalten **denselben** Bonus. Die bestehende
+  Ranglistenlogik ist darauf zu **prüfen und zu dokumentieren** (kein willkürlicher Tiebreak).
+- **Levelkurve (zentral in `shared`):** Level 1 = 0 XP; L1→L10 je 10.000; ab L10→L11 +11.000,
+  danach je +1.000. Eine Gutschrift kann **mehrere** Level überspringen; **alle** erreichten Level
+  und Belohnungen müssen berücksichtigt werden (`game-design-concept.md` §5.4).
+- **Ledger-Idempotenz:** `XpLedger` mit `@@unique([userId, gameId, reason])`; eine erneute
+  Verarbeitung desselben Spielabschlusses erzeugt **keine** weiteren XP.
+
+### 9.2 Gastkonto-Übernahme (verbindlich, Phase 5c)
+
+- **Nach Spielende:** Ein Gast, der ein Konto erstellt, kann die **gerade abgeschlossene** Runde
+  übernehmen (Punkte, Platzierungsbonus, XP, Platzierung, richtige/beantwortete Fragen, Statistik).
+  Nur nach **ausdrücklicher Zustimmung**.
+- **Während einer Runde:** Registrierung verknüpft die bestehende Teilnahme direkt; Spielplatz,
+  Antworten, Punktestand und Rundenbindung bleiben erhalten; **keine** doppelte Spieleridentität.
+- **Sicherheit:** kurzlebiger, einmaliger **Übernahmenachweis** (`Game.guestClaim` mit `expiresAt`
+  und `usedAt`), serverseitig geprüft, an Session **und** Runde gebunden; keine Übernahme fremder
+  Sessions; keine doppelte Gutschrift.
+- **Abgrenzung:** Nur die **gerade abgeschlossene** Runde; **keine** unbegrenzte nachträgliche
+  Übertragung früherer Gastspiele (`game-design-concept.md` §4.4).
 
 ---
 
@@ -252,21 +296,25 @@ zweite Oberfläche eingeführt. Sicherheitsfragen eines separaten Beamer-Zugangs
 
 ## 11. Phase 6.10 – Hintergrundbilder
 
-| Punkt                      | Inhalt                                                                     |
-| -------------------------- | -------------------------------------------------------------------------- |
-| **Ziel**                   | Vom Projektverantwortlichen bereitgestellte Grafiken einbinden.            |
-| **Betroffene Komponenten** | Beamer, Login, ausgewählte Bereiche                                        |
-| **Betroffene Dateien**     | `packages/frontend/public/backgrounds/*`, CSS-Referenzen                   |
-| **Datenmodelle**           | keine                                                                      |
-| **API-Änderungen**         | keine                                                                      |
-| **Abhängigkeiten**         | **Bilder des Projektverantwortlichen** (fehlen), 6.9                       |
-| **Risiken**                | Falsche Formate/Größen; Lesbarkeit; Ladezeit                               |
-| **Teststrategie**          | Prüfung Format/Auflösung/Transparenz/Größe; visuelle Prüfung; Lazy Loading |
-| **Abnahmekriterien**       | Bilder korrekt eingebunden, lesbar, performant; **keine** Ersatzbilder     |
-| **Aufwand**                | niedrig                                                                    |
+| Punkt                      | Inhalt                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Hintergrundbilder einbinden **und** die **Zufallsauswahl** je Runde umsetzen.                                                         |
+| **Betroffene Komponenten** | Beamer, Login, ausgewählte Bereiche; Host-Auswahl vor Spielbeginn                                                                     |
+| **Betroffene Dateien**     | `packages/frontend/public/backgrounds/*`, CSS-Referenzen, Host-Steuerung                                                              |
+| **Datenmodelle**           | evtl. `Game.backgroundId?` (welcher Hintergrund die Runde nutzt)                                                                      |
+| **API-Änderungen**         | evtl. additives Feld `backgroundId` beim Spielstart                                                                                   |
+| **Abhängigkeiten**         | **Bilder des Projektverantwortlichen** (fehlen), 6.9                                                                                  |
+| **Risiken**                | Falsche Formate/Größen; Lesbarkeit; Ladezeit; Hintergrund darf nicht pro Beitritt/Frage wechseln                                      |
+| **Teststrategie**          | Prüfung Format/Auflösung/Transparenz/Größe; visuelle Prüfung; Lazy Loading; **Zufall genau einmal je Runde, für alle Clients gleich** |
+| **Abnahmekriterien**       | Bilder korrekt eingebunden, lesbar, performant; **Standard Zufall einmalig je Runde**; Host kann vorab wählen; **keine** Ersatzbilder |
+| **Aufwand**                | niedrig bis mittel                                                                                                                    |
 
 **Regel (Briefing §29–31):** Es werden **keine** KI-Ersatzbilder, **keine** Stockbilder und **keine**
 Platzhalter als endgültige Lösung verwendet. Fehlende Bilder werden angefordert und abgewartet.
+
+**Verbindlich (Phase 5c):** Standard **Zufall**; genau **einmal** je Runde bestimmt, für alle
+gleich, bleibt die ganze Runde. Stil: dunkel, Wireframe, dezente Architektur – keine grellen
+Neonflächen, keine gerenderten 3D-Räume (`game-design-concept.md` §10.5).
 
 ---
 
@@ -286,6 +334,10 @@ Platzhalter als endgültige Lösung verwendet. Fehlende Bilder werden angeforder
 | **Aufwand**                | mittel                                                                                    |
 
 **Regel:** Keine ungeklärten urheberrechtlich geschützten Musikstücke. Assets werden angefordert.
+
+**Verbindlich (Phase 5c):** Show-Audio läuft **ausschließlich** über die Host-/Beamer-Ansicht.
+Spieler-Telefone spielen **keine** Show-Musik; höchstens lokale UI-Effekte. Ob die Audioübertragung
+im Zoom-Betrieb hörbar ankommt, wird später **praktisch geprüft** (`game-design-concept.md` §11.2).
 
 ---
 
@@ -311,17 +363,18 @@ game-design-concept §15.
 
 ## 14. Querschnittsthemen (in mehreren Phasen)
 
-| Thema                               | Phasen     | Vorschlag                                                           |
-| ----------------------------------- | ---------- | ------------------------------------------------------------------- |
-| Tests erweitern (E2E, visuell)      | ab 6.2     | Playwright einführen (heute nur im README genannt, nicht vorhanden) |
-| Socket-Rate-Limit (R-6)             | ab 6.3/6.9 | Limit für `join`/`answer`/`rejoin`                                  |
-| Clock-Sync (R-7)                    | 6.9        | Ping/Pong-Versatz, siehe game-design-concept §12.3                  |
-| Zustandswiederherstellung (R-4/5)   | 6.5/6.9    | Reconnect liefert aktuellen Zustand; Neustart rekonstruiert         |
-| R-3 (Historieverlust)               | 6.4        | Entscheidung nötig; ggf. Frage-Snapshot je Spiel                    |
-| Barrierefreiheit                    | alle       | Kontrast, Fokus, `prefers-reduced-motion`, Tastatur                 |
-| Dokumentation                       | alle       | ADRs für neue Entscheidungen; Konzept aktuell halten                |
-| **Performance-Budgets**             | alle       | §20 – als Abnahmekriterium prüfen                                   |
-| **Lasttest** (`tools/loadtest.mjs`) | ab 6.5/6.9 | Nach Realtime-Änderungen erneut fahren (Regressionsschutz)          |
+| Thema                               | Phasen     | Vorschlag                                                                         |
+| ----------------------------------- | ---------- | --------------------------------------------------------------------------------- |
+| Tests erweitern (E2E, visuell)      | ab 6.2     | Playwright einführen (heute nur im README genannt, nicht vorhanden)               |
+| Socket-Rate-Limit (R-6)             | ab 6.3/6.9 | Limit für `join`/`answer`/`rejoin`                                                |
+| Clock-Sync (R-7)                    | 6.9        | Ping/Pong-Versatz, siehe game-design-concept §12.3                                |
+| Zustandswiederherstellung (R-4/5)   | 6.5/6.9    | Reconnect liefert aktuellen Zustand; Neustart rekonstruiert                       |
+| R-3 (Historieverlust)               | 6.4        | **entschärft** durch Quiz-Snapshot (verbindlich, §6.4 / game-design-concept §8.7) |
+| Gastkonto-Übernahme                 | 6.8        | Einmaliger, kurzlebiger Übernahmenachweis; kein Fremdzugriff                      |
+| Barrierefreiheit                    | alle       | Kontrast, Fokus, `prefers-reduced-motion`, Tastatur                               |
+| Dokumentation                       | alle       | ADRs für neue Entscheidungen; Konzept aktuell halten                              |
+| **Performance-Budgets**             | alle       | §16 – als Abnahmekriterium prüfen                                                 |
+| **Lasttest** (`tools/loadtest.mjs`) | ab 6.5/6.9 | Nach Realtime-Änderungen erneut fahren (Regressionsschutz)                        |
 
 ---
 
@@ -410,24 +463,48 @@ Freigabe-Gate nach jeder Phase, um Risiko klein zu halten (Briefing §53, Fehler
 
 ## 19. Offene Entscheidungen, die Phasen blockieren
 
-| #   | Entscheidung                                 | Blockiert           |
-| --- | -------------------------------------------- | ------------------- |
-| 1   | Rolle `PLAYER` + Spielerkonto-Modell         | 6.3, 6.6, 6.7, 6.8  |
-| 2   | R-3: Historieverlust beim Quiz-Bearbeiten    | 6.4 (Autospeichern) |
-| 3   | Charakter-Assets (Referenzdateien)           | 6.7, 6.9, 6.10      |
-| 4   | Beamer-Grafiken (kombinierte Ansicht bleibt) | 6.10                |
-| 5   | Audio-Assets                                 | 6.11                |
-| 6   | Clock-Sync                                   | 6.9                 |
-| 7   | Redis-Adapter oder bewusst eine Instanz      | 6.12, Betrieb       |
-| 8   | Pause/Überspringen                           | 6.5                 |
-| 9   | XP-Werte/Levelschwellen/Erfolge              | 6.8                 |
-| 10  | Katalog in `shared` oder DB                  | 6.7, 6.8            |
-| 11  | Sprache (Englisch/Deutsch)                   | alle UI-Phasen      |
-| 12  | IP-Speicherung (Q5)                          | 6.6                 |
+**Bereits entschieden in Phase 5c** (nicht mehr blockierend): Rolle `PLAYER` (verbindlich), Sprache
+(Deutsch Standard), XP-/Levelregeln (verbindlich), Quiz-Snapshot (verbindlich), Gastkonto-Übernahme
+(verbindlich), charakterexklusive Gegenstände (verbindlich), Hintergrund Standard Zufall (verbindlich),
+Host/Beamer kombiniert (verbindlich), Audio nur Host (verbindlich).
+
+| #   | Entscheidung                                 | Blockiert      |
+| --- | -------------------------------------------- | -------------- |
+| 1   | Charakter-Assets (Referenzdateien)           | 6.7, 6.9, 6.10 |
+| 2   | Beamer-Grafiken (kombinierte Ansicht bleibt) | 6.10           |
+| 3   | Audio-Assets                                 | 6.11           |
+| 4   | Clock-Sync                                   | 6.9            |
+| 5   | Redis-Adapter oder bewusst eine Instanz      | 6.12, Betrieb  |
+| 6   | Pause/Überspringen                           | 6.5            |
+| 7   | Katalog in `shared` oder DB                  | 6.7, 6.8       |
+| 8   | Endgültige Belohnungsmatrix                  | 6.8            |
+| 9   | Erfolgsnamen/-bedingungen                    | 6.8            |
+| 10  | IP-Speicherung (Q5)                          | 6.6            |
 
 ---
 
-## 20. Zusammenfassung
+## 20. Phase 5c – Produktentscheidungen dokumentiert (bereits erledigt)
+
+Phase 5c hat die **verbindlichen Produktentscheidungen** in die Konzeptunterlagen übernommen
+(Details: `docs/reports/phase-5c-product-decisions.md`). Es wurde **kein** Anwendungscode, **keine**
+Migration und **kein** Phase-6-Branch erstellt.
+
+| Entscheidung                              | Wirkung auf die Roadmap                             |
+| ----------------------------------------- | --------------------------------------------------- |
+| XP = Spielpunkte                          | 6.8: kein zweites XP-System; Levelkurve in `shared` |
+| Platzierungsbonus 1500/1000/500           | 6.8: Bonus nach Spielende, Gleichstand fair         |
+| Levelkurve L1–L10 = 10.000, ab L11 +1.000 | 6.8: zentrale Funktion, Mehrfach-Aufstieg           |
+| Freiwillige Registrierung                 | 6.3: Angebot beim Beitritt und nach Spielende       |
+| Gastkonto-Übernahme                       | 6.8: neuer Schritt mit `Game.guestClaim`            |
+| Charakterexklusive Items                  | 6.7: Katalog pro Charakter, sichtbare Ausrüstung    |
+| Persönliche Statistik                     | 6.6: kein Spieler-Zugriff auf die Quizhistorie      |
+| Quiz-Snapshot                             | 6.4: `GameSnapshot`, R-3 entschärft                 |
+| Hintergrund Standard Zufall               | 6.10: einmal je Runde, Host kann vorab wählen       |
+| Audio nur Host                            | 6.11: keine Show-Musik auf Spieler-Telefonen        |
+
+---
+
+## 21. Zusammenfassung
 
 Der Plan folgt der vom Briefing vorgegebenen Reihenfolge (6.1–6.12) und stellt grundlegende Systeme
 vor abhängige. Er hält den Bestandsschutz ein (keine Änderung an Fragen, Konten, Rollen,
@@ -438,6 +515,9 @@ Asset-Bereitstellung begonnen.
 **Bereits erledigt (Phase 5b):** Logo/Favicon optimiert, verwaiste/tote Ressourcen entfernt,
 Lasttest-Werkzeug, Testlage mit PostgreSQL verifiziert (181/181). Siehe §15.
 
+**Bereits erledigt (Phase 5c):** Verbindliche Produktentscheidungen dokumentiert (XP, Level,
+Registrierung, Gastübernahme, Gegenstände, Statistik, Snapshot, Hintergrund, Audio). Siehe §20.
+
 **Kein Code im Sinne einer Phase-6-Funktion, keine Migration, kein Phase-6-Branch wurde erstellt.**
-Die begrenzten ersten Arbeiten der Phase 5b sind bestandserhaltend und nehmen keinen
-Produktentscheid vorweg.
+Die begrenzten ersten Arbeiten der Phase 5b und die Konzeptarbeit der Phase 5c sind bestandserhaltend
+und nehmen keinen Implementierungsentscheid vorweg.

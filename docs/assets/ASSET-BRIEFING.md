@@ -92,33 +92,64 @@ Für jede Figur werden benötigt:
 | **Zielpfad**         | `packages/frontend/public/characters/<id>-base.png`                                       |
 | **Animation**        | optional: Idle-Frames später; zunächst statisch                                           |
 
-**Figuren (aus Briefing §12):** `ethan`, `maya`, `pixel` (Hund), `bee` (Biene), `dr-obscura`,
-`o-bot` (ggf. mehrere O-Bot-Typen als Varianten).
+**Figuren (aus Briefing §12, Phase 5c):** Geplant sind ungefähr **15 Avatare** aus dem
+Blockwelt-Helden-Universum, inklusive passender **Tiere und Insekten**. Namentlich bekannt:
+`ethan`, `maya`, `pixel` (Hund), `bee` (Biene), `dr-obscura`, `o-bot` (ggf. mehrere O-Bot-Typen).
+Die **endgültige Charakterliste** richtet sich nach den Originalassets des Projektverantwortlichen.
 
 **Bitte zusätzlich:** Original-Referenzdateien des Blockwelt-Helden-Universums (Briefing §32), damit
 Stil, Proportionen und Farben verbindlich sind.
 
 ---
 
-## Block C – Avatar-Gegenstände (Layer)
+## Block C – Avatar-Gegenstände (Layer, charakterexklusiv)
 
 > **Diese Dateien fehlen vollständig.** Benötigt für Phase 6.7/6.8.
 
-Jeder Gegenstand wird als **transparentes Layer** geliefert, exakt auf der Zeichenfläche der Figur
-(gleiche Auflösung, gleicher Ankerpunkt), damit er ohne Nachjustierung passt.
+**Verbindlich (Phase 5c):** **Jeder Avatar besitzt seine eigenen Gegenstände.** Es gibt **keinen**
+allgemeinen Gegenstandskatalog. Ein Hut für Ethan ist eine **andere Datei** als ein Hut für Pixel.
+Jeder Gegenstand ist **ausschließlich für seinen Charakter** verfügbar und muss am Avatar **sichtbar**
+ausrüstbar sein (nicht nur als Inventar-Icon).
 
-| Feld                 | Inhalt                                                       |
-| -------------------- | ------------------------------------------------------------ |
-| **Asset**            | `cosmetic-<kategorie>-<name>` (z. B. `cosmetic-hat-basecap`) |
-| **Verwendung**       | Avatar-Editor, Profil, Rangliste, Beamer                     |
-| **Auflösung**        | **identisch zur Figur** (Vorschlag 1024 × 1024)              |
-| **Seitenverhältnis** | 1:1                                                          |
-| **Format**           | PNG (RGBA)                                                   |
-| **Transparenz**      | **ja** (zwingend)                                            |
-| **Zielpfad**         | `packages/frontend/public/cosmetics/<kategorie>/<name>.png`  |
-| **Animation**        | nein                                                         |
+Jeder Gegenstand wird als **transparentes Layer** geliefert, exakt auf der Zeichenfläche **seines
+Charakters** (gleiche Auflösung, gleicher Ankerpunkt), damit er ohne Nachjustierung passt.
 
-**Benötigte Kategorien und Gegenstände (Vorschlag, aus Briefing §14):**
+| Feld                 | Inhalt                                                                      |
+| -------------------- | --------------------------------------------------------------------------- |
+| **Asset**            | `cosmetic-<characterId>-<slot>-<name>` (z. B. `cosmetic-ethan-hat-basecap`) |
+| **Verwendung**       | Avatar-Editor, Profil, Rangliste, Beamer                                    |
+| **Auflösung**        | **identisch zur Figur** (Vorschlag 1024 × 1024)                             |
+| **Seitenverhältnis** | 1:1                                                                         |
+| **Format**           | PNG (RGBA)                                                                  |
+| **Transparenz**      | **ja** (zwingend)                                                           |
+| **Zielpfad**         | `packages/frontend/public/cosmetics/<characterId>/<slot>/<name>.png`        |
+| **Animation**        | nein                                                                        |
+
+### Ausrüstungsslots (verbindlich, pro Charakter definiert)
+
+Jeder Charakter hat die für ihn sinnvollen Slots. Vorschlag: `hat`, `glasses`, `outfit`, `tool`,
+`back` (Rucksack/Umhang), `neck` (nur Pixel: Halsband), `wings` (nur Biene), `sensor` (nur O-Bot),
+`color` (Fell-/Flügel-/Akzentfarbe), `effect`.
+
+### Layer-Reihenfolge (z–E, verbindlich als Spezifikation)
+
+```
+1. Hintergrund/Effekt (hinter der Figur)
+2. Körper der Figur (Basismodell)
+3. Fell-/Akzentfarbe (Variante des Basismodells)
+4. Kleidung/Outfit
+5. Umhang (hinter Armen, aber vor Körper)   ← Sonderfall, eigene Reihenfolge
+6. Brille
+7. Kopfbedeckung
+8. Werkzeug (vor Körper)
+9. Rucksack (hinter Körper)                  ← Sonderfall
+10. Vordergrund-Effekt
+```
+
+Jedes Layer erhält einen `zIndex`; die Reihenfolge ist Teil der Asset-Spezifikation.
+
+**Benötigte Kategorien und Gegenstände (Designidee, aus Briefing §14).** Die **konkreten
+Einzelgegenstände pro Charakter** legt der Projektverantwortliche fest.
 
 | Kategorie        | Gegenstände (Vorschlag)                                                                |
 | ---------------- | -------------------------------------------------------------------------------------- |
@@ -131,8 +162,8 @@ Jeder Gegenstand wird als **transparentes Layer** geliefert, exakt auf der Zeich
 | Figur-spezifisch | Halsband (Pixel), Flügel-/Muster-Varianten (Biene), Fellfarben (Pixel), Sensor (O-Bot) |
 
 **Wichtig:** Für **jede Figur**, die einen Gegenstand tragen kann, wird das Layer in der passenden
-Form benötigt (siehe Kompatibilitätsmatrix, game-design-concept §3.2). Beispiel: ein Hut für Ethan
-und ein Hut für Pixel sind unterschiedliche Dateien.
+Form benötigt (siehe Kompatibilitätsmatrix, game-design-concept §3.2a). Die Layer müssen auf der
+Zeichenfläche des jeweiligen Charakters ausgerichtet sein (Ankerpunkt, Position, Größe).
 
 ---
 
@@ -140,27 +171,37 @@ und ein Hut für Pixel sind unterschiedliche Dateien.
 
 > **Diese Dateien fehlen vollständig.** Benötigt für Phase 6.9/6.10.
 
-| Feld                 | Inhalt                                                                     |
-| -------------------- | -------------------------------------------------------------------------- |
-| **Verwendung**       | Beamer-Szenen, Login, ausgewählte Bereiche                                 |
-| **Komposition**      | **Freie, gut lesbare zentrale Fläche** für Fragen/Antworten (Briefing §28) |
-| **Gestaltung**       | Premium-Gaming/Show, ZeroPeek-Farbschema (violett/cyan), dunkel            |
-| **Auflösung**        | Vorschlag: 2560 × 1440 (Reserve für große Bildschirme)                     |
-| **Seitenverhältnis** | 16:9                                                                       |
-| **Format**           | optimiertes Webformat (WebP oder AVIF, PNG als Rückfall)                   |
-| **Transparenz**      | nein (Vollbild), außer bei Overlay-Grafiken                                |
-| **Zielpfad**         | `packages/frontend/public/backgrounds/<name>.webp`                         |
-| **Animation**        | nein (Bewegung nur dezent per CSS, wo sinnvoll)                            |
+**Verbindlich (Phase 5c):** Standard ist **Zufall**; der Hintergrund wird **genau einmal je Runde**
+bestimmt und bleibt für alle gleich. Stil: **dunkel, Wireframe-Linien, perspektivische Räume, dezente
+geometrische Architektur, gedämpfte Farben**. **Keine** gerenderten 3D-Objekte, **keine** realistischen
+3D-Räume, **keine** grellen Neonflächen.
 
-**Vorgeschlagene Motive (aus Briefing §28):**
+| Feld                 | Inhalt                                                                      |
+| -------------------- | --------------------------------------------------------------------------- |
+| **Verwendung**       | Host-/Beamer-Ansicht (kombiniert), Login, ausgewählte Bereiche              |
+| **Komposition**      | **Freie, gut lesbare zentrale Fläche** für Fragen/Antworten (Briefing §28)  |
+| **Gestaltung**       | Dark Retro-Futuristic Wireframe, ZeroPeek-Farbschema (violett/cyan), dunkel |
+| **Auflösung**        | Vorschlag: 2560 × 1440 (Reserve für große Bildschirme)                      |
+| **Seitenverhältnis** | 16:9                                                                        |
+| **Format**           | optimiertes Webformat (WebP oder AVIF, PNG als Rückfall)                    |
+| **Transparenz**      | nein (Vollbild), außer bei Overlay-Grafiken                                 |
+| **Zielpfad**         | `packages/frontend/public/backgrounds/<name>.webp`                          |
+| **Animation**        | nein (Bewegung nur dezent per CSS, wo sinnvoll)                             |
 
-| Asset-Name                   | Verwendung                   | Motiv                                              |
+**Vorgeschlagene Motive (Umgebungen aus Phase 5c):**
+
+| Asset-Name                   | Verwendung                   | Motiv (Wireframe, dunkel)                          |
 | ---------------------------- | ---------------------------- | -------------------------------------------------- |
-| `beamer-welcome-background`  | Szene 1 Begrüßung            | futuristische Game-Show-Bühne, ruhig               |
-| `beamer-lobby-background`    | Szene 2/3 Beitritt/Übersicht | digitale Arena, Platz für PIN und Avatar-Wand      |
-| `beamer-question-background` | Szene 5–7 Frage/Countdown    | Neon-Gaming-Stage, **starke zentrale Freifläche**  |
-| `beamer-reveal-background`   | Szene 8/9 Auflösung/Punkte   | Bühne mit Raum für Balken                          |
-| `beamer-board-background`    | Szene 10 Rangliste           | Arena, Platz für Liste                             |
+| `bg-retro-grid`              | Zufallspool / Szene 1        | Retro Grid, ruhig                                  |
+| `bg-future-classroom`        | Zufallspool                  | Future Classroom, dezente Architektur              |
+| `bg-quiz-arena`              | Zufallspool / Szene 5–7      | Quiz Arena, **starke zentrale Freifläche**         |
+| `bg-spaceship-bridge`        | Zufallspool                  | Spaceship Bridge, perspektivisch                   |
+| `bg-simulation-room`         | Zufallspool                  | Simulation Room, geometrisch                       |
+| `bg-blockworld-future-world` | Zufallspool                  | Blockwelt Future World, dezent                     |
+| `beamer-welcome-background`  | Szene 1 Begrüßung            | ruhige Game-Show-Bühne                             |
+| `beamer-lobby-background`    | Szene 2/3 Beitritt/Übersicht | Platz für PIN, QR-Code und Avatar-Wand             |
+| `beamer-reveal-background`   | Szene 8/9 Auflösung/Punkte   | Raum für Balken                                    |
+| `beamer-board-background`    | Szene 10 Rangliste           | Platz für Liste                                    |
 | `beamer-final-background`    | Szene 11/12 Finale/Podium    | dramatische Finalkulisse                           |
 | `beamer-podium-background`   | Szene 12 Gewinnerpodium      | Siegerpodium, Platz für 3 Figuren                  |
 | `beamer-outro-background`    | Szene 13 Abschluss           | ruhiger Ausklang                                   |
@@ -234,18 +275,23 @@ richtig, falsch, Uhr, Verbindung, Ton an/aus, Pause, Weiter, Beenden, Zufall.
 
 ## Zusammenfassung des Asset-Bedarfs
 
-| Block | Inhalt                   | Dateien (ca.) | Blockiert Phase    | Priorität |
-| ----- | ------------------------ | ------------- | ------------------ | --------- |
-| A     | Logo/Favicon optimiert   | 1–2           | 6.3 (Optik)        | niedrig   |
-| B     | Charaktere               | 6–10          | **6.7, 6.9, 6.10** | **hoch**  |
-| C     | Avatar-Gegenstände       | 40–80         | **6.7, 6.8**       | **hoch**  |
-| D     | Hintergrundbilder/Beamer | 8–10          | **6.9, 6.10**      | **hoch**  |
-| E     | Icons                    | 25–30         | 6.2, 6.5           | mittel    |
-| F     | Soundeffekte             | 15            | 6.11               | mittel    |
-| G     | Musik                    | 4             | 6.11               | mittel    |
+| Block | Inhalt                         | Dateien (ca.) | Blockiert Phase    | Priorität |
+| ----- | ------------------------------ | ------------- | ------------------ | --------- |
+| A     | Logo/Favicon optimiert         | 1–2           | 6.3 (Optik)        | niedrig   |
+| B     | Charaktere (ca. 15)            | 15+           | **6.7, 6.9, 6.10** | **hoch**  |
+| C     | Avatar-Gegenstände (pro Figur) | 80–150        | **6.7, 6.8**       | **hoch**  |
+| D     | Hintergrundbilder/Host-Show    | 12–15         | **6.9, 6.10**      | **hoch**  |
+| E     | Icons                          | 25–30         | 6.2, 6.5           | mittel    |
+| F     | Soundeffekte                   | 15            | 6.11               | mittel    |
+| G     | Musik                          | 4             | 6.11               | mittel    |
+
+**Hinweis zu Block C (Phase 5c):** Weil Gegenstände **charakterexklusiv** sind, wächst die Zahl der
+Dateien mit der Zahl der Charaktere (jede Figur erhält ihre eigenen Layer in ihren eigenen Slots).
+Die endgültige Zahl ergibt sich aus der Charakterliste und der Belohnungsmatrix des
+Projektverantwortlichen.
 
 **Empfehlung zur Reihenfolge der Bereitstellung:** Zuerst **Block B (Charaktere)** und **Block D
-(Beamer-Hintergründe)**, weil daran die größten Phasen hängen. Danach **Block C (Gegenstände)**,
+(Hintergrundbilder)**, weil daran die größten Phasen hängen. Danach **Block C (Gegenstände)**,
 **Block E (Icons)**, zuletzt **Block F/G (Audio)** und **Block A (Optimierungen)**.
 
 **Bitte gebündelt liefern**, damit die abhängigen Phasen ohne Unterbrechung laufen können

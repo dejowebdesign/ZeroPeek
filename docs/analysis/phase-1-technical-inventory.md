@@ -170,6 +170,35 @@ anonyme `GamePlayer`-Zeilen ohne Login.
 `DO $$ … EXCEPTION WHEN duplicate_object`). Die vorhandene Migrationsdisziplin (idempotent,
 bestehende Daten schonend) ist beizubehalten.
 
+### 3.1 Bestand vs. geplante Erweiterung (Phase 5c, klar getrennt)
+
+> **Wichtig:** Die folgende Tabelle trennt **vorhandene** Modelle von **geplanten** Erweiterungen.
+> Die geplanten Modelle sind **Konzept**, nicht implementiert. **Keine** Migration in Phase 5c.
+
+**Vorhanden (verifiziert, 8 Modelle):** `User`, `Session`, `Quiz`, `Question`, `Game`,
+`GamePlayer`, `PlayerAnswer`, `GameEvent` – siehe Tabelle oben.
+
+**Geplant (Phase 6, nur Konzept; Details `game-concept` §7.1, `roadmap` §6.3–6.10):**
+
+| Geplantes Modell/Feld     | Art               | Zweck                                               | Phase   |
+| ------------------------- | ----------------- | --------------------------------------------------- | ------- |
+| `UserRole` + `PLAYER`     | Enum-Erweiterung  | Spielerrolle ohne Admin-/Trainerrechte              | 6.3     |
+| `User.emailVerifiedAt?`   | Spalte (nullable) | E-Mail-Bestätigung                                  | 6.3     |
+| `PlayerProfile`           | neues Modell      | XP, Level, Charakter, Avatar-Config, Statistik      | 6.6     |
+| `GamePlayer.userId?`      | Spalte (nullable) | Verknüpfung Gast → Konto                            | 6.6/6.8 |
+| `GamePlayer.characterId?` | Spalte (nullable) | gewählte Figur im Spiel                             | 6.7     |
+| `PlayerInventory`         | neues Modell      | Besitz/ausgerüstete Gegenstände (charakterexklusiv) | 6.8     |
+| `PlayerAchievement`       | neues Modell      | Erfolge                                             | 6.8     |
+| `XpLedger`                | neues Modell      | append-only XP-Protokoll (Idempotenz)               | 6.8     |
+| `Game.guestClaim`         | neues Feld/Modell | einmaliger Gastkonto-Übernahmenachweis              | 6.8     |
+| `GameSnapshot`            | neues Modell      | unveränderliche Quiz-Momentaufnahme je Spiel        | 6.4     |
+| `Game.backgroundId?`      | Spalte (nullable) | gewählter Hintergrund der Runde                     | 6.10    |
+
+**Nicht gespeichert (berechnet):** Trefferquote, Fortschritt bis zum nächsten Level, Ranglistenposition.
+**Bereits vorhanden und wiederverwendet:** `Game.settings` (JSONB) ist ein **Snapshot der
+Scoring-Einstellungen** je Spiel und die bestehende Grundlage für manipulationssichere Punktevergabe –
+darauf baut die verbindliche XP-Regel (XP = Spielpunkte) auf.
+
 ---
 
 ## 4. Authentifizierung, Benutzer- und Rollenmodell
@@ -464,26 +493,26 @@ Dokumentationspflicht in `PORTAINER.md` / `ENVIRONMENT.md` / `.env.portainer.exa
 
 ## 10. Technische Risiken und Einschränkungen
 
-| #    | Risiko / Einschränkung                                                                           | Auswirkung                                                                  | Betroffen von späteren Phasen |
-| ---- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- | ----------------------------- |
-| R-1  | DB-gestützte Integrationssuiten brauchen eine PostgreSQL (ohne DB übersprungen).                 | **Entschärft (Phase 5b):** mit echter PostgreSQL laufen alle 181 Tests grün | alle                          |
-| R-2  | **Einzelinstanz-Design:** Motor ist In-Memory, kein Redis-Adapter.                               | Horizontale Skalierung unmöglich ohne Umbau                                 | Realtime, Beamer, Last        |
-| R-3  | **Quiz-Update löscht Fragen und kaskadiert Antworten/Historie.**                                 | Spielhistorie/Statistik kann verloren gehen                                 | Editor, Profile, Ranglisten   |
-| R-4  | **Kein Zustands-Replay nach Neustart** (kein Timer, `answeredQuestionId` verloren, P2002 → 500). | Hängende Spiele, irreführende Fehler                                        | Realtime, Host                |
-| R-5  | **Reconnect mitten in der Frage** stellt die Frage nicht wieder her.                             | Spieler sehen die Frage nicht                                               | Realtime, Spieler             |
-| R-6  | **Kein Rate-Limit auf Socket-Events.**                                                           | Spam/Last auf `player:answer`                                               | Realtime, Sicherheit          |
-| R-7  | **Kein Clock-Sync**; Countdown nutzt die Client-Uhr.                                             | Ungenaue Countdowns bei falscher Geräteuhr                                  | Beamer, Spieler               |
-| R-8  | Favicon-PNG **ohne Alphakanal**; Rand nicht homogen weiß (Freistellen unsicher).                 | Optik (Kachel-Hintergrund)                                                  | Login, Branding               |
-| R-9  | Verwaiste `favicon.svg` ohne Einbindung.                                                         | **Behoben (Phase 5b):** entfernt                                            | Branding                      |
-| R-10 | **Keine Charakter-/Show-/Audio-Assets** im Repo.                                                 | Alle bild-/tonabhängigen Schritte blockiert                                 | Avatare, Beamer, Sound        |
-| R-11 | **CSP `style-src 'self'`** ohne `unsafe-inline`; dynamische Stile nur über CSSOM.                | Neue Animationen/Effekte müssen CSP-konform sein                            | Designsystem, Beamer          |
-| R-12 | **Keine E2E-/visuellen Tests.**                                                                  | Responsive-/Designregressionen bleiben unentdeckt                           | alle UI-Phasen                |
-| R-13 | **`team` und `ideas`-Voting** sind deklariert, aber nicht implementiert.                         | Irreführende Erwartung                                                      | Spielmodi                     |
-| R-14 | **`lead`-Phase** deklariert, nie betreten.                                                       | Tote Zustände in der Maschine                                               | Spielfluss                    |
-| R-15 | **Flacher Clone**, keine Historie/Tags verfügbar.                                                | Keine historischen Aussagen/Blame möglich                                   | –                             |
-| R-16 | **`GamePlayer → User` fehlt**; keine Spielerkonten.                                              | Gast→Konto-Verknüpfung braucht neue Felder/Modelle                          | Profile, XP                   |
-| R-17 | **Globales HTTP-Rate-Limit 300/min** (10 000 im Test) gilt für alle Routen gleich.               | Grobe Granularität                                                          | Sicherheit                    |
-| R-18 | **`sessionSecret`-Default `phase-0-placeholder`** außerhalb Produktion; in Produktion erzwungen. | Nur relevant bei falschem `NODE_ENV`                                        | Deployment                    |
+| #    | Risiko / Einschränkung                                                                           | Auswirkung                                                                                                   | Betroffen von späteren Phasen |
+| ---- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ----------------------------- |
+| R-1  | DB-gestützte Integrationssuiten brauchen eine PostgreSQL (ohne DB übersprungen).                 | **Entschärft (Phase 5b):** mit echter PostgreSQL laufen alle 181 Tests grün                                  | alle                          |
+| R-2  | **Einzelinstanz-Design:** Motor ist In-Memory, kein Redis-Adapter.                               | Horizontale Skalierung unmöglich ohne Umbau                                                                  | Realtime, Beamer, Last        |
+| R-3  | **Quiz-Update löscht Fragen und kaskadiert Antworten/Historie.**                                 | Spielhistorie/Statistik kann verloren gehen; **entschärft (Phase 5c): Quiz-Snapshot je Spiel (verbindlich)** | Editor, Profile, Ranglisten   |
+| R-4  | **Kein Zustands-Replay nach Neustart** (kein Timer, `answeredQuestionId` verloren, P2002 → 500). | Hängende Spiele, irreführende Fehler                                                                         | Realtime, Host                |
+| R-5  | **Reconnect mitten in der Frage** stellt die Frage nicht wieder her.                             | Spieler sehen die Frage nicht                                                                                | Realtime, Spieler             |
+| R-6  | **Kein Rate-Limit auf Socket-Events.**                                                           | Spam/Last auf `player:answer`                                                                                | Realtime, Sicherheit          |
+| R-7  | **Kein Clock-Sync**; Countdown nutzt die Client-Uhr.                                             | Ungenaue Countdowns bei falscher Geräteuhr                                                                   | Beamer, Spieler               |
+| R-8  | Favicon-PNG **ohne Alphakanal**; Rand nicht homogen weiß (Freistellen unsicher).                 | Optik (Kachel-Hintergrund)                                                                                   | Login, Branding               |
+| R-9  | Verwaiste `favicon.svg` ohne Einbindung.                                                         | **Behoben (Phase 5b):** entfernt                                                                             | Branding                      |
+| R-10 | **Keine Charakter-/Show-/Audio-Assets** im Repo.                                                 | Alle bild-/tonabhängigen Schritte blockiert                                                                  | Avatare, Beamer, Sound        |
+| R-11 | **CSP `style-src 'self'`** ohne `unsafe-inline`; dynamische Stile nur über CSSOM.                | Neue Animationen/Effekte müssen CSP-konform sein                                                             | Designsystem, Beamer          |
+| R-12 | **Keine E2E-/visuellen Tests.**                                                                  | Responsive-/Designregressionen bleiben unentdeckt                                                            | alle UI-Phasen                |
+| R-13 | **`team` und `ideas`-Voting** sind deklariert, aber nicht implementiert.                         | Irreführende Erwartung                                                                                       | Spielmodi                     |
+| R-14 | **`lead`-Phase** deklariert, nie betreten.                                                       | Tote Zustände in der Maschine                                                                                | Spielfluss                    |
+| R-15 | **Flacher Clone**, keine Historie/Tags verfügbar.                                                | Keine historischen Aussagen/Blame möglich                                                                    | –                             |
+| R-16 | **`GamePlayer → User` fehlt**; keine Spielerkonten.                                              | Gast→Konto-Verknüpfung braucht neue Felder/Modelle                                                           | Profile, XP                   |
+| R-17 | **Globales HTTP-Rate-Limit 300/min** (10 000 im Test) gilt für alle Routen gleich.               | Grobe Granularität                                                                                           | Sicherheit                    |
+| R-18 | **`sessionSecret`-Default `phase-0-placeholder`** außerhalb Produktion; in Produktion erzwungen. | Nur relevant bei falschem `NODE_ENV`                                                                         | Deployment                    |
 
 ---
 
@@ -561,8 +590,14 @@ Diese Punkte sind im Code nicht eindeutig und brauchen eine Entscheidung, bevor 
    Phase 6.7 nicht startbar.
 4. **Spielfluss:** Soll die `lead`-Phase (Vorlese-/Spannungsphase vor der Frage) aktiviert werden?
 5. **Ranglisten:** Nur innerhalb eines Spiels (heute) oder global/Tages-/Wochenranglisten?
-6. **R-3 (Historieverlust bei Quiz-Bearbeitung):** Soll die Spielhistorie künftig unabhängig vom Quiz
-   gespeichert werden (Frage-Snapshot je Spiel)? Das wäre eine Schemaerweiterung.
+6. **R-3 (Historieverlust bei Quiz-Bearbeitung):** **Entschieden (Phase 5c)** – ein
+   **unveränderlicher Quiz-Snapshot je Spiel** wird eingeführt (`GameSnapshot`, verbindlich). Die
+   Schemaerweiterung ist additiv und wird erst in Phase 6.4 migriert.
+
+**Bereits entschieden (Phase 5c):** Freiwillige Spielerregistrierung mit E-Mail-Bestätigung und Rolle
+`PLAYER`; Gastkonto-Übernahme nach Spielende; XP = Spielpunkte + Platzierungsbonus; Levelkurve;
+charakterexklusive Gegenstände; persönliche Statistik (Historie nur Admin); Hintergrund Standard
+Zufall; Audio nur Host/Beamer. Details: `docs/reports/phase-5c-product-decisions.md`.
 
 ---
 
@@ -578,8 +613,9 @@ Erfolge, Sterne-Login, Sound, Show-Grafiken und globale Ranglisten.** Eine eigen
 ist **nicht** erforderlich – die kombinierte Host-/Beamer-Ansicht bleibt verbindlich.
 Der Avatar ist heute nur ein unvalidiertes Textfeld; das Charakter-Universum existiert im Code nicht.
 
-Die wichtigsten technischen Schulden sind **R-3 (Historieverlust beim Quiz-Bearbeiten)** und
-**R-4/R-5 (fehlende Zustandswiederherstellung nach Neustart/Reconnect)**, gefolgt von **R-2**
-(Einzelinstanz-Design) und **R-6** (fehlendes Socket-Rate-Limit).
+Die wichtigsten technischen Schulden sind **R-3 (Historieverlust beim Quiz-Bearbeiten – in Phase 5c
+durch den verbindlichen Quiz-Snapshot entschärft)** und **R-4/R-5 (fehlende Zustandswiederherstellung
+nach Neustart/Reconnect)**, gefolgt von **R-2** (Einzelinstanz-Design) und **R-6** (fehlendes
+Socket-Rate-Limit).
 
 **Es wurde kein Anwendungscode, kein Schema und keine Deployment-Konfiguration verändert.**
