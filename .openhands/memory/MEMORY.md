@@ -452,6 +452,25 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   host review/shortcuts; report lacks flag/timing columns and Excel/print export;
   `avatar` is an unvalidated free string; "too fast" rule implemented but off.
 
+## Frontend design system (Phase 6.1, PR #18)
+- Style: **"Dark Retro-Futuristic Wireframe & Glassmorphism"** — presentation only.
+  Working reference: `docs/design/design-system.md`.
+- `packages/frontend/src/styles/tokens.css` = tokens + all component CSS (single file).
+  Phase 0 tokens are FROZEN and asserted byte-for-byte by `src/design-system.test.ts`.
+- `packages/frontend/src/styles/backdrop.css` = wireframe floor grid + horizon + login
+  starfield. CSS-only, no images. Both CSS files are linked in all 4 HTML entries.
+- Reusable components live in `src/ui.ts` (`chip`, `progress`, `statTile`, `dialog`,
+  `confirmDialog`, `skeleton`, `countdown`, `emptyState`, `setBusy`; `button()` extended).
+  **No `innerHTML` anywhere** — CSP is `script-src 'self'`/`style-src 'self'` (guard test).
+- Extending the system: add a token, add the component to `ui.ts` + CSS + `ui.test.ts`,
+  and register its class in `design-system.test.ts`. Never hard-code a value.
+
+## Git / push in this sandbox
+- `git push -u origin <branch>` **prompts for a username** (no credential helper) and hangs.
+  Push with `git push "https://${GITHUB_TOKEN}@github.com/dejowebdesign/ZeroPeek.git" <branch>`,
+  then set `branch.<name>.remote` back to `origin` — otherwise the token leaks into `.git/config`.
+- `create_pr` tool works directly (owner/repo `dejowebdesign/ZeroPeek`).
+
 ## Docker in this sandbox
 - A dockerd is often **already running** (PID file `/var/run/docker.pid`).
   `docker info` as the non-root user fails; use **`sudo docker ...`**. Only start

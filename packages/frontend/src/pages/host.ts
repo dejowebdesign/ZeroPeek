@@ -19,7 +19,20 @@ import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
 import { questionResult, solutionText } from '../questionView.js';
-import { brand, button, errorText, field, notice, pageHeader, toast } from '../ui.js';
+import {
+  brand,
+  button,
+  chip,
+  confirmDialog,
+  countdown,
+  emptyState,
+  errorText,
+  field,
+  notice,
+  pageHeader,
+  setBusy,
+  toast,
+} from '../ui.js';
 
 interface MeResponse {
   user: { id: string; username: string; role: string } | null;
@@ -71,13 +84,23 @@ function stopTimer(): void {
   }
 }
 
-/** Render a countdown into `node` for a question opened at `openedAt`. */
+/**
+ * Render a countdown into `node` for a question opened at `openedAt`.
+ *
+ * The visual is the shared wireframe ring (`countdown`): the number is written
+ * into `.countdown__value` and the ring's `--progress` follows the remaining
+ * time. The timing itself is unchanged from before.
+ */
 function startTimer(node: HTMLElement, openedAt: number, seconds: number): void {
   stopTimer();
+  const value = node.querySelector<HTMLElement>('.countdown__value');
   const tick = (): void => {
     const elapsed = Math.floor((Date.now() - openedAt) / 1000);
     const left = Math.max(0, seconds - elapsed);
-    node.textContent = `${left}s`;
+    const label = `${left}s`;
+    if (value) value.textContent = label;
+    else node.textContent = label;
+    node.style.setProperty('--progress', String(seconds > 0 ? left / seconds : 0));
     if (left === 0) stopTimer();
   };
   tick();
@@ -98,7 +121,7 @@ function showLogin(message?: string): void {
     variant: 'primary',
     onClick: async () => {
       feedback.replaceChildren();
-      submit.disabled = true;
+      setBusy(submit, true);
       try {
         const result = await post<MeResponse>('/api/auth/login', {
           username: username.value.trim(),
@@ -110,7 +133,7 @@ function showLogin(message?: string): void {
       } catch (error) {
         feedback.replaceChildren(notice(errorText(error), 'error'));
       } finally {
-        submit.disabled = false;
+        setBusy(submit, false);
       }
     },
   });
@@ -256,7 +279,11 @@ async function showHome(): Promise<void> {
           : null,
         el('h2', { class: 'section-title' }, 'Start a game'),
         quizzes.length === 0
-          ? el('p', { class: 'muted' }, 'Create a quiz in the editor first.')
+          ? emptyState(
+              'No quizzes yet',
+              'Create your first quiz in the editor.',
+              button('Open editor', { onClick: () => (location.href = './editor.html') }),
+            )
           : el(
               'ul',
               { class: 'quiz-list' },
@@ -280,7 +307,7 @@ async function showHome(): Promise<void> {
             ),
         el('h2', { class: 'section-title' }, 'Finished games'),
         finished.length === 0
-          ? el('p', { class: 'muted' }, 'No finished games yet.')
+          ? emptyState('No finished games yet', 'Finished games and their reports appear here.')
           : el(
               'ul',
               { class: 'report-list' },
@@ -336,10 +363,10 @@ function showLobby(game: HostGame, initialPlayers: PublicPlayer[] = []): void {
       { class: 'centered' },
       el(
         'div',
-        { class: 'card lobby' },
+        { class: 'card lobby anim-fade-in' },
         el('p', { class: 'muted' }, 'Join at this address with the PIN'),
         el('p', { class: 'lobby__pin' }, game.pin),
-        el('p', { class: 'muted' }, `${location.origin}/`),
+        el('p', { class: 'lobby__actions' }, chip(location.origin + '/', 'cyan')),
         players,
         el(
           'div',
@@ -370,17 +397,17 @@ function showLobby(game: HostGame, initialPlayers: PublicPlayer[] = []): void {
 
 /** The beamer question screen with a live timer and a running answer count. */
 function showQuestion(game: HostGame, question: PublicQuestion): void {
-  const timer = el('strong', { class: 'question__timer' });
+  const timer = countdown(question.timeLimit, 1);
   const count = el('p', { class: 'muted' }, '0 answers');
 
   render(
     app,
     el(
       'section',
-      { class: 'centered' },
+      { class: 'centered show' },
       el(
         'div',
-        { class: 'card question' },
+        { class: 'card question anim-fade-in' },
         el(
           'div',
           { class: 'question__meta muted' },
@@ -421,10 +448,10 @@ function showReveal(
     app,
     el(
       'section',
-      { class: 'centered' },
+      { class: 'centered show' },
       el(
         'div',
-        { class: 'card question' },
+        { class: 'card question anim-fade-in' },
         questionResult(
           { text: question.text, type: question.type, display: questionDisplay(question) },
           distribution,
@@ -456,11 +483,12 @@ function showBoard(game: HostGame, players: PublicPlayer[]): void {
     app,
     el(
       'section',
-      { class: 'centered' },
+      { class: 'centered show' },
       el(
         'div',
-        { class: 'card' },
+        { class: 'card anim-fade-in' },
         el('h2', null, 'Leaderboard'),
+        el('p', { class: 'lobby__actions' }, chip(`${players.length} player(s)`, 'cyan')),
         el(
           'ol',
           { class: 'leaderboard' },
@@ -489,12 +517,17 @@ function showBoard(game: HostGame, players: PublicPlayer[]): void {
           }),
           button('End game', {
             variant: 'danger',
-            onClick: async () => {
-              try {
-                await request(ensureSocket(), 'host:end', { gameId: game.id });
-              } catch (error) {
-                toast(errorText(error), 'error');
-              }
+            onClick: () => {
+              confirmDialog({
+                title: 'End the game now?',
+                body: 'The current question ends immediately and the final results are shown. This cannot be undone.',
+                confirmLabel: 'End game',
+                onConfirm: () => {
+                  void request(ensureSocket(), 'host:end', { gameId: game.id }).catch((error) =>
+                    toast(errorText(error), 'error'),
+                  );
+                },
+              });
             },
           }),
         ),
@@ -510,10 +543,10 @@ function showPodium(game: HostGame, players: PublicPlayer[]): void {
     app,
     el(
       'section',
-      { class: 'centered' },
+      { class: 'centered show' },
       el(
         'div',
-        { class: 'card' },
+        { class: 'card anim-pop' },
         el('h2', null, 'Final results'),
         el(
           'ol',
@@ -589,9 +622,9 @@ async function showReport(id: string): Promise<void> {
               el(
                 'tr',
                 null,
-                el('td', null, question.text),
-                el('td', null, String(question.answered)),
-                el('td', null, String(question.correct)),
+                el('td', { 'data-label': 'Question' }, question.text),
+                el('td', { 'data-label': 'Answered' }, String(question.answered)),
+                el('td', { 'data-label': 'Correct' }, String(question.correct)),
               ),
             ),
           ),

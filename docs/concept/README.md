@@ -41,7 +41,13 @@ In **Phase 5c** wurden die **verbindlichen Produktentscheidungen** in die Konzep
 Gastkonto-Übernahme, charakterexklusive Gegenstände, persönliche Statistik, Quiz-Snapshot,
 Hintergrund Standard Zufall, Audio nur Host). Siehe `../reports/phase-5c-product-decisions.md`.
 
+**Phase 6.1 (Designsystem) ist freigegeben und umgesetzt.** Der Stil _Dark Retro-Futuristic
+Wireframe & Glassmorphism_ ist als Token- und Komponentenschicht vorhanden und auf die bestehenden
+Oberflächen (Spieler, Host/Beamer, Editor, Admin) angewandt. Arbeitsreferenz:
+[`../design/design-system.md`](../design/design-system.md); Bericht:
+[`../reports/phase-6-1-design-system.md`](../reports/phase-6-1-design-system.md). Bestehende Tokens
+und Daten bleiben unverändert.
+
 **Offen:** die noch nicht gelieferten **Assets** (Charaktere, Gegenstände, Hintergründe, Audio) und
-die in `../roadmap/technical-roadmap.md` §19 gelisteten Restentscheidungen. Danach kann die Freigabe
-für Phase 6.1 (Designsystem) erteilt werden. Phase 6.1 ist der einzige Schritt, der sofort und ohne
-Assets startbar ist.
+die in `../roadmap/technical-roadmap.md` §19 gelisteten Restentscheidungen. Die nächsten Phasen
+(6.2 Navigation, 6.3 Login, 6.4 Editor, …) bauen auf dem Designsystem auf.
