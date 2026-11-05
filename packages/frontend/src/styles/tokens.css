@@ -742,6 +742,34 @@ body::before {
   flex: none;
 }
 
+/* The player's answer buttons: a 2x2 board on desktop and tablet, one column on
+   a phone. Only the option-based types (single, poll, true/false, multiple) put
+   `.option` children directly in the wrapper, so `:has()` scopes the grid to
+   them and leaves text, slider, order, scale and idea inputs as they are. Where
+   `:has()` is unsupported the rule simply does not match and the buttons keep
+   their current stacked layout. */
+.question__input:has(> .option) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+/* The grid owns the spacing, so the buttons drop their own bottom margin. */
+.question__input:has(> .option) > .option {
+  margin-bottom: 0;
+}
+
+/* A multiple-choice Submit sits after the options; it spans the full width. */
+.question__input:has(> .option) > .btn {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .question__input:has(> .option) {
+    grid-template-columns: 1fr;
+  }
+}
+
 .slider {
   width: 100%;
   margin: var(--space-3) 0;
@@ -1503,10 +1531,13 @@ body::before {
   text-align: center;
 }
 
-/* The presentation surface keeps a tighter frame than a content page, and it
-   stretches to fill it, so the board (not empty margin) owns the projector. */
+/* The presentation surface keeps a tighter frame than a content page. The
+   section itself is centred in the viewport (`margin-inline: auto`) and centres
+   its own children (`justify-items: center`); without both, the `max-width` on
+   `.show` leaves the whole board pinned to the left edge. */
 .centered.show {
-  justify-items: stretch;
+  justify-items: center;
+  margin-inline: auto;
   padding: clamp(var(--space-2), 1.4vw, var(--space-4));
 }
 

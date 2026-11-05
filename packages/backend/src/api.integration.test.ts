@@ -199,6 +199,91 @@ describe.skipIf(!available)('REST API integration', () => {
       expect(response.json().error.issues[0].path).toContain('correctIndex');
     });
 
+    it('rejects a question with more than four options on create', async () => {
+      const invalid = quizPayload({
+        questions: [
+          {
+            id: 'wide',
+            type: 'single',
+            text: 'Pick one',
+            timeLimit: 20,
+            points: 'standard',
+            options: ['a', 'b', 'c', 'd', 'e'],
+            correctIndex: 0,
+          },
+        ],
+      });
+      const response = await as('POST', '/api/quizzes', invalid);
+      expect(response.statusCode).toBe(422);
+      expect(response.json().error.code).toBe('invalid');
+      expect(response.json().error.issues[0].path).toContain('options');
+    });
+
+    it('rejects a question with more than four options on update', async () => {
+      const created = await as('POST', '/api/quizzes', quizPayload());
+      const id = created.json().id;
+      const response = await as('PUT', `/api/quizzes/${id}`, {
+        title: 'Geography',
+        description: 'Capitals',
+        theme: 'standard',
+        defaultTimeLimit: 20,
+        questions: [
+          {
+            id: 'q1',
+            type: 'single',
+            text: 'Capital of France?',
+            timeLimit: 20,
+            points: 'standard',
+            options: ['Paris', 'Rome', 'Madrid', 'Berlin', 'Lisbon'],
+            correctIndex: 0,
+          },
+        ],
+      });
+      expect(response.statusCode).toBe(422);
+      expect(response.json().error.issues[0].path).toContain('options');
+    });
+
+    it('rejects an imported quiz with more than four options per question', async () => {
+      const response = await as(
+        'POST',
+        '/api/quizzes/import',
+        quizPayload({
+          questions: [
+            {
+              id: 'q1',
+              type: 'single',
+              text: 'Pick one',
+              timeLimit: 20,
+              points: 'standard',
+              options: ['a', 'b', 'c', 'd', 'e'],
+              correctIndex: 0,
+            },
+          ],
+        }),
+      );
+      expect(response.statusCode).toBe(422);
+      expect(response.json().error.code).toBe('invalid');
+    });
+
+    it('accepts a question with exactly four options', async () => {
+      const valid = quizPayload({
+        questions: [
+          {
+            id: 'q1',
+            type: 'single',
+            text: 'Pick one',
+            timeLimit: 20,
+            points: 'standard',
+            options: ['a', 'b', 'c', 'd'],
+            correctIndex: 3,
+          },
+        ],
+      });
+      const response = await as('POST', '/api/quizzes', valid);
+      expect(response.statusCode).toBe(200);
+      expect(response.json().questions[0].options).toHaveLength(4);
+    });
+
     it('stores every one of the 13 question types and reads them back', async () => {
       const questions = ALL_TYPES.map((question, index) => ({ ...question, id: `t${index}` }));
       const created = await as('POST', '/api/quizzes', quizPayload({ questions }));

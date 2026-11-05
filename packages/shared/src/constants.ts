@@ -48,9 +48,9 @@ export const TIME_MAX = 240;
 /** Default time limit in seconds. */
 export const DEFAULT_TIME = 20;
 
-/** Answer-slot limits. */
+/** Answer-slot limits. A question has at most four answers (product decision). */
 export const MIN_ANSWER_OPTIONS = 2;
-export const MAX_ANSWER_OPTIONS = 6;
+export const MAX_ANSWER_OPTIONS = 4;
 
 /** Length limits (characters). */
 export const QUESTION_TEXT_MAX = 500;
