@@ -44,7 +44,8 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
   Argon2id + server sessions + CSRF + strict CSP. `npm ci` → `prisma:generate` → `typecheck` →
   `test` → `build` → `format:check` all green.
   **CORRECTION (Phase 5b): with a real PostgreSQL all DB suites run → 181 tests green (94 backend
-  + 25 frontend + 62 shared).** The engine is therefore verified end-to-end (R-1 disarmed). Recipe:
+  + 25 frontend + 62 shared).** The engine is verified by integration tests, NOT by browser E2E
+  (R-1 disarmed, R-12 still open). Recipe:
   `CREATE DATABASE zeropeek_test`, expose it (socat `-p 15432:5432` on the compose network), set
   `TEST_DATABASE_URL` + `DATABASE_URL`, `prisma migrate deploy`, `npm test`.
 - **Missing entirely (only `avatar String` free-text exists)**: player accounts/registration,
@@ -63,7 +64,7 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
   **480×160 / 81 KB**; `favicon.png` 1254² RGB no-alpha 1.63 MB → **256² / 110 KB**; orphaned
   `favicon.svg` **removed**; dead CSS rule `.brand-mark` **removed**. Favicon border is **not**
   homogeneous white (RGB 200–255; only 30.4 % near-white) → do NOT auto-key-out transparency;
-  a transparent master must come from chrisB.
+  a transparent master must come from the project owner (Dejan Popovic).
 - **Branding is fine — no "double Z":** the DOM renders exactly one `<img class="brand__logo"
   src="/logo.png">`; `.brand-mark` (a gradient square that used to hold a "Z") is dead code.
 - **Logo palette (measured):** 38.9 % violet/indigo (255–285°), 23.2 % cyan (≈187°), 17.5 %
@@ -82,7 +83,7 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
   `docs/concept/README.md`, `docs/roadmap/technical-roadmap.md`, `docs/assets/ASSET-BRIEFING.md`,
   `docs/reports/phase-5-concept-report.md`, plus `docs/reports/phase-5b-revision-and-first-works.md`.
   They answer the blockwelt-heroes brief and list the
-  open decisions; the project waits for chrisB's approval + character/beamer/audio assets before
+  open decisions; the project waits for the project owner's approval + character/beamer/audio assets before
   any Phase 6 implementation. **Do not start Phase 6 or generate any images/characters.**
 - Docs convention: new `.md` under `docs/` must pass `npm run format:check` (run
   `npx prettier --write` on them); tables get reflowed by Prettier, that is expected.

@@ -3,7 +3,7 @@
 **Projekt:** ZeroPeek
 **Phase:** 5 – Freigabe
 **Datum:** 2026-11-04
-**Status:** **Vorgelegt zur Entscheidung durch chrisB – es wird angehalten.**
+**Status:** **Vorgelegt zur Entscheidung durch den Projektverantwortlichen – es wird angehalten.**
 **Grundlage:** Phasen 1–4
 
 > **Absolute Grenze (Briefing §56):** In diesem Auftrag ist **keine** Implementierung freigegeben.
@@ -41,18 +41,20 @@ Vollständig in `docs/analysis/phase-1-technical-inventory.md`.
 - **Acht Datenmodelle** (PostgreSQL/Prisma), eine defensive Migration.
 - **Sicherheit:** Argon2id, Server-Sessions, CSRF, Rollen, strikte CSP.
 - **Design-Token-Set** (795 Zeilen CSS) mit Aurora-Hintergrund.
-- **CI/CD** bis GHCR und Portainer, 60 grüne Tests (34 DB-Suiten ohne DB übersprungen).
+- **CI/CD** bis GHCR und Portainer; mit PostgreSQL **181 grüne Tests** (94 backend + 25 frontend +
+  62 shared; die DB-gestützten Suiten laufen dann mit).
 
 **Nicht vorhanden (für die Vision nötig):**
 
 - Spielerkonten, Registrierung, Spielerprofile.
 - Charakter-/Avatar-System (Avatar ist nur ein unvalidiertes Textfeld).
 - XP, Level, Inventar, Erfolge, Freischaltungen.
-- Eigenständige Beamer-Oberfläche (heute ist der Host der Beamer).
+- Eigene Beamer-Oberfläche: **entfällt** – die kombinierte Host-/Beamer-Ansicht bleibt verbindlich.
 - Sterne-Login, Sound, Show-Grafiken, globale Ranglisten.
 
 **Verifikation in dieser Umgebung:** `npm ci`, Prisma-Generate, `npm run typecheck`, `npm test`
-(60 grün), `npm run build`, `npm run format:check` – alle erfolgreich. **Kein** Produktcode geändert.
+(60 grün ohne DB; mit PostgreSQL 181/181), `npm run build`, `npm run format:check` – alle
+erfolgreich. **Kein** Produktcode geändert.
 
 ---
 
@@ -69,7 +71,7 @@ Vollständig in `docs/concept/design-concept.md`.
 - **Bewegung:** geschlossene Animationsbibliothek (12 benannte Animationen), `prefers-reduced-motion`.
 - **Oberflächen:** 15 Screens beschrieben (Zweck, Layout, Komponenten, Interaktionen, Zustände,
   Responsive, Abhängigkeiten).
-- **Responsive:** sechs Breakpoints, inklusive eigenem Beamer-Layout.
+- **Responsive:** sechs Breakpoints; der Beamer nutzt die bestehende Host-Ansicht mit eigener Show-Skalierung.
 - **Barrierefreiheit und Performance:** verbindliche Anforderungen und Fallbacks.
 
 ---
@@ -105,7 +107,7 @@ Vollständig in `docs/concept/game-design-concept.md`.
   `Quiz/Question.category?/difficulty?`.
 - **Katalog** (Charaktere/Gegenstände) als Konstanten in `@zeropeek/shared` (eine Wahrheit für
   Client und Server); Datenbank speichert nur Besitz/Zustand.
-- **Neue Endpunkte:** Registrierung, Profil, Avatar, Inventar, Erfolge, Show-Token – alle additiv.
+- **Neue Endpunkte:** Registrierung, Profil, Avatar, Inventar, Erfolge – alle additiv.
 - **Bestehende API-Verträge** bleiben unverändert; Erweiterungen sind optional.
 - **Jede Migration** wird dokumentiert und zur Freigabe vorgelegt (additiv, idempotent).
 
@@ -168,11 +170,10 @@ Vollständig in `docs/assets/ASSET-BRIEFING.md`. Blöcke A–G:
 5. Rolle `PLAYER` + Spielerkonto-Modell einführen?
 6. R-3: Quiz-Snapshot je Spiel einführen?
 7. R-4/R-5: Zustandswiederherstellung umsetzen?
-8. Beamer als eigene Route mit Show-Token?
-9. Clock-Sync einführen?
-10. Redis-Adapter oder bewusst eine Instanz?
-11. Katalog in `shared` oder Datenbank?
-12. Pause/Überspringen im Host?
+8. Clock-Sync einführen?
+9. Redis-Adapter oder bewusst eine Instanz?
+10. Katalog in `shared` oder Datenbank?
+11. Pause/Überspringen im Host?
 
 **Design:**
 
@@ -202,7 +203,7 @@ Start der größten Phasen. Bitte möglichst früh bereitstellen.
 
 ---
 
-## 11. Was jetzt von chrisB gebraucht wird
+## 11. Was jetzt vom Projektverantwortlichen gebraucht wird
 
 1. **Entscheidungen** zu den offenen Fragen (§9).
 2. **Freigabe** des Design- und Game-Design-Konzepts.
@@ -211,7 +212,7 @@ Start der größten Phasen. Bitte möglichst früh bereitstellen.
 5. **Freigabe der ersten Implementierungsphase** (Empfehlung: 6.1 Designsystem).
 
 **Danach wird angehalten.** Es wird keine Phase begonnen, kein Branch erstellt und kein PR mit
-Codeänderungen geöffnet, bis chrisB ausdrücklich freigibt (Briefing §50).
+Codeänderungen geöffnet, bis der Projektverantwortliche ausdrücklich freigibt (Briefing §50).
 
 ---
 

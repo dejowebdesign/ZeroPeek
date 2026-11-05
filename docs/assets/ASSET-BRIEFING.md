@@ -3,13 +3,13 @@
 **Projekt:** ZeroPeek
 **Phase:** 4 – Asset-Briefing
 **Datum:** 2026-11-04
-**Status:** Anforderung an chrisB
+**Status:** Anforderung an den Projektverantwortlichen
 **Grundlage:** Briefing Teil K, L, R; `docs/analysis/phase-1-technical-inventory.md`
 
-> **Regel (Briefing §29–32):** Die individuellen Hintergrundbilder und Grafiken werden **gemeinsam
-> von chrisB und ChatGPT** erstellt. OpenHands darf **keine** KI-generierten Ersatzbilder, **keine**
-> Stockbilder und **keine** Platzhalter als endgültige Lösung einsetzen. Fehlende Dateien werden
-> **angefordert** und der davon abhängige Schritt **wartet**.
+> **Regel (Briefing §29–32):** Die individuellen Hintergrundbilder, Charakter-Originale und Audios
+> werden vom **Projektverantwortlichen** bereitgestellt. OpenHands darf **keine** KI-generierten
+> Ersatzbilder, **keine** Stockbilder und **keine** Platzhalter als endgültige Lösung einsetzen.
+> Fehlende Dateien werden **angefordert** und der davon abhängige Schritt **wartet**.
 >
 > **In diesem Auftrag wurde nichts erzeugt, geändert oder ersetzt.** Es wurden ausschließlich
 > technische Eigenschaften vorhandener Dateien geprüft (Format, Abmessung, Alphakanal, Größe) –
@@ -250,6 +250,6 @@ richtig, falsch, Uhr, Verbindung, Ton an/aus, Pause, Weiter, Beenden, Zufall.
 
 **Bitte gebündelt liefern**, damit die abhängigen Phasen ohne Unterbrechung laufen können
 (Briefing §31). Für jeden Block gilt: Motiv beschreiben, technische Anforderungen beachten,
-Zielpfad einhalten, Datei bei chrisB anfordern, mit dem abhängigen Schritt warten.
+Zielpfad einhalten, Datei beim Projektverantwortlichen anfordern, mit dem abhängigen Schritt warten.
 
 **Keine Ersatzbilder, keine KI-Bilder, keine Stockbilder, keine Neugestaltung der Charaktere.**

@@ -3,7 +3,7 @@
 **Projekt:** ZeroPeek
 **Phase:** 3 – Technischer Umsetzungsplan
 **Datum:** 2026-11-04
-**Status:** Entwurf zur Freigabe durch chrisB
+**Status:** Entwurf zur Prüfung durch den Projektverantwortlichen (Dejan Popovic)
 **Grundlage:** `docs/analysis/phase-1-technical-inventory.md`, `docs/concept/design-concept.md`,
 `docs/concept/game-design-concept.md`
 
@@ -26,7 +26,7 @@ Für **jede** unten beschriebene Entwicklungsphase gilt verbindlich (Briefing §
 7. **Dokumentation** aktualisieren (passend zum tatsächlichen Stand).
 8. **Risiken** im PR auflisten.
 9. **Pull Request** mit verständlicher Beschreibung, betroffenen Modulen, Testnachweis.
-10. **Nach dem PR anhalten**, bis chrisB merged oder weiter freigibt. Abhängigkeiten zwischen offenen
+10. **Nach dem PR anhalten**, bis der Projektverantwortliche merged oder weiter freigibt. Abhängigkeiten zwischen offenen
     PRs ausdrücklich dokumentieren.
 
 **Freigabe-Gate:** Jede Phase endet mit einem PR und wartet auf Merge/Freigabe. Die Reihenfolge
@@ -52,14 +52,14 @@ unabhängige Arbeit vorgezogen, nicht die abhängige).
 
 **Kritische Abhängigkeiten:**
 
-| Phase | Braucht zwingend                                  | Ohne das blockiert     |
-| ----- | ------------------------------------------------- | ---------------------- |
-| 6.3   | Entscheidung: Rolle `PLAYER`, Spielerkonto-Modell | 6.6, 6.7, 6.8          |
-| 6.4   | Entscheidung R-3 (Historieverlust)                | Autospeichern, Reports |
-| 6.7   | **Charakter-Assets von chrisB** (fehlen)          | 6.7, 6.9, 6.10         |
-| 6.9   | Entscheidung Beamer-Surface + Show-Token          | 6.9, 6.10, 6.11        |
-| 6.11  | **Audio-Assets von chrisB** (fehlen)              | 6.11                   |
-| 6.12  | Entscheidungen zu Modi/Redis                      | 6.12                   |
+| Phase | Braucht zwingend                                          | Ohne das blockiert     |
+| ----- | --------------------------------------------------------- | ---------------------- |
+| 6.3   | Entscheidung: Rolle `PLAYER`, Spielerkonto-Modell         | 6.6, 6.7, 6.8          |
+| 6.4   | Entscheidung R-3 (Historieverlust)                        | Autospeichern, Reports |
+| 6.7   | **Charakter-Assets des Projektverantwortlichen** (fehlen) | 6.7, 6.10              |
+| 6.9   | Beamer-Grafiken (kombinierte Host-Ansicht bleibt)         | 6.10                   |
+| 6.11  | **Audio-Assets des Projektverantwortlichen** (fehlen)     | 6.11                   |
+| 6.12  | Entscheidungen zu Modi/Redis                              | 6.12                   |
 
 ---
 
@@ -192,7 +192,7 @@ wird geändert. Bestehende `GamePlayer`-Zeilen bleiben ohne `userId` (Gast).
 | **Betroffene Dateien**     | `packages/shared/src/characters.ts` (neu), `packages/shared/src/cosmetics.ts` (neu), neue Seiten, `styles/*`     |
 | **Datenmodelle**           | `PlayerProfile.selectedCharacterId`, `PlayerProfile.avatarConfig` (JSONB)                                        |
 | **API-Änderungen**         | `PUT /api/profile/avatar` (serverseitig validiert gegen Kompatibilitätsmatrix)                                   |
-| **Abhängigkeiten**         | **Charakter-Assets von chrisB** (fehlen), 6.6                                                                    |
+| **Abhängigkeiten**         | **Charakter-Assets des Projektverantwortlichen** (fehlen), 6.6                                                   |
 | **Risiken**                | Fehlende Assets blockieren; falsche Kombinationen; Schärfe auf Mobil                                             |
 | **Teststrategie**          | Unit: Kompatibilitätsmatrix, Layer-Reihenfolge; Integration: Avatar-Speicherung validiert; visuell Desktop/Mobil |
 | **Abnahmekriterien**       | Nur kompatible Teile wählbar; Avatar serverseitig validiert; scharf auf Desktop und Mobil                        |
@@ -226,23 +226,27 @@ Vorgang beim Spielende, in einer Transaktion.
 
 ---
 
-## 10. Phase 6.9 – Beamer und Game-Show-Modus
+## 10. Phase 6.9 – Game-Show-Modus (in der bestehenden Host-Ansicht)
 
-| Punkt                      | Inhalt                                                                                                |
-| -------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **Ziel**                   | Eigenständige Präsentationsoberfläche mit 13 Show-Szenen.                                             |
-| **Betroffene Komponenten** | neue `pages/show.ts` + `show.html`, Show-Szenen, Animationen, Show-Token                              |
-| **Betroffene Dateien**     | neue Seite, `socket.ts` (Show-Abo), `styles/*`, `vite.config.ts` (neuer Eintrag)                      |
-| **Datenmodelle**           | evtl. `Game.showToken` (additiv) oder Token in `Game.settings`                                        |
-| **API-Änderungen**         | **Neu:** Show-Token erzeugen; Beamer-Verbindung über Token                                            |
-| **Abhängigkeiten**         | Entscheidung Beamer-Surface + Show-Token, 6.7 (Charaktere), Beamer-Grafiken                           |
-| **Risiken**                | Sicherheit des Show-Zugangs; Performance der Animationen; Lesbarkeit aus Distanz                      |
-| **Teststrategie**          | Manuelle Show-Prüfung bei 1280×720/1920×1080/2560×1440; keine Doppel-Effekte; Token nur für das Spiel |
-| **Abnahmekriterien**       | Beamer zeigt alle Szenen korrekt; Frage/Antworten immer im Vordergrund; Zugang geschützt              |
-| **Aufwand**                | hoch                                                                                                  |
+**Verbindlich:** Die bestehende **kombinierte Host-/Beamer-Ansicht bleibt erhalten.** Es wird
+**keine** separate Beamer-Surface und **keine** eigene Route eingeführt. Ein Show-Token ist **nicht
+geplant** und wird nur bei nachgewiesener technischer Notwendigkeit weiterverfolgt.
 
-**Bestandsschutz:** Die Host-Steuerung bleibt; der Beamer ist **zusätzlich**. Der heutige
-Host-als-Beamer bleibt als Einzelgerät-Variante erhalten, wenn chrisB das wünscht.
+| Punkt                      | Inhalt                                                                                                      |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | 13 Show-Szenen innerhalb der bestehenden Host-Seite (`/host.html`).                                         |
+| **Betroffene Komponenten** | `pages/host.ts`, Show-Szenen, Animationen, Trennung von Steuerung und Anzeige                               |
+| **Betroffene Dateien**     | `packages/frontend/src/pages/host.ts`, `styles/*`; **kein** neuer Vite-Eintrag nötig                        |
+| **Datenmodelle**           | keine                                                                                                       |
+| **API-Änderungen**         | keine (dieselben Socket-Ereignisse; **kein** Show-Token)                                                    |
+| **Abhängigkeiten**         | 6.7 (Charaktere), Beamer-Grafiken (6.10)                                                                    |
+| **Risiken**                | Performance der Animationen; Lesbarkeit aus Distanz; Steuerung darf die Anzeige nicht stören                |
+| **Teststrategie**          | Manuelle Show-Prüfung bei 1280×720/1920×1080/2560×1440; keine Doppel-Effekte; Steuerleiste ein-/ausblendbar |
+| **Abnahmekriterien**       | Alle 13 Szenen korrekt; Frage/Antworten immer im Vordergrund; Host kann weiter steuern                      |
+| **Aufwand**                | hoch                                                                                                        |
+
+**Bestandsschutz:** Die Host-Steuerung bleibt; die Show-Szenen sind **zusätzlich**. Es wird **keine**
+zweite Oberfläche eingeführt. Sicherheitsfragen eines separaten Beamer-Zugangs entfallen damit.
 
 ---
 
@@ -250,12 +254,12 @@ Host-als-Beamer bleibt als Einzelgerät-Variante erhalten, wenn chrisB das wüns
 
 | Punkt                      | Inhalt                                                                     |
 | -------------------------- | -------------------------------------------------------------------------- |
-| **Ziel**                   | Von chrisB bereitgestellte Grafiken einbinden.                             |
+| **Ziel**                   | Vom Projektverantwortlichen bereitgestellte Grafiken einbinden.            |
 | **Betroffene Komponenten** | Beamer, Login, ausgewählte Bereiche                                        |
 | **Betroffene Dateien**     | `packages/frontend/public/backgrounds/*`, CSS-Referenzen                   |
 | **Datenmodelle**           | keine                                                                      |
 | **API-Änderungen**         | keine                                                                      |
-| **Abhängigkeiten**         | **Bilder von chrisB** (fehlen), 6.9                                        |
+| **Abhängigkeiten**         | **Bilder des Projektverantwortlichen** (fehlen), 6.9                       |
 | **Risiken**                | Falsche Formate/Größen; Lesbarkeit; Ladezeit                               |
 | **Teststrategie**          | Prüfung Format/Auflösung/Transparenz/Größe; visuelle Prüfung; Lazy Loading |
 | **Abnahmekriterien**       | Bilder korrekt eingebunden, lesbar, performant; **keine** Ersatzbilder     |
@@ -275,7 +279,7 @@ Platzhalter als endgültige Lösung verwendet. Fehlende Bilder werden angeforder
 | **Betroffene Dateien**     | neue `packages/frontend/src/audio.ts`, `public/audio/*`, Anbindung in `pages/*`           |
 | **Datenmodelle**           | keine                                                                                     |
 | **API-Änderungen**         | keine (Host steuert Show-Musik über ein Socket-Ereignis, falls nötig)                     |
-| **Abhängigkeiten**         | **Audio-Assets von chrisB** (fehlen), 6.9                                                 |
+| **Abhängigkeiten**         | **Audio-Assets des Projektverantwortlichen** (fehlen), 6.9                                |
 | **Risiken**                | Autoplay-Sperre; doppelte Effekte; CPU-Last; Urheberrecht                                 |
 | **Teststrategie**          | Manuell: Autoplay-Verhalten, Lautstärketrennung, Stummschaltung, keine Überlappung        |
 | **Abnahmekriterien**       | Musik/Effekte getrennt regelbar; stumm schaltbar; kein Autoplay-Fehler; keine Überlappung |
@@ -394,7 +398,7 @@ dies durchgeführt: **181/181 Tests grün**, damit ist R-1 entschärft.
 | 6.6   | mittel      | Profil, Statistik, Migration                          |
 | 6.7   | **hoch**    | Katalog, Matrix, Rendering, Assets, Validierung       |
 | 6.8   | mittel      | XP/Inventar/Erfolge, Anti-Manipulation                |
-| 6.9   | **hoch**    | 13 Szenen, Animationen, Show-Token, Sicherheit        |
+| 6.9   | **hoch**    | 13 Szenen, Animationen, Lesbarkeit aus Distanz        |
 | 6.10  | niedrig     | Einbinden bereitgestellter Bilder                     |
 | 6.11  | mittel      | Audio-Manager, Busse, Assets                          |
 | 6.12  | mittel–hoch | je Umfang                                             |
@@ -406,20 +410,20 @@ Freigabe-Gate nach jeder Phase, um Risiko klein zu halten (Briefing §53, Fehler
 
 ## 19. Offene Entscheidungen, die Phasen blockieren
 
-| #   | Entscheidung                              | Blockiert           |
-| --- | ----------------------------------------- | ------------------- |
-| 1   | Rolle `PLAYER` + Spielerkonto-Modell      | 6.3, 6.6, 6.7, 6.8  |
-| 2   | R-3: Historieverlust beim Quiz-Bearbeiten | 6.4 (Autospeichern) |
-| 3   | Charakter-Assets (Referenzdateien)        | 6.7, 6.9, 6.10      |
-| 4   | Beamer-Surface + Show-Token               | 6.9, 6.10, 6.11     |
-| 5   | Audio-Assets                              | 6.11                |
-| 6   | Clock-Sync                                | 6.9                 |
-| 7   | Redis-Adapter oder bewusst eine Instanz   | 6.12, Betrieb       |
-| 8   | Pause/Überspringen                        | 6.5                 |
-| 9   | XP-Werte/Levelschwellen/Erfolge           | 6.8                 |
-| 10  | Katalog in `shared` oder DB               | 6.7, 6.8            |
-| 11  | Sprache (Englisch/Deutsch)                | alle UI-Phasen      |
-| 12  | IP-Speicherung (Q5)                       | 6.6                 |
+| #   | Entscheidung                                 | Blockiert           |
+| --- | -------------------------------------------- | ------------------- |
+| 1   | Rolle `PLAYER` + Spielerkonto-Modell         | 6.3, 6.6, 6.7, 6.8  |
+| 2   | R-3: Historieverlust beim Quiz-Bearbeiten    | 6.4 (Autospeichern) |
+| 3   | Charakter-Assets (Referenzdateien)           | 6.7, 6.9, 6.10      |
+| 4   | Beamer-Grafiken (kombinierte Ansicht bleibt) | 6.10                |
+| 5   | Audio-Assets                                 | 6.11                |
+| 6   | Clock-Sync                                   | 6.9                 |
+| 7   | Redis-Adapter oder bewusst eine Instanz      | 6.12, Betrieb       |
+| 8   | Pause/Überspringen                           | 6.5                 |
+| 9   | XP-Werte/Levelschwellen/Erfolge              | 6.8                 |
+| 10  | Katalog in `shared` oder DB                  | 6.7, 6.8            |
+| 11  | Sprache (Englisch/Deutsch)                   | alle UI-Phasen      |
+| 12  | IP-Speicherung (Q5)                          | 6.6                 |
 
 ---
 

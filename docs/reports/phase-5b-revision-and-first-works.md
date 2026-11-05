@@ -3,11 +3,16 @@
 **Projekt:** ZeroPeek
 **Phase:** 5b – Überarbeitung des Konzepts + begrenzte erste Arbeiten
 **Datum:** 2026-11-04
-**Status:** Vorlage zur Freigabe durch chrisB
+**Status:** Vorlage zur Prüfung durch den Projektverantwortlichen (Dejan Popovic)
 **Grundlage:** `docs/analysis/phase-1-technical-inventory.md`,
 `docs/concept/design-concept.md`, `docs/concept/game-design-concept.md`,
 `docs/roadmap/technical-roadmap.md`, `docs/assets/ASSET-BRIEFING.md`
 
+> **Projektverantwortung:** Die Projektverantwortung und alle Produktentscheidungen liegen bei
+> **Dejan Popovic**. Die Blockwelt-Helden-Originalassets und die Hintergrundgrafiken werden vom
+> Projektverantwortlichen bereitgestellt. Die NoPeek-Rohversion wurde ursprünglich von chrisB
+> bereitgestellt und dient nur als Referenz.
+>
 > **Was in diesem Schritt erlaubt war:** Konzept überarbeiten, Designsystem und Produktarchitektur
 > schärfen, Performance messen und **begrenzte erste Arbeiten** ausführen, die keinen
 > Produktentscheid vorwegnehmen.
@@ -27,35 +32,39 @@ das Fundament für Phase 6 sichern.
 
 **Wichtigster neuer Befund – die Testlage war zu pessimistisch.** Die Bestandsaufnahme meldete
 „60 grün, 34 übersprungen". Ursache war **kein** Defekt, sondern eine fehlende Datenbank in der
-Sandbox. Mit einer echten PostgreSQL 16 laufen **alle** DB-gestützten Suiten:
+Sandbox. Mit einer echten PostgreSQL 16 laufen **alle** Suiten, einschließlich der zuvor
+übersprungenen DB-gestützten Integrationstests:
 
-| Paket     | Tests   | Vorher berichtet     | Jetzt gemessen                      |
-| --------- | ------- | -------------------- | ----------------------------------- |
-| backend   | **94**  | 60 grün, 34 skipped  | **94 grün** (34 zuvor übersprungen) |
-| frontend  | **25**  | 25 grün              | 25 grün                             |
-| shared    | **62**  | 62 grün              | 62 grün                             |
-| **Summe** | **181** | 147 grün, 34 skipped | **181 grün**                        |
+| Paket     | Tests   | Vorher berichtet     | Jetzt gemessen                                 |
+| --------- | ------- | -------------------- | ---------------------------------------------- |
+| backend   | **94**  | 60 grün, 34 skipped  | **94 grün** (34 zuvor übersprungene nun aktiv) |
+| frontend  | **25**  | 25 grün              | 25 grün                                        |
+| shared    | **62**  | 62 grün              | 62 grün                                        |
+| **Summe** | **181** | 147 grün, 34 skipped | **181 grün**                                   |
 
-Damit ist die Spiellogik (Engine-Lebenszyklus, Punkte, Ranking, Zeitregeln, Realtime über echte
-Sockets) **end-to-end verifiziert**, nicht nur statisch gelesen. Risiko **R-1** aus der
-Bestandsaufnahme ist damit entschärft.
+Damit sind Spiellogik und Realtime-Pfade **durch Integrationstests verifiziert** (Engine-Lebenszyklus,
+Punkte, Ranking, Zeitregeln, PIN-Beitritt, vollständiges Spiel über echte Socket.IO-Verbindungen,
+gegen eine echte PostgreSQL). Das ist **keine** vollständige Ende-zu-Ende-Verifikation im Sinne von
+Browser-E2E-Tests (siehe §2.1); es gibt weiterhin **keine** Playwright-/Browser-E2E-Suite. Risiko
+**R-1** aus der Bestandsaufnahme (Spiellogik ohne DB nicht verifiziert) ist damit entschärft.
 
 **Zweitwichtigster Befund – die Kapazitätsfrage ist jetzt gemessen.** Ein Socket-Lasttest mit dem
-echten Backend ergibt: **25 gleichzeitige Spieler** treten in **95 ms** (Wanduhr, alle zusammen)
-bei, Antwortlatenz **p95 = 28 ms**, Speicher **135 MB RSS**. Bei **35 Spielern** (Stress):
-Join **134 ms**, Antwort **p95 = 35 ms**, **143 MB RSS**. Ein einzelner Backend-Prozess trägt die
-Zielgröße „25 Spieler + Host" mit großem Puffer.
+echten Backend (inkl. **einer Host-Verbindung**, die das Spiel steuert) ergibt bei **25 Spielern +
+Host**: Beitritt aller Spieler **91 ms** (Wanduhr), Antwortlatenz **p95 = 26 ms**, Speicher
+**138 MB RSS**. Bei **35 Spielern + Host** (Stress): Join **136 ms**, Antwort **p95 = 35 ms**,
+**137 MB RSS**. Ein einzelner Backend-Prozess trägt die Zielgröße „25 Spieler + Host" mit Puffer.
+Details zur Testumgebung: §2.2.
 
 **Ausgeführte begrenzte erste Arbeiten** (alle bestandserhaltend, kein Produktentscheid):
 
 1. **Assets optimiert** – `logo.png` 1,20 MB → **81 KB**, `favicon.png` 1,63 MB → **110 KB**
    (zusammen −93 %), Optik unverändert (verlustfreie Skalierung, Alphakanal des Logos erhalten).
-2. **Verwaiste/ tote Ressourcen entfernt** – `favicon.svg` (nirgends referenziert) und die tote
+2. **Verwaiste/tote Ressourcen entfernt** – `favicon.svg` (nirgends referenziert) und die tote
    CSS-Regel `.brand-mark` (kein Element nutzt sie).
 3. **Lasttest-Werkzeug** unter `tools/loadtest.mjs` beigelegt (nicht Teil der Anwendung).
 
-**Offene Punkte, die eine Entscheidung von chrisB brauchen** (unverändert gültig): Charakter-Assets,
-Beamer-Assets, Audio-Assets, Rolle `PLAYER`, Beamer-Surface, Sprache/i18n, Favicon-Transparenz.
+**Offene Punkte zur Entscheidung durch den Projektverantwortlichen** (siehe §7): Charakter-Assets,
+Hintergrund-/Beamer-Assets, Audio-Assets, Rolle `PLAYER`, Sprache/i18n, Favicon-Transparenz.
 
 ---
 
@@ -82,37 +91,83 @@ API-Verträge oder Daten berührt. Die Änderungen dieses Schritts sind in §4 i
 
 Diese Fakten wurden in diesem Schritt **neu gemessen**, nicht angenommen.
 
-### 2.1 Test- und Spielverhalten
+### 2.1 Tests – exakte Einordnung
 
-- **Alle DB-Suiten laufen** (siehe §0). Damit sind Engine-Lebenszyklus, Punktevergabe, Ranking,
-  Zeitregeln, PIN-Beitritt, Lobby-Broadcast, Frage/Auflösung/Rangliste/Ende, private Spielerergebnisse
-  und serverseitig berechnete Punkte **verifiziert**.
-- **Engine-Taktung (aus dem Code verifiziert):** `REVEAL_MS = 6000`, `BOARD_MS = 6000`,
-  `ANSWER_GRACE_MS = 1500`. Ein Fragedurchlauf (Frage → Auflösung → Rangliste → nächste Frage)
-  dauert damit im Automatikbetrieb ca. **12 s** plus Antwortzeit. Das ist eine **Designentscheidung
-  (Show-Tempo)**, kein Defekt – für die Host-Steuerung ist „nächste Frage" jederzeit möglich.
+Alle Tests wurden mit einer echten PostgreSQL 16 ausgeführt (Docker-Container `postgres:16-alpine`,
+erreichbar über `localhost:55432`). Ergebnisse:
 
-### 2.2 Kapazität (neu gemessen, Lasttest `tools/loadtest.mjs`)
+| Paket     | Testdateien | Tests   | Inhalt                                                                      |
+| --------- | ----------- | ------- | --------------------------------------------------------------------------- |
+| shared    | 3           | 62      | Domänentypen, Validierung aller 13 Fragetypen, Punkteformel/Ranking         |
+| backend   | 7           | 94      | App/CSP, Config-Strenge, Compose-Guards, **DB-gestützte Integrationstests** |
+| frontend  | 4           | 25      | DOM-Builder, UI-Bausteine, Formulare, Auflösungsbalken                      |
+| **Summe** | **14**      | **181** |                                                                             |
 
-Ablauf: echtes Backend in-process, echte PostgreSQL, echte Socket.IO-Verbindungen, volle
-Quizrunde mit 25 bzw. 35 simulierten Spielern.
+Die backend-Integrationstests (zuvor 34 übersprungen) umfassen:
 
-| Messgröße                        | 25 Spieler | 35 Spieler (Stress) |
-| -------------------------------- | ---------- | ------------------- |
-| Beitritt aller Spieler (Wanduhr) | 95 ms      | 134 ms              |
-| Beitritt p50 / p95               | 18 / 41 ms | 33 / 60 ms          |
-| Antwort p50 / p95                | 19 / 28 ms | 26 / 35 ms          |
-| Fragedurchlauf (Automatik)       | ~6,04 s    | ~6,05 s             |
-| Speicher (RSS)                   | 135 MB     | 143 MB              |
+- `api.integration.test.ts` (19): Auth, CSRF, Quiz-CRUD, Admin.
+- `realtime.integration.test.ts` (3): vollständiges Spiel über echte Socket.IO-Verbindungen.
+- `engine.integration.test.ts` (9): Lebenszyklus, Punkte, Ranking, Zeitregeln.
+- `bootstrap.integration.test.ts` (6): Bootstrap-Admin.
+
+**Präzise Formulierung des Verifikationsgrades:**
+
+- **Verifiziert durch Integrationstests:** die Spiellogik auf Serverebene (Engine-Zustände,
+  Punktevergabe, Ranking, Zeitregeln) und der Realtime-Ablauf über echte Socket-Verbindungen gegen
+  eine echte Datenbank.
+- **NICHT verifiziert:** vollständige **Ende-zu-Ende**-Abläufe im Browser (kein Playwright/Browser-E2E
+  vorhanden). Es wurde **keine** Browser-Session gesteuert; die Oberflächen wurden in diesem Schritt
+  **nicht** automatisiert durchgeklickt.
+
+Die Bezeichnung „Ende-zu-Ende-Verifizierung" wird für diesen Testlauf daher **bewusst vermieden**.
+R-1 („Spiellogik ohne DB nicht verifiziert") ist durch die Integrationstests entschärft; **R-12**
+(„keine E2E-/visuellen Tests") **besteht weiter**.
+
+### 2.2 Kapazität – Lasttest mit Testumgebung
+
+**Werkzeug:** `tools/loadtest.mjs` (nicht Teil der Anwendung). Es startet das **echte** Backend
+in-process gegen eine Wegwerf-Datenbank und fährt über **echte Socket.IO-Verbindungen** (Transport
+`websocket`) ein vollständiges Quiz.
+
+**Testumgebung (dokumentiert, reproduzierbar):**
+
+| Merkmal         | Wert                                                                                                                                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hardware        | 4 vCPU **AMD EPYC 9B14**, 15 GiB RAM, kein Swap                                                                                                                                                          |
+| Betriebssystem  | Debian GNU/Linux 13 (trixie)                                                                                                                                                                             |
+| Laufzeit        | Node.js **v24.21.0**                                                                                                                                                                                     |
+| Datenbank       | PostgreSQL **16** (Container `postgres:16-alpine`, Host-Port 55432)                                                                                                                                      |
+| Backend         | derselbe Prozess wie der Test (in-process, `127.0.0.1:3001`), kein Container                                                                                                                             |
+| Verbindung      | Loopback (`127.0.0.1`), **kein** Netzwerk-Delay                                                                                                                                                          |
+| Quiz            | 3 Fragen, Typ `single`, je 20 s Zeitlimit, „zu schnell"-Regel aus                                                                                                                                        |
+| Host-Verbindung | **eine** echte Host-Verbindung (`/host`-Namespace, Cookie-Login) steuert das Spiel: `host:create` → `host:start` → `host:end`; der Host empfängt `host:question`/`host:reveal`/`host:board`/`host:ended` |
+| Spieleranzahl   | **25** (Zielgröße) und **35** (Stress), je ein Socket je Spieler                                                                                                                                         |
+| Testdauer       | ~**30,7 s** je Lauf (gemessen; ergibt sich aus 3 × ~6 s Auflösung + ~6 s Rangliste je Frage)                                                                                                             |
+| Wiederholungen  | je 2 Läufe, Ergebnis im Rahmen der Lauf-zu-Lauf-Schwankung                                                                                                                                               |
+
+**Ergebnisse (frischer Lauf, 2026-11-04):**
+
+| Messgröße                             | 25 Spieler + Host | 35 Spieler + Host |
+| ------------------------------------- | ----------------- | ----------------- |
+| Beitritt aller Spieler (Wanduhr)      | 91 ms             | 136 ms            |
+| Beitritt p50 / p95 / max              | 29 / 51 / 60 ms   | 16 / 54 / 54 ms   |
+| Antwort p50 / p95 / max               | 20 / 26 / 26 ms   | 27 / 35 / 36 ms   |
+| Fragedurchlauf (Automatik) p50 / max  | 6038 / 6044 ms    | 6045 / 6060 ms    |
+| Spielende (`host:end` → `host:ended`) | 8 ms              | 8 ms              |
+| Speicher (RSS)                        | 138 MB            | 137 MB            |
+| Speicher (Heap)                       | 30 MB             | 23 MB             |
+| Testdauer                             | 30,7 s            | 30,8 s            |
+
+> **Aussagekraft und Grenzen:** Der Test beweist die **Serverkapazität auf einer 4-vCPU-Maschine im
+> Loopback**. Er belegt **nicht** die Latenz realer Mobilfunknetze und **nicht** das Verhalten bei
+> mehreren hundert Spielern oder mehreren gleichzeitigen Spielen. Die Fragedurchlauf-Zeit (~6 s) ist
+> die **bewusste Show-Taktung** der Engine (`REVEAL_MS`/`BOARD_MS`), kein Engpass. Der Speicherwert
+> gilt für den Backend-Prozess inklusive der Testtreiber-Last im selben Prozess.
 
 **Schlussfolgerung:** Die Zielgröße „**25 Spieler + Host**" ist mit einem einzelnen Backend-Prozess
-**komfortabel** erreichbar; selbst 35 Spieler bleiben unter 40 ms Antwortlatenz. Die in der
-Bestandsaufnahme als **R-2** geführte Skalierungsfrage ist damit für die Zielgröße **entschärft**;
-sie bleibt relevant für mehrere hundert Spieler (dann Redis-Adapter, siehe Roadmap §14).
-
-> **Hinweis zur Aussagekraft:** Der Test lief lokal ohne Netzwerk-Delay. Er beweist die
-> **Serverkapazität**, nicht die Latenz echter Mobilfunknetze. Die Zahlen sind eine
-> Untergrenze für die Zielgröße, keine Zusage für beliebig viele Spieler.
+**komfortabel** erreichbar; selbst 35 Spieler bleiben unter 40 ms Antwortlatenz. Risiko **R-2**
+(Einzelinstanz-Design) ist für die Zielgröße **entschärft**; relevant bleibt es erst für mehrere
+hundert Spieler (dann Redis-Adapter, Roadmap §14).
 
 ### 2.3 Branding – der vermutete „doppelte Z"-Fehler existiert nicht
 
@@ -158,7 +213,8 @@ Analyse der **undurchsichtigen, bunten** Pixel des Logos (technisch, kein Vision
 **Favicon-Transparenz – geprüft, nicht geraten:** Der Randbereich hat RGB-Werte von **200–255**
 und ist nicht homogen (30,4 % der Pixel sind „fast weiß", der Rest nicht). Ein Freistellen würde
 einen sichtbaren Saum erzeugen. **Deshalb wird das Favicon NICHT eigenmächtig freigestellt.** Es
-wird eine **transparente Master-Datei von chrisB** angefordert (ASSET-BRIEFING, Block A).
+wird eine **transparente Master-Datei** beim Projektverantwortlichen angefordert (ASSET-BRIEFING,
+Block A).
 
 ---
 
@@ -168,8 +224,8 @@ wird eine **transparente Master-Datei von chrisB** angefordert (ASSET-BRIEFING, 
 
 | Aspekt               | Befund                                                                                    |
 | -------------------- | ----------------------------------------------------------------------------------------- |
-| Kapazität            | 25–35 Spieler ohne Engpass (§2.2)                                                         |
-| Speicher             | 135–143 MB RSS bei 25–35 Spielern                                                         |
+| Kapazität            | 25–35 Spieler + Host ohne Engpass (§2.2)                                                  |
+| Speicher             | 137–138 MB RSS bei 25–35 Spielern                                                         |
 | Realtime             | Ein Broadcast je Zustandswechsel; keine hochfrequenten Updates                            |
 | Engpass bei Wachstum | Nicht die Spielerzahl, sondern **mehrere Spiele/Instanzen** → Redis-Adapter (Roadmap §14) |
 
@@ -256,7 +312,7 @@ Die folgenden Konzeptdokumente wurden auf den geprüften Stand gehoben (Änderun
 | `docs/assets/ASSET-BRIEFING.md`                | Asset-Optimierung vermerkt; Favicon-Transparenz begründet angefordert                           |
 
 **Leitlinie:** Keine Aussage über Bestand ohne Prüfung. Nicht vorhandene Funktionen bleiben als
-**fehlend** gekennzeichnet (Charaktere, Beamer-Assets, Audio, QR, Team-Modus, i18n).
+**fehlend** gekennzeichnet (Charaktere, Beamer-Hintergründe, Audio, QR, Team-Modus, i18n).
 
 ---
 
@@ -266,35 +322,41 @@ Die folgenden Konzeptdokumente wurden auf den geprüften Stand gehoben (Änderun
 - **Keine** Navigation, **kein** Login-Umbau, **keine** Sternenhimmel-Implementierung (6.2/6.3).
 - **Kein** Avatar-System, **keine** Charaktere (6.7) – wartet auf Assets.
 - **Kein** XP-/Inventar-System (6.8) – wartet auf Entscheidung.
-- **Kein** Beamer (6.9), **keine** Hintergrundbilder (6.10), **kein** Audio (6.11).
+- **Keine** eigenständige Beamer-Oberfläche (entfällt, siehe §7).
+- **Keine** Hintergrundbilder (6.10), **kein** Audio (6.11).
 - **Keine** Datenbankänderung, **keine** Migration, **kein** Branch für Phase 6.
 - **Keine** Ersatzbilder, **keine** KI-Grafiken, **keine** Neugestaltung der Figuren.
 
 ---
 
-## 7. Offene Entscheidungen (unverändert, jetzt priorisiert)
+## 7. Offene Entscheidungen (priorisiert)
+
+**Verbindlich festgelegt:** Die bestehende **kombinierte Host-/Beamer-Ansicht bleibt erhalten.**
+Es wird **keine** separate Beamer-Surface eingeführt. Ein Show-Token wird nur dann weiterverfolgt,
+wenn dafür eine konkrete technische Notwendigkeit **nachgewiesen** ist (bis dahin: nicht geplant).
 
 | #   | Entscheidung                                   | Blockiert             | Priorität |
 | --- | ---------------------------------------------- | --------------------- | --------- |
-| 1   | **Charakter-Assets** (Referenzdateien)         | 6.7, 6.9, 6.10        | **hoch**  |
-| 2   | **Beamer-Hintergründe**                        | 6.9, 6.10             | **hoch**  |
+| 1   | **Charakter-Assets** (Referenzdateien)         | 6.7, 6.10             | **hoch**  |
+| 2   | **Hintergrund-/Beamer-Grafiken**               | 6.10                  | **hoch**  |
 | 3   | **Rolle `PLAYER` + Spielerkonto-Modell**       | 6.3, 6.6, 6.7, 6.8    | **hoch**  |
-| 4   | **Beamer-Surface + Show-Token**                | 6.9, 6.10, 6.11       | hoch      |
-| 5   | **Sprache / i18n**                             | alle UI-Phasen        | hoch      |
-| 6   | **Favicon: transparente Master-Datei**         | 6.3 (Optik)           | mittel    |
-| 7   | **Audio-Assets**                               | 6.11                  | mittel    |
-| 8   | **R-3** (Historieverlust beim Quiz-Bearbeiten) | 6.4 (Autospeichern)   | mittel    |
-| 9   | **Katalog in `shared` oder DB**                | 6.7, 6.8              | mittel    |
-| 10  | **XP-Werte / Levelschwellen / Erfolge**        | 6.8                   | mittel    |
-| 11  | **`favicon.svg` endgültig entfernen?**         | –                     | niedrig   |
-| 12  | **Redis-Adapter** (nur bei Wachstum)           | Betrieb > 100 Spieler | niedrig   |
+| 4   | **Sprache / i18n**                             | alle UI-Phasen        | hoch      |
+| 5   | **Favicon: transparente Master-Datei**         | 6.3 (Optik)           | mittel    |
+| 6   | **Audio-Assets**                               | 6.11                  | mittel    |
+| 7   | **R-3** (Historieverlust beim Quiz-Bearbeiten) | 6.4 (Autospeichern)   | mittel    |
+| 8   | **Katalog in `shared` oder DB**                | 6.7, 6.8              | mittel    |
+| 9   | **XP-Werte / Levelschwellen / Erfolge**        | 6.8                   | mittel    |
+| 10  | **`favicon.svg` endgültig entfernen?**         | –                     | niedrig   |
+| 11  | **Redis-Adapter** (nur bei Wachstum)           | Betrieb > 100 Spieler | niedrig   |
+
+**Entfallen:** „Beamer-Surface + Show-Token" als Blockierer (siehe oben).
 
 ---
 
 ## 8. Empfehlung für den nächsten Schritt
 
-1. **Entscheidungen 1–5** treffen (Assets, Rolle `PLAYER`, Beamer-Surface, Sprache).
-2. **Asset-Briefing** (Block B/C/D) gebündelt liefern – daran hängen die größten Phasen.
+1. **Entscheidungen 1–4** treffen (Assets, Rolle `PLAYER`, Sprache).
+2. **Asset-Briefing** (Block B/C/D) gebündelt bereitstellen – daran hängen die größten Phasen.
 3. Danach **Freigabe für Phase 6.1 (Designsystem)** – der einzige Schritt, der sofort und ohne
    Assets startbar ist.
 
@@ -305,16 +367,19 @@ Die folgenden Konzeptdokumente wurden auf den geprüften Stand gehoben (Änderun
 ## 9. Zusammenfassung
 
 - **Bestand geprüft:** `main` @ `1cf30be`, keine neueren Änderungen, kein Produktcode-Eingriff zuvor.
-- **Testlage korrigiert:** **181/181 grün** mit PostgreSQL (vorher 34 übersprungen) – Spiellogik
-  end-to-end verifiziert, **R-1 entschärft**.
-- **Kapazität gemessen:** 25 Spieler → Join 95 ms, Antwort p95 28 ms, 135 MB; 35 Spieler → p95 35 ms.
-  Zielgröße komfortabel; **R-2 für die Zielgröße entschärft**.
+- **Testlage korrigiert:** **181/181 grün** mit PostgreSQL, inklusive der zuvor übersprungenen
+  DB-gestützten Integrationstests. Verifikationsgrad präzise: **Integrationstests bestanden**,
+  **keine** Browser-E2E-Verifikation. **R-1 entschärft, R-12 besteht.**
+- **Kapazität gemessen (inkl. Host):** 25 Spieler + Host → Join 91 ms, Antwort p95 26 ms, 138 MB;
+  35 Spieler + Host → p95 35 ms. Testumgebung, Hardware, Dauer und Host-Einbeziehung dokumentiert
+  (§2.2). Zielgröße komfortabel; **R-2 für die Zielgröße entschärft**.
 - **Branding-Fehler widerlegt:** kein „doppeltes Z"; tote Regel `.brand-mark` und verwaiste
   `favicon.svg` entfernt.
 - **Assets optimiert:** Logo −93 %, Favicon −93 %, Optik unverändert.
 - **Konzept geschärft:** Inventar, Design, Game Design, Roadmap und Asset-Briefing auf den
   geprüften Stand gehoben.
-- **Nichts vorweggenommen:** Designsystem, Avatar, XP, Beamer, Audio bleiben Phase 6 und
-  freigabepflichtig.
+- **Keine separate Beamer-Surface:** kombinierte Host-/Beamer-Ansicht bleibt verbindlich.
+- **Nichts vorweggenommen:** Designsystem, Avatar, XP, Beamer-Hintergründe, Audio bleiben Phase 6
+  und freigabepflichtig.
 
-**Kein Merge, kein Deployment, keine Migration, kein Produktentscheid ohne chrisB.**
+**Kein Merge, kein Deployment, keine Migration, kein Produktentscheid ohne den Projektverantwortlichen.**

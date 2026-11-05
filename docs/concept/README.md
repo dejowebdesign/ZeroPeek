@@ -26,8 +26,8 @@ verändert, keine Migration erstellt und kein Implementierungsbranch angelegt.
   werden als fehlend benannt, nicht als vorhanden dargestellt.
 - **Keine Assets:** Es wurden keine Bilder oder Töne erzeugt oder ersetzt. Fehlende Dateien werden in
   `ASSET-BRIEFING.md` angefordert.
-- **Freigabe durch chrisB:** Wesentliche Produktentscheidungen bleiben bei chrisB. Vorschläge sind
-  als Vorschläge gekennzeichnet.
+- **Freigabe durch den Projektverantwortlichen:** Wesentliche Produktentscheidungen bleiben bei
+  Dejan Popovic. Vorschläge sind als Vorschläge gekennzeichnet.
 
 ## Nächster Schritt
 

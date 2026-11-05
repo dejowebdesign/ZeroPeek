@@ -4,13 +4,13 @@
 **Phase:** 1 – Technische Bestandsaufnahme (Analyse only)
 **Datum:** 2026-11-04
 **Grundlage:** `main` @ `1cf30be` (Merge PR #15), flacher Clone (`git rev-parse --is-shallow-repository` → `true`)
-**Status:** Abgeschlossen, wartet auf Freigabe durch chrisB
+**Status:** Abgeschlossen, wartet auf Prüfung durch den Projektverantwortlichen
 
 > **Abstract (EN):** This document is a verified inventory of the ZeroPeek repository as it exists
 > on `main`. Every statement below was checked against the actual source; nothing is assumed. No
 > application code, database schema or deployment configuration was changed.
 
-**Sprachregelung:** Dieses Dokument ist auf Deutsch (Zielgruppe: chrisB). Technische Bezeichner,
+**Sprachregelung:** Dieses Dokument ist auf Deutsch (Zielgruppe: Projektverantwortlicher). Technische Bezeichner,
 Dateipfade, API-Namen und Code bleiben in der Originalsprache Englisch.
 
 ---
@@ -34,9 +34,11 @@ skipped". Die 34 übersprungenen Tests sind die **DB-gestützten Integrationssui
 (`api.integration`, `realtime.integration`, `engine.integration`, `bootstrap.integration`), die sich
 ohne erreichbare PostgreSQL selbst überspringen (`packages/backend/src/testing/db.ts`). Das war
 **kein Defekt**, sondern eine fehlende Datenbank in der Sandbox. Mit einer echten PostgreSQL 16
-(`TEST_DATABASE_URL`, `prisma migrate deploy`) laufen **alle 181 Tests grün**. Die Spiellogik
-(Engine-Lebenszyklus, Punkte, Ranking, Zeitregeln, PIN-Beitritt, Realtime über echte Sockets) ist
-damit **end-to-end verifiziert** – Risiko **R-1 ist entschärft**. Siehe
+(`TEST_DATABASE_URL`, `prisma migrate deploy`) laufen **alle 181 Tests grün** (94 backend + 25
+frontend + 62 shared). Die Spiellogik (Engine-Lebenszyklus, Punkte, Ranking, Zeitregeln, PIN-Beitritt)
+und der Realtime-Ablauf über echte Sockets sind damit **durch Integrationstests verifiziert** – das
+ist **keine** vollständige Browser-Ende-zu-Ende-Verifikation (keine Playwright-Suite). Risiko **R-1
+ist entschärft**, **R-12 (keine E2E-/visuellen Tests) besteht weiter**. Siehe
 `docs/reports/phase-5b-revision-and-first-works.md` §2.1.
 
 **Korrektur zum Clone:** Der ursprüngliche Clone war flach. In Phase 5b wurde die volle Historie
@@ -107,12 +109,13 @@ Vite-Multi-Page-Build mit vier HTML-Einträgen (`packages/frontend/vite.config.t
 Caddy-Fallback im Frontend-Image: `try_files {path} {path}.html {path}/index.html`, daher
 funktionieren `/admin` und `/admin.html`, aber **nicht** `/admin/`.
 
-### Wichtige Feststellung: Es gibt **keine eigene Beamer-Oberfläche**
+### Wichtige Feststellung: die Host-Seite **ist** die Beamer-Ansicht (verbindlich)
 
-Die Host-Seite **ist** derzeit die Beamer-Ansicht: `pages/host.ts` rendert Lobby, Frage, Auflösung,
+Die Host-Seite **ist** die Beamer-Ansicht: `pages/host.ts` rendert Lobby, Frage, Auflösung,
 Rangliste und Podium direkt und groß. Es gibt **keine** getrennte, schreibgeschützte
-Präsentationsroute ohne Login und **keine** eigenständige Beamer-Seite. Der Begriff „Beamer" kommt im
-Code nur in Kommentaren vor (`host.ts`, `questionView.ts`), nicht als eigene Oberfläche.
+Präsentationsroute und **keine** eigenständige Beamer-Seite. Der Begriff „Beamer" kommt im Code nur
+in Kommentaren vor (`host.ts`, `questionView.ts`), nicht als eigene Oberfläche. **Verbindlich:** Diese
+kombinierte Host-/Beamer-Ansicht bleibt erhalten; eine eigene Beamer-Surface wird nicht eingeführt.
 
 ### Weitere Abweichungen von den Zielbildern
 
@@ -390,7 +393,7 @@ Favicon → 256²) und **nicht** neu gezeichnet, umgefärbt oder generiert. Ersp
 (2,83 MB → 190 KB). Die verwaiste `favicon.svg` (0 Referenzen im Code) wurde entfernt. Siehe
 `docs/reports/phase-5b-revision-and-first-works.md` §4.1–4.2.
 
-**Befunde, die eine Entscheidung von chrisB brauchen:**
+**Befunde, die eine Entscheidung des Projektverantwortlichen brauchen:**
 
 1. Das **Favicon-PNG hat keinen Alphakanal** (RGB). Der Randbereich ist **nicht** homogen weiß
    (RGB 200–255; nur 30,4 % der Pixel „fast weiß"). Ein automatisches Freistellen würde einen Saum
@@ -545,7 +548,7 @@ und **nicht** eigenmächtig geändert.
 
 ---
 
-## 13. Offene Fragen an chrisB (aus dem Bestand)
+## 13. Offene Fragen (aus dem Bestand)
 
 Diese Punkte sind im Code nicht eindeutig und brauchen eine Entscheidung, bevor sie umgesetzt werden:
 
@@ -556,11 +559,9 @@ Diese Punkte sind im Code nicht eindeutig und brauchen eine Entscheidung, bevor 
    Die verwaiste `favicon.svg` wurde in Phase 5b entfernt; bitte kurz bestätigen.
 3. **Charakter-Referenzen:** Die Blockwelt-Helden-Originaldateien sind **nicht** im Repo. Ohne sie ist
    Phase 6.7 nicht startbar.
-4. **Beamer:** Soll der Beamer eine eigene, login-freie Route werden (eigene Bildschirmausgabe), oder
-   bleibt er Teil der Host-Seite (ein Gerät steuert und zeigt)?
-5. **Spielfluss:** Soll die `lead`-Phase (Vorlese-/Spannungsphase vor der Frage) aktiviert werden?
-6. **Ranglisten:** Nur innerhalb eines Spiels (heute) oder global/Tages-/Wochenranglisten?
-7. **R-3 (Historieverlust bei Quiz-Bearbeitung):** Soll die Spielhistorie künftig unabhängig vom Quiz
+4. **Spielfluss:** Soll die `lead`-Phase (Vorlese-/Spannungsphase vor der Frage) aktiviert werden?
+5. **Ranglisten:** Nur innerhalb eines Spiels (heute) oder global/Tages-/Wochenranglisten?
+6. **R-3 (Historieverlust bei Quiz-Bearbeitung):** Soll die Spielhistorie künftig unabhängig vom Quiz
    gespeichert werden (Frage-Snapshot je Spiel)? Das wäre eine Schemaerweiterung.
 
 ---
@@ -573,7 +574,8 @@ zwei Socket-Namespaces, vier Oberflächen (Spieler, Host/Beamer, Editor, Admin),
 einem vorhandenen Design-Token-Set, strikter CSP, CI/CD bis GHCR und Portainer – und **181 grünen Tests** (mit PostgreSQL).
 
 Es fehlt für die Produktvision: **Spielerkonten, Profile, Charakter-/Avatar-System, XP/Level/Inventar/
-Erfolge, eigenständige Beamer-Oberfläche, Sterne-Login, Sound, Show-Grafiken und globale Ranglisten.**
+Erfolge, Sterne-Login, Sound, Show-Grafiken und globale Ranglisten.** Eine eigene Beamer-Oberfläche
+ist **nicht** erforderlich – die kombinierte Host-/Beamer-Ansicht bleibt verbindlich.
 Der Avatar ist heute nur ein unvalidiertes Textfeld; das Charakter-Universum existiert im Code nicht.
 
 Die wichtigsten technischen Schulden sind **R-3 (Historieverlust beim Quiz-Bearbeiten)** und

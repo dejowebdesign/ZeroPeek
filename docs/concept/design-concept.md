@@ -3,7 +3,7 @@
 **Projekt:** ZeroPeek
 **Phase:** 2 – Produkt- und Game-Design-Konzept (Teil 1: Design)
 **Datum:** 2026-11-04
-**Status:** Entwurf zur Freigabe durch chrisB
+**Status:** Entwurf zur Prüfung durch den Projektverantwortlichen (Dejan Popovic)
 **Grundlage:** `docs/analysis/phase-1-technical-inventory.md`
 
 > **Kein Anwendungscode, kein Schema, keine Migration, keine Assets wurden geändert oder erzeugt.**
@@ -20,11 +20,11 @@ Blockwelt-Helden-Universum.
 ZeroPeek wird eine eigenständige **Quiz- und Game-Show-Plattform** mit drei verbundenen Erlebnissen
 in **einem** Produkt:
 
-| Erlebnis       | Zielgruppe        | Kernoberflächen                               | Erfolgskriterium                                                 |
-| -------------- | ----------------- | --------------------------------------------- | ---------------------------------------------------------------- |
-| **Verwaltung** | chrisB, Trainer   | Startseite, Quizverwaltung, Editor, Admin     | Schnell ein Quiz bauen und ein Spiel starten, ohne Handbuch      |
-| **Spiel**      | Spieler (Mobil)   | Beitritt, Antworten, Profil, Avatar, Inventar | Man will „noch eine Runde" – wegen Figur, Fortschritt, Belohnung |
-| **Show**       | Publikum (Beamer) | Beamer-/Game-Show-Modus, Podium               | Wirkt wie eine echte Show, nicht wie ein vergrößertes Formular   |
+| Erlebnis       | Zielgruppe                       | Kernoberflächen                               | Erfolgskriterium                                                 |
+| -------------- | -------------------------------- | --------------------------------------------- | ---------------------------------------------------------------- |
+| **Verwaltung** | Projektverantwortlicher, Trainer | Startseite, Quizverwaltung, Editor, Admin     | Schnell ein Quiz bauen und ein Spiel starten, ohne Handbuch      |
+| **Spiel**      | Spieler (Mobil)                  | Beitritt, Antworten, Profil, Avatar, Inventar | Man will „noch eine Runde" – wegen Figur, Fortschritt, Belohnung |
+| **Show**       | Publikum (Beamer)                | Beamer-/Game-Show-Modus, Podium               | Wirkt wie eine echte Show, nicht wie ein vergrößertes Formular   |
 
 **Leitentscheidung:** Design-first, danach schrittweise Implementierung. Jede größere Entscheidung
 wird gegen Spielerlebnis, Nutzen, Umsetzbarkeit, Performance, Wartbarkeit, Sicherheit,
@@ -174,7 +174,8 @@ Heute gibt es einen System-Font-Stack und wenige, nicht systematisierte Größen
 - **Empfehlung:** System-Stack beibehalten (kein Web-Font-Download, keine Ladezeit, kein
   Datenschutzthema, CSP-konform).
 - **Optional:** eine einzelne, lokal gehostete Anzeigeschrift **nur** für Überschriften und
-  Zahlenanzeigen (Beamer, Punkte, Level). Entscheidung liegt bei chrisB; ohne Freigabe bleibt der
+  Zahlenanzeigen (Beamer, Punkte, Level). Entscheidung liegt beim Projektverantwortlichen; ohne
+  Freigabe bleibt der
   System-Stack. Kein externes CDN (CSP `font-src 'self'` wäre sonst nötig).
 - **Zahlen:** `font-variant-numeric: tabular-nums` überall, wo Zahlen sich live ändern (Countdown,
   Punkte, Rang, PIN). Das ist bereits an mehreren Stellen vorhanden und wird systematisiert.
@@ -352,7 +353,7 @@ Responsive, technische Abhängigkeiten. **Alle hier genannten neuen Bereiche sin
 - **Bestandsschutz-Warnung (R-3):** Das Speichern ersetzt die Fragenliste und kaskadiert Antworten.
   Autospeichern würde das Risiko **erhöhen** (häufigere Ersetzungen). Empfehlung: Autospeichern erst
   nach einer Entscheidung zu R-3 einführen, oder nur für Metadaten (Titel/Beschreibung), nicht für
-  die Fragenliste. **Das ist eine offene Frage an chrisB.**
+  die Fragenliste. **Das ist eine offene Frage an den Projektverantwortlichen.**
 
 ### 8.5 Admin-Bereich
 
@@ -449,15 +450,18 @@ Responsive, technische Abhängigkeiten. **Alle hier genannten neuen Bereiche sin
 - **Layout:** Kennzahlenkarten, Verlauf, Fragetyp-Verteilung, schwierigste Fragen, Erfolgsquote.
 - **Abhängigkeiten:** `reportService` liefert Rohdaten; neue Aggregationen nötig.
 
-### 8.14 Beamer / Game-Show-Modus (neu, eigenständig)
+### 8.14 Beamer / Game-Show-Modus (verbindlich: kombinierte Host-Ansicht)
 
-Siehe `docs/concept/game-design-concept.md` §9 (13 Szenen) und §28 im Briefing.
+Siehe `docs/concept/game-design-concept.md` §10 (13 Szenen) und §26 im Briefing.
 
 - **Zweck:** Professionelle Präsentation auf großer Fläche.
 - **Layout:** Vollbild, kein Navigationsmenü, minimale Bedienelemente (nur wenn nötig und dezent),
   alles auf Distanz lesbar.
-- **Abhängigkeiten:** Eigene Route/Surface; braucht Beamer-Grafiken (fehlen, R-10) und die
-  Show-Animationen.
+- **Verbindlich:** Die **bestehende kombinierte Host-/Beamer-Ansicht bleibt erhalten** – die
+  Host-Seite ist zugleich die Präsentationsfläche. Es wird **keine** separate Beamer-Surface und
+  **keine** eigene Route eingeführt.
+- **Abhängigkeiten:** Beamer-Grafiken (fehlen, R-10) und die Show-Animationen. Innerhalb der
+  bestehenden Host-Seite werden Steuerung und Anzeige visuell klar getrennt.
 
 ### 8.15 Einstellungen (neu)
 
@@ -526,23 +530,26 @@ sowie 4:3 (1024×768) als Rückfall.
 - **Screenreader:** `aria-live` für Spielzustand (Frage, Auflösung, Rang), `aria-modal` für Dialoge,
   aussagekräftige Labels, keine Farbe als einzige Information.
 - **Sprache:** Die Anwendung ist heute durchgehend Englisch. Eine deutsche Oberfläche wäre eine
-  Produktentscheidung (i18n-Vorbereitung) – **offene Frage an chrisB**.
+  Produktentscheidung (i18n-Vorbereitung) – **offene Frage an den Projektverantwortlichen**.
 
 ---
 
 ## 11. Leistung
 
-### 11.1 Gemessene Kapazität (Phase 5b, Lasttest mit echtem Backend)
+### 11.1 Gemessene Kapazität (Phase 5b, Lasttest mit echtem Backend, inkl. Host)
 
-| Messgröße                        | 25 Spieler | 35 Spieler (Stress) |
-| -------------------------------- | ---------- | ------------------- |
-| Beitritt aller Spieler (Wanduhr) | 95 ms      | 134 ms              |
-| Antwort p95                      | 28 ms      | 35 ms               |
-| Speicher (RSS)                   | 135 MB     | 143 MB              |
+| Messgröße                        | 25 Spieler + Host | 35 Spieler + Host (Stress) |
+| -------------------------------- | ----------------- | -------------------------- |
+| Beitritt aller Spieler (Wanduhr) | 91 ms             | 136 ms                     |
+| Antwort p95                      | 26 ms             | 35 ms                      |
+| Speicher (RSS)                   | 138 MB            | 137 MB                     |
 
-Die Zielgröße „25 Spieler + Host" ist mit **einem** Backend-Prozess komfortabel tragbar. Werkzeug:
-`tools/loadtest.mjs` (nicht Teil der Anwendung). Details:
-`docs/reports/phase-5b-revision-and-first-works.md` §2.2.
+**Testumgebung:** 4 vCPU AMD EPYC 9B14, 15 GiB RAM, Debian 13, Node v24.21.0, PostgreSQL 16,
+Backend in-process im Loopback; **eine** echte Host-Verbindung steuert das Spiel; Testdauer ~30,7 s
+je Lauf. Der Test belegt die Serverkapazität im Loopback, **nicht** reale Mobilfunknetze oder
+mehrere hundert Spieler. Die Zielgröße „25 Spieler + Host" ist mit **einem** Backend-Prozess
+komfortabel tragbar. Werkzeug: `tools/loadtest.mjs` (nicht Teil der Anwendung). Vollständige
+Testumgebung, Grenzen und Rohwerte: `docs/reports/phase-5b-revision-and-first-works.md` §2.2.
 
 ### 11.2 Budgets (Abnahmekriterium für Phase 6)
 
@@ -597,7 +604,7 @@ Bedienung, keine sichtbaren Ruckler bei Szenenwechseln.
 | System-Font beibehalten                        | +             | +      | ++            | ++          | ++          | +          | +               | ++      |
 | Geschlossene Animationsbibliothek              | ++            | +      | ++            | +           | ++          | 0          | +               | ++      |
 | Seitenleiste + Bottom-Navigation               | ++            | ++     | +             | +           | +           | 0          | ++              | +       |
-| Eigene Beamer-Surface                          | ++            | ++     | +             | +           | +           | 0          | ++              | +       |
+| Show-Szenen in der bestehenden Host-Ansicht    | ++            | ++     | +             | +           | +           | 0          | ++              | +       |
 | Charakter-Layer statt Einzelgrafiken           | ++            | ++     | +             | ++          | ++          | 0          | ++              | ++      |
 | Autospeichern im Editor                        | +             | ++     | +             | 0           | +           | −          | +               | − (R-3) |
 
@@ -606,12 +613,14 @@ adressieren.**
 
 ---
 
-## 14. Offene Designfragen an chrisB
+## 14. Offene Designfragen
 
 1. **Schrift:** System-Stack beibehalten oder eine lokal gehostete Anzeigeschrift einführen?
 2. **Sprache:** Englisch beibehalten oder Deutsch/i18n vorbereiten?
 3. **Farbzusätze** (§3.2) und **Glasvarianten** (§4): genehmigen oder anpassen?
 4. **Autospeichern** (§8.4): erst nach Entscheidung zu R-3?
-5. **Beamer** (§8.14): eigene Surface mit eigener Route – bestätigen?
-6. **Navigation:** Seitenleiste auf Desktop – gewünscht, oder Kopfzeile wie heute?
-7. **Startseite** (§8.1): als neue konsolidierende Seite – gewünscht, oder bestehende Seiten belassen?
+5. **Navigation:** Seitenleiste auf Desktop – gewünscht, oder Kopfzeile wie heute?
+6. **Startseite** (§8.1): als neue konsolidierende Seite – gewünscht, oder bestehende Seiten belassen?
+
+> **Entfallen:** „Beamer als eigene Surface mit eigener Route" – die kombinierte Host-/Beamer-Ansicht
+> bleibt verbindlich (§8.14).

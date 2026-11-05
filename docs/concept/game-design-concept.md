@@ -3,7 +3,7 @@
 **Projekt:** ZeroPeek
 **Phase:** 2 – Produkt- und Game-Design-Konzept (Teil 2: Spiel)
 **Datum:** 2026-11-04
-**Status:** Entwurf zur Freigabe durch chrisB
+**Status:** Entwurf zur Prüfung durch den Projektverantwortlichen (Dejan Popovic)
 **Grundlage:** `docs/analysis/phase-1-technical-inventory.md`, `docs/concept/design-concept.md`
 
 > **Kein Anwendungscode, kein Schema, keine Migration, keine Assets wurden geändert oder erzeugt.**
@@ -42,7 +42,7 @@ offiziellen Spielfiguren. Es entstehen **keine** austauschbaren Standard-Avatare
 | **O-Bot-Typen**  | Gegner/Schergen    | **Freischaltbar** (selten) oder als Podium-/Show-Figuren      |
 
 > **Bestand:** Im Repository existieren **keine** dieser Figuren – weder Grafik noch Datenmodell.
-> Die Originaldateien müssen von chrisB bereitgestellt werden (siehe `docs/assets/ASSET-BRIEFING.md`,
+> Die Originaldateien werden vom Projektverantwortlichen bereitgestellt (siehe `docs/assets/ASSET-BRIEFING.md`,
 > Block B). Ohne sie ist Phase 6.7 nicht startbar.
 
 ### 2.2 Charakterstil (verbindlich, aus Briefing §13)
@@ -152,7 +152,7 @@ Festlegung.
 ```
 
 **Regel:** Die Reihenfolge ist Teil der Asset-Spezifikation (jedes Layer hat einen `zIndex`). Sie
-wird im Asset-Briefing dokumentiert, damit chrisB die Layer passend exportieren kann.
+wird im Asset-Briefing dokumentiert, damit die Layer passend exportiert werden können.
 
 ### 3.5 Darstellung und Schärfe
 
@@ -268,9 +268,9 @@ Annahmen: Quiz mit **10 Fragen**, Zeitlimit je Frage 20 s, „zu schnell"-Regel 
 - **Reihenfolge:** XP werden **einmal**, am Spielende, in **einer** Transaktion berechnet und
   geschrieben – nicht je Antwort (verhindert Doppelvergabe und Rennen).
 
-> **Hinweis:** Die Zahlen (10/4/5/25/10) sind **Vorschläge** und reine Konfiguration. chrisB legt sie
-> fest (offene Entscheidung #10, Phase-5b-Bericht §7). Das Beispiel zeigt die **Mechanik**, nicht
-> einen beschlossenen Wert.
+> **Hinweis:** Die Zahlen (10/4/5/25/10) sind **Vorschläge** und reine Konfiguration. Sie werden vom
+> Projektverantwortlichen festgelegt (offene Entscheidung #9, Phase-5b-Bericht §7). Das Beispiel zeigt
+> die **Mechanik**, nicht einen beschlossenen Wert.
 
 ---
 
@@ -396,7 +396,7 @@ Die 13 Schritte des Briefings werden auf die vorhandene Maschine abgebildet:
 
 **Regel:** Die Zustandsmaschine bleibt **server-autoritativ**. Es werden **keine** Zustände
 erfunden, die der Motor nicht kennt. Ein Vorstart-Countdown (Schritt 4) ist eine **Anzeige** auf dem
-Beamer, kein neuer Motorzustand – es sei denn, chrisB wünscht einen echten `lead`-Zustand (offene
+Beamer, kein neuer Motorzustand – es sei denn, ein echter `lead`-Zustand wird ausdrücklich gewünscht (offene
 Frage).
 
 ### 8.3 Widersprüchliche Zustände verhindern (Briefing §22, §42)
@@ -461,20 +461,25 @@ kommen.
 
 ## 10. Beamer- und Game-Show-Modus
 
-### 10.1 Eigenständigkeit (Briefing §26)
+### 10.1 Bestehende kombinierte Host-/Beamer-Ansicht (verbindlich)
 
-Der Beamer ist eine **eigenständige Präsentationsoberfläche**, nicht eine vergrößerte
-Spieleroberfläche. Der Bestand hat **keine** eigene Beamer-Surface (die Host-Seite ist heute der
-Beamer). Vorschlag: eine eigene Route (z. B. `/show.html`), die **schreibgeschützt** ist und nur
-darstellt, während der Host steuert.
+**Verbindlich festgelegt:** Die **bestehende kombinierte Host-/Beamer-Ansicht bleibt erhalten.** Die
+Host-Seite (`/host.html`) ist und bleibt zugleich die Präsentationsfläche für den Beamer; es wird
+**keine** separate Beamer-Surface und **keine** zusätzliche Route eingeführt.
 
-**Warum getrennt?** Auf einer echten Show sind Steuerung und Anzeige oft **zwei Geräte** (Host am
-Laptop/Tablet, Beamer an einem anderen Rechner). Heute ist das nicht möglich, weil beides dieselbe
-Seite ist. Eine Trennung ist die Voraussetzung für professionelle Shows.
+Der Bestand hat bereits **keine** eigene Beamer-Surface – die Host-Seite ist der Beamer. Das ist die
+gewünschte Architektur: ein Gerät steuert und zeigt. Diese Entscheidung ist damit **kein offener
+Punkt** mehr.
 
-**Wichtig:** Eine Beamer-Route ohne Login ist ein Sicherheitsthema (jeder mit der URL könnte
-zuschauen). Vorschlag: Der Beamer verbindet sich mit einem **Show-Token**, das der Host erzeugt
-(kurzlebig, an das Spiel gebunden). Das ist eine Sicherheitsentscheidung und braucht Freigabe.
+Der Ausbau des Show-Erlebnisses (Briefing §26) findet **innerhalb** dieser kombinierten Ansicht
+statt: die Host-Steuerung wird um klar getrennte **Präsentationsszenen** ergänzt, die auf großen
+Bildschirmen wirken. Steuerungs- und Anzeigeelemente bleiben auf derselben Seite, aber visuell klar
+getrennt (z. B. eine ein-/ausblendbare Steuerleiste, die im Beamer-Betrieb zurücktritt).
+
+**Show-Token:** Ein Show-Token ist **nicht geplant**. Er wird nur dann weiterverfolgt, wenn dafür
+eine **konkrete technische Notwendigkeit nachgewiesen** wird (z. B. ein belegter Bedarf, Steuerung
+und Anzeige auf zwei Geräten zu trennen). Bis dahin entfällt er als Abhängigkeit und als
+Sicherheitsthema.
 
 ### 10.2 Die 13 Show-Szenen (Briefing §26)
 
@@ -567,7 +572,6 @@ Reconnect-Token für Spieler, Session-Cookie für Host. `GameEvent` als Protokol
 | Countdown-Synchronisierung | **Clock-Sync** (Ping/Pong, bester Versatz) statt reiner Client-Uhr     | ja             |
 | Ergebnis-Synchronisierung  | Ergebnis kommt aus der DB (`PlayerAnswer`), nicht aus dem Client       | nein (Bestand) |
 | Spielwiederaufnahme        | Zustand aus DB rekonstruieren (§8.4)                                   | ja             |
-| Beamer als eigener Client  | Beamer abonniert dieselben Ereignisse über ein Show-Token              | ja             |
 
 ### 12.3 Clock-Sync (Vorschlag)
 
@@ -601,7 +605,6 @@ Freigabe.
 | Keine manipulierbaren Punktestände       | **Bestand** (server-autoritativ)                                              |
 | Schutz vor unberechtigten Admin-Aktionen | **Bestand** (letzter Admin, Selbstschutz)                                     |
 | **Rate-Limit auf Socket-Events**         | **fehlt** (R-6) → Vorschlag: Limit für `join`/`answer`/`rejoin`               |
-| **Beamer-Zugang**                        | **neu**: Show-Token, damit nicht jeder zuschauen kann                         |
 | **Spielerkonto-Missbrauch**              | **neu**: Registrierung mit Rate-Limit, Captcha optional (Freigabe)            |
 
 **Datenschutz:** Q5 (IP-Speicherung) ist offen. Vorschlag: **keine** IP-Speicherung; Identifikation
@@ -622,30 +625,30 @@ Siehe `design-concept.md` §11. Ergänzend für das Spiel:
 
 ## 15. Priorisierung und Bewertung (Briefing §40)
 
-| Funktion                      | Spielermehrwert | Aufwand | Risiko  | Abhängigkeit               | Entwicklungs-Priorität |
-| ----------------------------- | --------------- | ------- | ------- | -------------------------- | ---------------------- |
-| Designsystem                  | hoch            | mittel  | niedrig | –                          | **6.1 (zuerst)**       |
-| Navigation/Responsive         | hoch            | mittel  | niedrig | Designsystem               | **6.2**                |
-| Login/Registrierung           | hoch            | mittel  | mittel  | Spielerkonto               | **6.3**                |
-| Quizverwaltung/Editor         | mittel          | mittel  | mittel  | R-3-Entscheidung           | **6.4**                |
-| Admin/Host                    | mittel          | mittel  | niedrig | Designsystem               | **6.5**                |
-| Spielerprofile                | hoch            | mittel  | mittel  | Spielerkonto               | **6.6**                |
-| Charakter-/Avatar-System      | **sehr hoch**   | hoch    | mittel  | **Charakter-Assets**       | **6.7**                |
-| Inventar/Belohnungen/XP       | hoch            | mittel  | mittel  | Profile, Anti-Manipulation | **6.8**                |
-| Beamer/Game-Show              | hoch            | hoch    | mittel  | Beamer-Grafiken            | **6.9**                |
-| Hintergrundbilder             | mittel          | niedrig | niedrig | **Bilder von chrisB**      | **6.10**               |
-| Sound/Musik                   | mittel          | mittel  | niedrig | **Audio von chrisB**       | **6.11**               |
-| Statistiken/Ranglisten global | mittel          | mittel  | mittel  | Aggregation                | **6.12**               |
-| Team-Modus                    | hoch            | mittel  | mittel  | `team`-Feld                | 6.12                   |
-| Finalrunde                    | hoch            | mittel  | mittel  | Show + Motor               | 6.12                   |
-| Turnier/K.-o.                 | mittel          | hoch    | hoch    | Finalrunde                 | später                 |
-| Einzelspieler                 | mittel          | hoch    | hoch    | neue Maschine              | später                 |
+| Funktion                      | Spielermehrwert | Aufwand | Risiko  | Abhängigkeit                         | Entwicklungs-Priorität |
+| ----------------------------- | --------------- | ------- | ------- | ------------------------------------ | ---------------------- |
+| Designsystem                  | hoch            | mittel  | niedrig | –                                    | **6.1 (zuerst)**       |
+| Navigation/Responsive         | hoch            | mittel  | niedrig | Designsystem                         | **6.2**                |
+| Login/Registrierung           | hoch            | mittel  | mittel  | Spielerkonto                         | **6.3**                |
+| Quizverwaltung/Editor         | mittel          | mittel  | mittel  | R-3-Entscheidung                     | **6.4**                |
+| Admin/Host                    | mittel          | mittel  | niedrig | Designsystem                         | **6.5**                |
+| Spielerprofile                | hoch            | mittel  | mittel  | Spielerkonto                         | **6.6**                |
+| Charakter-/Avatar-System      | **sehr hoch**   | hoch    | mittel  | **Charakter-Assets**                 | **6.7**                |
+| Inventar/Belohnungen/XP       | hoch            | mittel  | mittel  | Profile, Anti-Manipulation           | **6.8**                |
+| Beamer/Game-Show              | hoch            | hoch    | mittel  | Beamer-Grafiken                      | **6.9**                |
+| Hintergrundbilder             | mittel          | niedrig | niedrig | **Bilder (Projektverantwortlicher)** | **6.10**               |
+| Sound/Musik                   | mittel          | mittel  | niedrig | **Audio (Projektverantwortlicher)**  | **6.11**               |
+| Statistiken/Ranglisten global | mittel          | mittel  | mittel  | Aggregation                          | **6.12**               |
+| Team-Modus                    | hoch            | mittel  | mittel  | `team`-Feld                          | 6.12                   |
+| Finalrunde                    | hoch            | mittel  | mittel  | Show + Motor                         | 6.12                   |
+| Turnier/K.-o.                 | mittel          | hoch    | hoch    | Finalrunde                           | später                 |
+| Einzelspieler                 | mittel          | hoch    | hoch    | neue Maschine                        | später                 |
 
 **Regel:** Grundlegende Systeme zuerst. Keine Show ohne Charaktere; keine Charaktere ohne Assets.
 
 ---
 
-## 16. Offene Fragen an chrisB (Spiel)
+## 16. Offene Fragen (Spiel)
 
 1. **XP-Werte, Levelschwellen, Erfolge** (§5, §6): genehmigen oder anpassen?
 2. **Katalog in `shared` oder in der Datenbank** (§7.2)?
@@ -653,8 +656,10 @@ Siehe `design-concept.md` §11. Ergänzend für das Spiel:
 4. **R-3** (Historieverlust beim Quiz-Bearbeiten): Quiz-Snapshot je Spiel einführen?
 5. **R-4/R-5** (Zustandswiederherstellung, Reconnect): umsetzen?
 6. **Pause/Überspringen** (§8.5, §8.6): gewünscht?
-7. **Beamer als eigene Route mit Show-Token** (§10.1): gewünscht?
-8. **Clock-Sync** (§12.3): einführen?
-9. **Redis-Adapter oder bewusst eine Instanz** (§12.4)?
-10. **Spielmodi-Priorisierung** (§9): bestätigen?
-11. **IP-Speicherung** (Q5): endgültig ausschließen?
+7. **Clock-Sync** (§12.3): einführen?
+8. **Redis-Adapter oder bewusst eine Instanz** (§12.4)?
+9. **Spielmodi-Priorisierung** (§9): bestätigen?
+10. **IP-Speicherung** (Q5): endgültig ausschließen?
+
+> **Entfallen:** „Beamer als eigene Route mit Show-Token" – die kombinierte Host-/Beamer-Ansicht
+> bleibt verbindlich (§10.1).
