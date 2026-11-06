@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicPlayer } from '@zeropeek/shared';
 
-import { connectionState, lobbyRoster, profilePlaceholder } from './playerView.js';
+import { connectionState, lobbyRoster, profilePlaceholder, registerOffer } from './playerView.js';
 
 function player(overrides: Partial<PublicPlayer> = {}): PublicPlayer {
   return {
@@ -75,5 +75,16 @@ describe('profilePlaceholder', () => {
     const node = profilePlaceholder();
     expect(node.classList.contains('empty')).toBe(true);
     expect(node.textContent).toContain('Dein Spielerprofil kommt mit Phase 6.6.');
+  });
+});
+
+describe('registerOffer', () => {
+  it('is a quiet, optional invitation with a link to the auth page', () => {
+    const node = registerOffer();
+    expect(node.classList.contains('auth-offer')).toBe(true);
+    const link = node.querySelector('a');
+    expect(link?.getAttribute('href')).toBe('./auth.html#register');
+    // The wording makes clear the account is optional.
+    expect(node.textContent).toContain('optional');
   });
 });

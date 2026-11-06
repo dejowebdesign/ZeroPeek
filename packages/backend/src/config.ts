@@ -71,6 +71,42 @@ export interface AppConfig {
    * the account is created on boot. Never logged. */
   bootstrapAdminUser?: string;
   bootstrapAdminPassword?: string;
+  /**
+   * Outgoing mail (Phase 6.3). `smtpUrl` is a Nodemailer connection URL
+   * (`smtp://user:pass@host:port` or `smtps://…`); when empty, mail sending is
+   * disabled and registration still works (the verification link is logged in
+   * development only – never the token in production). `mailFrom` is the
+   * verified sender address, `mailFromName` its display name.
+   */
+  smtpUrl: string;
+  mailFrom: string;
+  mailFromName: string;
+  /** How long a verification link stays valid (`MAIL_VERIFY_TTL_HOURS`, default 24). */
+  emailVerifyTtlMs: number;
+  /**
+   * Whether the stricter per-route limits on the auth endpoints are enforced.
+   * On everywhere except the test environment (where a suite would trip them),
+   * unless `AUTH_RATE_LIMITS` says otherwise – which lets a test switch them on
+   * to prove they actually reject a flood.
+   */
+  authRateLimits: boolean;
+}
+
+/** Whether outgoing mail is configured (an SMTP URL and a sender are both set). */
+export function isMailConfigured(config: Pick<AppConfig, 'smtpUrl' | 'mailFrom'>): boolean {
+  return config.smtpUrl.trim().length > 0 && config.mailFrom.trim().length > 0;
+}
+
+/** Read a positive hour count for the verification-link lifetime (default 24h). */
+function readVerifyTtlMs(value: string | undefined): number {
+  const hours = Number.parseInt(value ?? '', 10);
+  if (Number.isInteger(hours) && hours > 0) return hours * 60 * 60 * 1000;
+  return 24 * 60 * 60 * 1000;
+}
+
+/** Whether the auth rate limits are enforced: on unless explicitly disabled. */
+function readAuthRateLimits(value: string | undefined): boolean {
+  return !['0', 'false', 'off', 'no'].includes((value ?? '').trim().toLowerCase());
 }
 
 function readNodeEnv(value: string | undefined): NodeEnv {
@@ -320,6 +356,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       problems.push(`CORS_ORIGIN must be an absolute http(s) URL, got "${corsOrigin}".`);
     }
 
+    // Registration is optional, so a missing mail configuration is a warning,
+    // not a blocker: the backend starts, but the verification e-mail cannot be
+    // sent until SMTP_URL and MAIL_FROM are set.
+    if (!isNonEmpty(env.SMTP_URL) || !isNonEmpty(env.MAIL_FROM)) {
+      warnings.push(
+        'SMTP_URL and/or MAIL_FROM are not set, so verification e-mails cannot be sent. Player registration still works, but new players cannot confirm their address until both are configured (see docs/deployment/ENVIRONMENT.md).',
+      );
+    }
+
     if (problems.length > 0) {
       throw new ConfigError(
         ['SESSION_SECRET', 'DATABASE_URL', 'APP_BASE_URL', 'CORS_ORIGIN'],
@@ -358,5 +403,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ...(env.BOOTSTRAP_ADMIN_PASSWORD
       ? { bootstrapAdminPassword: env.BOOTSTRAP_ADMIN_PASSWORD }
       : {}),
+    smtpUrl: isNonEmpty(env.SMTP_URL) ? env.SMTP_URL : '',
+    mailFrom: isNonEmpty(env.MAIL_FROM) ? env.MAIL_FROM : '',
+    mailFromName: isNonEmpty(env.MAIL_FROM_NAME) ? env.MAIL_FROM_NAME : 'ZeroPeek',
+    emailVerifyTtlMs: readVerifyTtlMs(env.MAIL_VERIFY_TTL_HOURS),
+    // Disabled in tests by default (a suite makes many requests); an explicit
+    // AUTH_RATE_LIMITS value always wins, so a test can turn them back on.
+    authRateLimits:
+      env.AUTH_RATE_LIMITS === undefined
+        ? nodeEnv !== 'test'
+        : readAuthRateLimits(env.AUTH_RATE_LIMITS),
   };
 }

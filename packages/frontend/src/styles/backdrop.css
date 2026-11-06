@@ -84,14 +84,17 @@ body::after {
 /* ---------- login / join starfield ---------- */
 
 /**
- * Foundation for the animated starfield the concept reserves for the login and
- * join surfaces (concept §8.2, briefing §10). It is prepared here as a reusable
- * layer; the full login experience is Phase 6.3.
+ * The starfield the concept reserves for the login, registration and join
+ * surfaces (concept §8.2, briefing §10). Phase 6.3 completes it.
  *
- * Three tiled star layers of different sizes and colours give the depth and the
- * variety of star sizes; two of them drift very slowly. The whole field is one
- * repeating background, so the particle count is bounded by the tile size, not
- * by the viewport.
+ * `.centered::before` is the Phase 6.1 foundation: three tiled star layers of
+ * different sizes and colours, two of which drift very slowly. It is kept as-is
+ * so the player and host join screens cannot shift.
+ *
+ * `.starfield` is the richer layer the auth surface renders. It is a plain
+ * element (not a pseudo-element) so the module can size it to its container and
+ * add transient meteors as children. Everything is CSS: no image is downloaded,
+ * and the particle count is bounded by the tile size, not by the viewport.
  */
 .centered {
   position: relative;
@@ -144,12 +147,145 @@ body::after {
   }
 }
 
+/* ---------- the auth starfield ---------- */
+
+.starfield {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/**
+ * Two star fields at different tile sizes and speeds. The far field is small,
+ * dim and slow; the near field is larger, brighter and drifts a little faster,
+ * which reads as depth without a bitmap or a per-star element. `background-repeat`
+ * tiles them, so the number of stars is bounded by the tile, not the screen.
+ */
+.starfield::before,
+.starfield::after {
+  content: '';
+  position: absolute;
+  inset: -10%;
+  background-repeat: repeat;
+}
+
+.starfield::before {
+  background-image:
+    radial-gradient(1px 1px at 18px 42px, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1px 1px at 96px 132px, rgba(226, 232, 240, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 54px 178px, rgba(21, 219, 238, 0.55), transparent),
+    radial-gradient(1px 1px at 150px 66px, rgba(124, 58, 237, 0.5), transparent),
+    radial-gradient(1px 1px at 210px 200px, rgba(255, 255, 255, 0.4), transparent);
+  background-size:
+    260px 260px,
+    260px 260px,
+    340px 340px,
+    300px 300px,
+    260px 260px;
+  animation: star-drift-far 150s linear infinite;
+}
+
+.starfield::after {
+  background-image:
+    radial-gradient(2px 2px at 70px 90px, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(2.5px 2.5px at 240px 40px, rgba(222, 78, 241, 0.8), transparent),
+    radial-gradient(2px 2px at 160px 240px, rgba(21, 219, 238, 0.85), transparent),
+    radial-gradient(1.5px 1.5px at 320px 170px, rgba(255, 255, 255, 0.7), transparent);
+  background-size:
+    420px 420px,
+    520px 520px,
+    460px 460px,
+    420px 420px;
+  animation: star-drift-near 110s linear infinite;
+}
+
+@keyframes star-drift-far {
+  to {
+    background-position:
+      -130px 0,
+      -130px 0,
+      -170px 0,
+      -150px 0,
+      -130px 0;
+  }
+}
+
+@keyframes star-drift-near {
+  to {
+    background-position:
+      -210px 0,
+      -260px 0,
+      -230px 0,
+      -210px 0;
+  }
+}
+
+/**
+ * A meteor: a short diagonal streak that crosses the field, then waits a long,
+ * staggered interval before repeating. `--meteor-x/--meteor-y` place it, so the
+ * module can spawn a few at different spots. It is a gradient (no image) and
+ * only a couple exist at once, so the cost stays negligible.
+ */
+.starfield__meteor {
+  position: absolute;
+  top: var(--meteor-y, 12%);
+  left: var(--meteor-x, 10%);
+  width: 140px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.9));
+  filter: drop-shadow(0 0 6px rgba(21, 219, 238, 0.7));
+  transform: rotate(28deg) translateX(-40px);
+  opacity: 0;
+  animation: meteor var(--meteor-dur, 9s) linear infinite;
+  animation-delay: var(--meteor-delay, 0s);
+}
+
+@keyframes meteor {
+  0% {
+    opacity: 0;
+    transform: rotate(28deg) translateX(-40px);
+  }
+  4% {
+    opacity: 1;
+  }
+  12% {
+    opacity: 0;
+    transform: rotate(28deg) translateX(240px);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(28deg) translateX(240px);
+  }
+}
+
 /* ---------- reduced motion / reduced transparency ---------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .centered::before {
+  .centered::before,
+  .starfield::before,
+  .starfield::after {
     animation: none;
   }
+  .starfield__meteor {
+    display: none;
+  }
+}
+
+/**
+ * The explicit "calm the effects" switch (a user preference, not a media query).
+ * It stops the drift and removes the meteors while keeping the stars themselves,
+ * so the surface still reads as a night sky.
+ */
+.starfield--calm::before,
+.starfield--calm::after {
+  animation: none;
+}
+
+.starfield--calm .starfield__meteor {
+  display: none;
 }
 
 /**

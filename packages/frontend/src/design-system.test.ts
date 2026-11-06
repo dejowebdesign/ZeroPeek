@@ -207,6 +207,29 @@ describe('design-system components', () => {
     'lobby__roster-name',
     'lobby__roster-you',
     'join__feedback',
+    // Auth surface (Phase 6.3).
+    'auth',
+    'auth__card',
+    'auth__title',
+    'auth__subtitle',
+    'auth__form',
+    'auth__actions',
+    'auth__alt',
+    'auth__link',
+    'auth__tabs',
+    'auth__tab',
+    'auth__strength',
+    'auth__strength-bar',
+    'auth__strength-bar--on',
+    'auth__hint',
+    'auth__icon',
+    'auth__icon--ok',
+    'auth__icon--warn',
+    'auth__note',
+    'auth-offer',
+    'auth-offer__text',
+    'auth-offer__title',
+    'auth-offer__hint',
   ];
 
   for (const name of classes) {
@@ -367,8 +390,8 @@ describe('fallbacks and accessibility', () => {
 });
 
 describe('every surface shares the same stylesheets', () => {
-  it('finds the four entry points', () => {
-    expect(entries).toEqual(['admin.html', 'editor.html', 'host.html', 'index.html']);
+  it('finds the five entry points', () => {
+    expect(entries).toEqual(['admin.html', 'auth.html', 'editor.html', 'host.html', 'index.html']);
   });
 
   for (const entry of entries) {
@@ -388,5 +411,55 @@ describe('the UI layer stays CSP-safe', () => {
     expect(uiSource).not.toMatch(
       /\.(innerHTML|outerHTML)\s*=|insertAdjacentHTML\s*\(|document\.write/,
     );
+  });
+});
+
+describe('auth surface and starfield (Phase 6.3)', () => {
+  it('draws the starfield with gradients, never an image', () => {
+    const block = backdrop.slice(backdrop.indexOf('.starfield {'));
+    expect(block).toContain('radial-gradient');
+    expect(block).not.toContain('url(');
+  });
+
+  it('keeps the drift slow and bounded', () => {
+    // Two layers at different speeds; the duration is in the tens of seconds so
+    // the motion reads as calm rather than busy.
+    expect(backdrop).toMatch(/animation: star-drift-far 1[0-9]0s linear infinite/);
+    expect(backdrop).toMatch(/animation: star-drift-near 1[0-9]0s linear infinite/);
+  });
+
+  it('stops the drift and hides the meteors for reduced motion', () => {
+    const reduce = backdrop.slice(backdrop.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reduce).toContain('.starfield::before');
+    expect(reduce).toContain('.starfield::after');
+    expect(reduce).toContain('.starfield__meteor');
+    expect(reduce).toContain('display: none');
+  });
+
+  it('offers a user switch to calm the effects', () => {
+    expect(backdrop).toContain('.starfield--calm');
+    expect(backdrop).toContain('.starfield--calm .starfield__meteor');
+  });
+
+  it('centres a single glass card over the field', () => {
+    const block = tokens.slice(tokens.indexOf('.auth {'), tokens.indexOf('.auth__card'));
+    expect(block).toContain('place-items: center');
+    const card = tokens.slice(tokens.indexOf('.auth__card {'));
+    expect(card).toContain('backdrop-filter: blur(var(--blur-dialog))');
+  });
+
+  it('gives the auth card an opaque fallback when blur is unavailable', () => {
+    const fallback = tokens.slice(
+      tokens.indexOf('@supports not ((backdrop-filter: blur(1px))'),
+      tokens.indexOf('@supports not ((backdrop-filter: blur(1px))') + 200,
+    );
+    expect(fallback).toContain('.auth__card');
+    expect(fallback).toContain('var(--glass-fallback)');
+  });
+
+  it('stacks the auth actions on a small screen', () => {
+    const mobile = tokens.slice(tokens.lastIndexOf('@media (max-width: 480px)'));
+    expect(mobile).toContain('.auth__actions');
+    expect(mobile).toContain('flex-direction: column');
   });
 });

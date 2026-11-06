@@ -1,9 +1,9 @@
 /**
  * Quiz CRUD routes.
  *
- * All routes require a session; writes additionally require a CSRF token (see
- * `requireAuth`). Ownership is enforced in the service, so a trainer can only
- * read and change their own quizzes.
+ * All routes require a staff session (ADMIN or TRAINER); writes additionally
+ * require a CSRF token (see `requireStaff`). Ownership is enforced in the
+ * service, so a trainer can only read and change their own quizzes.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -11,7 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Quiz } from '@zeropeek/shared';
 
 import type { AppConfig } from '../config.js';
-import { currentUser, requireAuth } from '../sessions.js';
+import { currentUser, requireStaff } from '../sessions.js';
 import {
   createQuiz,
   deleteQuiz,
@@ -22,7 +22,7 @@ import {
 } from '../services/quizService.js';
 
 export function registerQuizRoutes(app: FastifyInstance, config: AppConfig): void {
-  const guard = { preHandler: requireAuth(config) };
+  const guard = { preHandler: requireStaff(config) };
 
   app.get('/api/quizzes', guard, async (request) => {
     const user = currentUser(request);

@@ -48,10 +48,12 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
   (R-1 disarmed, R-12 still open). Recipe:
   `CREATE DATABASE zeropeek_test`, expose it (socat `-p 15432:5432` on the compose network), set
   `TEST_DATABASE_URL` + `DATABASE_URL`, `prisma migrate deploy`, `npm test`.
-- **Missing entirely (only `avatar String` free-text exists)**: player accounts/registration,
-  profiles, XP/level/inventory/achievements, a standalone beamer surface (the host page IS the
-  beamer), star-field login, sound, show graphics, global leaderboards. `GAME_PHASES` declares
-  `lead` but it is never entered; `GamePlayer.team` and `ideas` voting are data-only.
+- **Missing entirely (only `avatar String` free-text exists)**: profiles, XP/level/inventory/
+  achievements, a standalone beamer surface (the host page IS the beamer), sound, show graphics,
+  global leaderboards. `GAME_PHASES` declares `lead` but it is never entered; `GamePlayer.team`
+  and `ideas` voting are data-only. **Player accounts/registration now EXIST (Phase 6.3,
+  `feat/phase-6-3-auth-registration`):** role `PLAYER`, `email_verified_at`, `email_verification_tokens`,
+  `POST /api/auth/{register,verify,resend}`, an auth page (`auth.html`) with the starfield login.
 - **Landmines found (verified, not assumed):** (1) `PlayerAnswer.questionId` is
   `onDelete: Cascade` and `quizService.updateQuiz` deletes+recreates all questions, so **editing a
   quiz destroys the answer history of its games** — so "autosave" in the editor is unsafe.
@@ -169,6 +171,13 @@ password recovers with no data loss.
 - A single `$` in an `.env` *value* is still interpolated by Compose (`p@ss$word` → `p@ss` +
   warning). A literal `$$` survives.
 - `${VAR:?msg}` fails the deploy for both **unset** and **empty** values — the desired behaviour.
+- **Per-route rate limit** in Fastify: pass it as `{ config: { rateLimit: { max, timeWindow } } }`,
+  NOT the shorthand `rateLimit: {...}` key (that fails typecheck, TS2559). Used for the
+  unauthenticated auth routes (Phase 6.3). Nothing else in the repo sets per-route limits.
+- **Mail env var is `MAIL_VERIFY_TTL_HOURS`** (`config.ts`), with `SMTP_URL`, `MAIL_FROM`,
+  `MAIL_FROM_NAME`. `deployment.compose.test.ts` now pins all four across both compose files + docs.
+- **Backend DB tests need BOTH `DATABASE_URL` and `TEST_DATABASE_URL`** — Prisma itself reads
+  `DATABASE_URL`, so overriding only `TEST_DATABASE_URL` still hits the (often dead) default.
 
 ## Testing gotchas
 
@@ -451,6 +460,28 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   data-only; `lead` phase declared but never entered; no QR; no clock sync; no
   host review/shortcuts; report lacks flag/timing columns and Excel/print export;
   `avatar` is an unvalidated free string; "too fast" rule implemented but off.
+
+## Auth surface + player registration (Phase 6.3, branch `feat/phase-6-3-auth-registration`)
+- Additive only: new `PLAYER` role, `User.emailVerifiedAt` (nullable) and `EmailVerificationToken`
+  (stores **SHA-256 hash** only). Migration `20261107120000_phase_6_3_player_role_email_verification`
+  backfills existing rows to `created_at` so no current user is locked out. `requireStaff` (ADMIN+
+  TRAINER) now guards quizzes/reports + the host socket; PLAYER is authenticated but not staff.
+- **Enumeration-safe register (binding, spec §5.3):** a taken **e-mail** is answered **byte-identically**
+  to a fresh registration (`{ ok: true, verificationSent: isMailConfigured(config) }`, derived from
+  config only, never from the attempt) and the password is still Argon2id-hashed to equalise timing.
+  A taken **username** still returns `409 username_taken`. Do not "simplify" this back to a 409.
+- **The verification link/token is never logged, in any environment.** Re-issue from the UI instead.
+- Auth endpoints have per-route limits (`limit()` in `authRoutes.ts`): login 30, register 10, verify 30,
+  resend 5 /min. Governed by `AUTH_RATE_LIMITS` (config `authRateLimits`, default **on** outside
+  tests); a test sets `AUTH_RATE_LIMITS=true` to prove 429s. Rate-limit options must sit under
+  `config: { rateLimit: {...} }` — the shorthand `rateLimit:` key fails typecheck (TS2559).
+- Mail via **nodemailer** from a single `SMTP_URL` (`MAIL_FROM`, `MAIL_FROM_NAME`,
+  `MAIL_VERIFY_TTL_HOURS`). Variable name is `MAIL_VERIFY_TTL_HOURS` (NOT `EMAIL_…`). Unconfigured
+  mail is a **warning**, not fatal; the no-op sender keeps registration working.
+- Frontend: new Vite entry `auth.html` → `pages/auth.ts` (sign in / register / `#verify=<token>`),
+  `starfield.ts` + `backdrop.css` (pure-CSS tiled `radial-gradient` stars, `prefers-reduced-motion`
+  + a persisted "calm" switch), `registerOffer()` shown after a game. **Joining a game stays
+  guest-only** (nickname, no e-mail) — never gate it.
 
 ## Frontend design system (Phase 6.1, PR #18)
 - Style: **"Dark Retro-Futuristic Wireframe & Glassmorphism"** — presentation only.

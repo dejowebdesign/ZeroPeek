@@ -8,7 +8,7 @@
  * Nothing in this module logs or returns a password or a raw secret.
  */
 
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
 
@@ -68,4 +68,18 @@ export const PASSWORD_MIN_LENGTH = 10;
 /** Whether a password meets the minimum policy. */
 export function isAcceptablePassword(password: string): boolean {
   return typeof password === 'string' && password.length >= PASSWORD_MIN_LENGTH;
+}
+
+/**
+ * A new e-mail verification token. The raw value goes into the link; only its
+ * hash is stored (see `hashVerificationToken`), so a database leak does not
+ * hand out usable links.
+ */
+export function newVerificationToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/** SHA-256 of a verification token, hex-encoded. Deterministic for lookup. */
+export function hashVerificationToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }

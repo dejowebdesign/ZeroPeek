@@ -13,7 +13,7 @@ import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { questionInput, questionPrompt } from '../questionView.js';
-import { lobbyRoster, profilePlaceholder } from '../playerView.js';
+import { lobbyRoster, profilePlaceholder, registerOffer } from '../playerView.js';
 import { button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
 
 const STORAGE_KEY = 'zeropeek.player';
@@ -327,6 +327,9 @@ const app: HTMLElement = appElement;
                 },
               }),
             ),
+            // Optional: an account keeps progress across games. A guest can
+            // simply play again; this never blocks anything.
+            registerOffer(),
           ),
         ),
       ),

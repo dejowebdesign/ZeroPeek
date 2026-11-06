@@ -18,6 +18,7 @@ export default defineConfig({
         host: resolve(__dirname, 'src/host.html'),
         editor: resolve(__dirname, 'src/editor.html'),
         admin: resolve(__dirname, 'src/admin.html'),
+        auth: resolve(__dirname, 'src/auth.html'),
       },
     },
   },

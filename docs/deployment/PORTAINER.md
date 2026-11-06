@@ -134,17 +134,22 @@ from failing on one missing variable at a time.
 
 **Optional — leave unset unless you need them:**
 
-| Variable                                             | Default                   | When to set it                                          |
-| ---------------------------------------------------- | ------------------------- | ------------------------------------------------------- |
-| `REDIS_URL`                                          | `redis://cache:6379`      | Only when Redis is **not** the bundled `cache` service. |
-| `DATABASE_URL`                                       | derived from `POSTGRES_*` | Only when the database is **not** the `db` service.     |
-| `ZEROPEEK_IMAGE_TAG`                                 | `latest`                  | Pin `sha-<short>` for a reproducible deployment.        |
-| `ZP_ACME_CA`                                         | Let's Encrypt production  | Set to the staging directory while testing TLS.         |
-| `SESSION_TTL_HOURS`                                  | `72`                      | Session lifetime.                                       |
-| `COOKIE_NAME`                                        | `zp_session`              | Session cookie name.                                    |
-| `LOG_LEVEL`                                          | `info`                    | Pino log level.                                         |
-| `REDIS_MAXMEMORY`                                    | `256mb`                   | Memory ceiling for the cache-only Redis.                |
-| `ZEROPEEK_BACKEND_IMAGE` / `ZEROPEEK_FRONTEND_IMAGE` | GHCR defaults             | Override if the images move.                            |
+| Variable                                             | Default                   | When to set it                                                               |
+| ---------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------- |
+| `REDIS_URL`                                          | `redis://cache:6379`      | Only when Redis is **not** the bundled `cache` service.                      |
+| `DATABASE_URL`                                       | derived from `POSTGRES_*` | Only when the database is **not** the `db` service.                          |
+| `ZEROPEEK_IMAGE_TAG`                                 | `latest`                  | Pin `sha-<short>` for a reproducible deployment.                             |
+| `ZP_ACME_CA`                                         | Let's Encrypt production  | Set to the staging directory while testing TLS.                              |
+| `SESSION_TTL_HOURS`                                  | `72`                      | Session lifetime.                                                            |
+| `COOKIE_NAME`                                        | `zp_session`              | Session cookie name.                                                         |
+| `LOG_LEVEL`                                          | `info`                    | Pino log level.                                                              |
+| `REDIS_MAXMEMORY`                                    | `256mb`                   | Memory ceiling for the cache-only Redis.                                     |
+| `ZEROPEEK_BACKEND_IMAGE` / `ZEROPEEK_FRONTEND_IMAGE` | GHCR defaults             | Override if the images move.                                                 |
+| `SMTP_URL`                                           | empty (mail disabled)     | Enable account-confirmation e-mails (Phase 6.3). Any SMTP relay, e.g. Brevo. |
+| `MAIL_FROM`                                          | empty                     | Verified sender address for outgoing mail.                                   |
+| `MAIL_FROM_NAME`                                     | `ZeroPeek`                | Display name shown next to `MAIL_FROM`.                                      |
+| `MAIL_VERIFY_TTL_HOURS`                              | `24`                      | How long a confirmation link stays valid.                                    |
+| `AUTH_RATE_LIMITS`                                   | `true`                    | Stricter per-route limits on the auth endpoints.                             |
 
 > **Exactly four values are required and must not be empty** (Compose `:?`
 > guards): `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and

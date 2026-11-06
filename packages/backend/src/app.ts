@@ -16,6 +16,7 @@ import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import { QUESTION_TYPE_IDS } from '@zeropeek/shared';
 
 import { AppError } from './errors.js';
+import { createMailer } from './services/mailer.js';
 import { registerAdminRoutes } from './routes/adminRoutes.js';
 import { registerAuthRoutes } from './routes/authRoutes.js';
 import { registerQuizRoutes } from './routes/quizRoutes.js';
@@ -129,7 +130,7 @@ export async function buildApp({ config }: BuildAppOptions): Promise<FastifyInst
     questionTypes: QUESTION_TYPE_IDS.length,
   }));
 
-  registerAuthRoutes(app, config);
+  registerAuthRoutes(app, config, createMailer(config));
   registerQuizRoutes(app, config);
   registerReportRoutes(app, config);
   registerAdminRoutes(app, config);

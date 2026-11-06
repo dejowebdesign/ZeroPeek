@@ -42,6 +42,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.game.deleteMany();
   await prisma.question.deleteMany();
   await prisma.quiz.deleteMany();
+  await prisma.emailVerificationToken.deleteMany();
   await prisma.session.deleteMany();
   await prisma.user.deleteMany();
 }
