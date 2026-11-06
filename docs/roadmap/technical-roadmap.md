@@ -102,6 +102,62 @@ bleiben, damit die bestehenden Seiten (Spieler, Host, Editor, Admin) unveränder
 **Bestandsschutz:** Alle bestehenden URLs (`/`, `/host.html`, `/editor.html`, `/admin.html`)
 bleiben gültig. Die Navigation ist **zusätzlich**, kein Ersatz.
 
+**Stand:** **6.2.1 (Navigation und Shell) ist umgesetzt und gemerged** (PR #21, `main` @ `030c771`) –
+`packages/frontend/src/navigation.ts`, Shell-Tokens und Responsive-Verhalten; Arbeitsreferenz
+`docs/design/design-system.md` §8.1. **6.2.2** ist in §3.1 abgegrenzt.
+
+### 3.1 Phase 6.2.2 – Spieler-Lobby und Profil-Platzhalter
+
+| Punkt                      | Inhalt                                                                                                                                                                                                            |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Die bestehende Spieler-Lobby verständlicher und einheitlicher gestalten; den Nav-Bereich „Profil" erstmals mit einer **ehrlichen Platzhalterfläche** verbinden.                                                   |
+| **Betroffene Komponenten** | `pages/player.ts`, `styles/tokens.css`, ggf. ein reiner, testbarer Builder                                                                                                                                        |
+| **Betroffene Dateien**     | `packages/frontend/src/pages/player.ts`, `styles/tokens.css`, `design-system.test.ts`, neue Tests                                                                                                                 |
+| **Datenmodelle**           | **keine**                                                                                                                                                                                                         |
+| **API-Änderungen**         | **keine** (rein typbezogene Korrektur am geteilten `player:join`-Ack, siehe unten)                                                                                                                                |
+| **Abhängigkeiten**         | 6.2.1                                                                                                                                                                                                             |
+| **Risiken**                | Lobby darf den serverautoritativen Fluss (`game:state`) nicht stören; keine erfundenen Daten; Anzeige ≠ Berechtigung                                                                                              |
+| **Teststrategie**          | Unit-Tests der neuen Lobby-/Platzhalterlogik; Design-System-Klassen-/Token-Guards; textbasierte Geometrieprüfung (390/768/1024/1280/1920)                                                                         |
+| **Abnahmekriterien**       | Mitspieler sichtbar; vorhandene Verbindungszustände sichtbar; Status-/Feedbackmeldungen verbessert; Profil-Platzhalter eindeutig als „kommt mit 6.6" gekennzeichnet; kein Datenmodell/keine Migration; Gates grün |
+| **Aufwand**                | klein bis mittel                                                                                                                                                                                                  |
+
+**Umfang (verbindlich):**
+
+- **Spieler-Lobby:** Anzeige der Mitspieler, soweit die vorhandenen Serverdaten dies zuverlässig
+  zulassen (`game:state` liefert `PublicPlayer[]` mit `nickname`, `avatar`, `score`, `connected`);
+  Anzeige bereits vorhandener Verbindungszustände; verbesserte Status- und Feedbackmeldungen;
+  einheitliche Gestaltung nach dem Designsystem; responsive für Smartphone, Tablet und Desktop.
+- **Profilbereich:** in 6.2.2 **kein** echtes Spielerprofil. Kein Profil-Datenmodell, keine
+  Profil-API, keine Datenbankänderung. Stattdessen ein klar gekennzeichneter Platzhalter mit dem
+  Hinweis **„Dein Spielerprofil kommt mit Phase 6.6."**, umgesetzt mit der bestehenden
+  `emptyState`-Komponente, sofern technisch passend.
+
+**Technische Grenzen (ausdrücklich nicht Teil von 6.2.2):** Spielerregistrierung/Login (6.3); neue
+Rolle `PLAYER`; Profil-Datenmodell/-API; XP/Level/Fortschritt; Inventar/Avatarverwaltung;
+Avatar-Auswahl oder neue Avatar-Grafiken; Änderungen an Datenbank/Prisma-Schema; Änderungen an
+Spielablauf, Timer, Antworten oder Punkteberechnung; Änderungen an Socket.IO-Berechtigungen oder
+Rollen; Änderungen an Host-/Beamer-Funktionen. Die bestehende Entscheidung, dass Gäste zunächst mit
+einer Standardfigur **ohne** Avatar-Auswahl teilnehmen, bleibt unverändert; eine spätere Änderung
+bräuchte einen eigenen Produktentscheid und eine vorherige Dokumentationsaktualisierung.
+
+**Bekannte technische Punkte (Behandlung):**
+
+| ID          | Befund                                                                                   | Behandlung in 6.2.2                                                                   |
+| ----------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **B-2**     | Gemeinsamer `player:join`-Ack-Typ enthält kein `token`, der Server gibt ihn aber zurück. | Korrektur **erlaubt**, sofern rein typbezogen und verhaltensneutral.                  |
+| **B-3**     | `.join__feedback` hat keine passende CSS-Regel.                                          | Gestaltung darf ergänzt werden.                                                       |
+| **B-4**     | Für `.question` fehlt eine passende CSS-Regel.                                           | Rein gestalterische Korrektur zulässig.                                               |
+| **B-5**     | `pageHeader` ist nicht mehr in Verwendung.                                               | **Keine** Änderung in dieser Phase.                                                   |
+| **B-6**     | `game:joined`, `game:error`, `host:error` deklariert, aber nicht emittiert.              | **Keine** Änderung in dieser Phase.                                                   |
+| **B-7/R-5** | Wiederherstellung einer laufenden Frage nach Reconnect.                                  | **Keine** Änderung des Reconnect-Verhaltens; für eine spätere Bearbeitung vorgemerkt. |
+
+**Bestandsschutz:** Keine Änderung an Fragen, Antworten, Konten, Rollen, Berechtigungen, Auth,
+Socket.IO-Architektur, Spielphasen, Timern, Antwortverarbeitung, Punkteberechnung, XP/Level/Inventar,
+Datenbank/Prisma-Schema oder Host-/Beamer-Funktionen. Keine neuen Abhängigkeiten. Die
+Spielerstrecke bleibt serverautoritativ und funktioniert unverändert über `game:state`.
+
+**Analyse:** `docs/analysis/phase-6-2-2-player-lobby-profile.md`.
+
 ---
 
 ## 4. Phase 6.3 – Login, Registrierung, Sternenhimmel

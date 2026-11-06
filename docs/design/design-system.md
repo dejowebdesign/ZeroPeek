@@ -179,7 +179,7 @@ wide ≥1440, beamer ≥1600.
 Verified in a headless browser at 390×844, 1024×768 and 1920×1080: no horizontal overflow at any
 size, the table transforms only below 768px, and the show surface scales with the viewport.
 
-### 8.1 Application shell and navigation (Phase 6.2.1)
+### 8.1 Application shell and navigation (Phase 6.2.1, implemented – merged in PR #21)
 
 `src/navigation.ts` exports `appShell(options)`, a single node that a page renders into `<main>`. It
 is **additive**: the four existing surfaces (player, host, editor, admin) keep their own entry point
@@ -217,6 +217,28 @@ wide screen cannot stretch a single card across the whole width.
 
 **Beamer.** The presentation surface (`.centered.show`) is never wrapped in the shell and keeps its
 own `vmin`-based scale; the shell adds no navigation to it.
+
+### 8.2 Player lobby and profile placeholder (Phase 6.2.2)
+
+Scope is fixed in `../roadmap/technical-roadmap.md` §3.1 and analysed in
+`../analysis/phase-6-2-2-player-lobby-profile.md`. This phase is **not yet implemented**.
+
+- **Player lobby.** Show the players the server already sends in `game:state`
+  (`PublicPlayer[]` — `nickname`, `avatar`, `score`, `connected`), show the connection state the
+  system already provides, and improve the status and feedback messages. Styling follows the tokens
+  above; the lobby keeps the server-authoritative flow through `game:state` unchanged. Where the
+  server does not send a datum, it is not invented.
+- **Profile area.** No real profile in this phase — no profile model, no profile API, no database
+  change. The `profile` navigation entry gets a clearly marked placeholder
+  (existing `emptyState` component where it fits) reading
+  **“Dein Spielerprofil kommt mit Phase 6.6.”** It must not look like a working profile.
+- **Out of scope.** Player registration/login (6.3), a `PLAYER` role, profile model/API, XP/level,
+  inventory/avatars, database or Prisma changes, game-flow/timer/answer/scoring changes, socket
+  permission changes, host/beamer changes. Guests keep the standard figure with no avatar choice.
+- **Allowed, behaviour-neutral fixes.** B-2 (type-only correction of the shared `player:join` ack so
+  it carries the `token` the server already returns), B-3 (CSS rule for `.join__feedback`), B-4 (CSS
+  rule for `.question`). **Not** touched: B-5 (`pageHeader`), B-6 (unemitted events), B-7/R-5
+  (reconnect restores no question).
 
 ## 9. Accessibility
 
