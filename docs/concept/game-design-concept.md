@@ -240,6 +240,11 @@ weiterhin ohne E-Mail und ohne Konto. Bestehende `ADMIN`/`TRAINER`-Konten bleibe
 **Bestand:** Heute gibt es **nur** Gastspieler (`GamePlayer` ohne `User`-Bezug). Registrierte
 Spieler sind neu. Es gibt heute **keine** Rolle `PLAYER` (Enum `ADMIN`/`TRAINER`).
 
+> **Phasenabgrenzung (Phase 6.2.2):** Phase 6.2.2 führt **keine** Rolle `PLAYER`, **kein**
+> Spielerkonto und **kein** Profil ein (das ist 6.3 bzw. 6.6). Die Entscheidung, dass Gäste zunächst
+> mit einer **Standardfigur ohne Avatar-Auswahl** teilnehmen, bleibt **unverändert**; eine spätere
+> Änderung bräuchte einen eigenen Produktentscheid und eine vorherige Dokumentationsaktualisierung.
+
 ### 4.2 Registrierungsangebot (Briefing, Phase 5c – verbindlich)
 
 Die Registrierung wird an **zwei** Stellen aktiv angeboten.

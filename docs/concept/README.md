@@ -18,6 +18,7 @@ verändert, keine Migration erstellt und kein Implementierungsbranch angelegt.
 | 6   | [`../reports/phase-5-concept-report.md`](../reports/phase-5-concept-report.md)                       | 5     | Gesamtbericht und Freigabevorlage                                                        |
 | 7   | [`../reports/phase-5b-revision-and-first-works.md`](../reports/phase-5b-revision-and-first-works.md) | 5b    | Konzeptüberarbeitung, Designsystem/Performance, begrenzte erste Arbeiten                 |
 | 8   | [`../reports/phase-5c-product-decisions.md`](../reports/phase-5c-product-decisions.md)               | 5c    | Verbindliche Produktentscheidungen (XP, Level, Registrierung, Avatare, Snapshot)         |
+| 9   | [`../analysis/phase-6-2-2-player-lobby-profile.md`](../analysis/phase-6-2-2-player-lobby-profile.md) | 6.2.2 | Analyse der Spieler-Lobby und des Profil-Platzhalters (Umfang, Grenzen, Befunde B-2…B-7) |
 
 ## Grundsätze dieser Dokumente
 
@@ -49,5 +50,13 @@ Oberflächen (Spieler, Host/Beamer, Editor, Admin) angewandt. Arbeitsreferenz:
 und Daten bleiben unverändert.
 
 **Offen:** die noch nicht gelieferten **Assets** (Charaktere, Gegenstände, Hintergründe, Audio) und
-die in `../roadmap/technical-roadmap.md` §19 gelisteten Restentscheidungen. Die nächsten Phasen
-(6.2 Navigation, 6.3 Login, 6.4 Editor, …) bauen auf dem Designsystem auf.
+die in `../roadmap/technical-roadmap.md` §19 gelisteten Restentscheidungen.
+
+**Phase 6.2.1 (Navigation und Shell) ist umgesetzt und gemerged** (PR #21, `main` @ `030c771`).
+Die Spieler-, Host-, Editor- und Admin-Oberflächen behalten ihre eigenen URLs; die Shell ergänzt
+Brand-Bar, Navigationsregion und genau eine `<h1>`.
+
+**Phase 6.2.2 (Spieler-Lobby und Profil-Platzhalter) ist im Umfang dokumentiert, aber noch nicht
+umgesetzt.** Abgrenzung: `../roadmap/technical-roadmap.md` §3.1 und
+`../design/design-system.md` §8.2; Analyse: `../analysis/phase-6-2-2-player-lobby-profile.md`. Die
+nächsten Phasen (6.3 Login, 6.4 Editor, …) bauen auf dem Designsystem auf.

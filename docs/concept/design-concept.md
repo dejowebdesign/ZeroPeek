@@ -408,6 +408,14 @@ Responsive, technische Abhängigkeiten. **Alle hier genannten neuen Bereiche sin
 - **Abhängigkeiten:** `questionInput` (vorhanden) bleibt die Basis; die Darstellung wird
   erweitert (Avatar, Animationen), die Eingabelogik nicht verändert.
 
+> **Phasenabgrenzung (Phase 6.2.2):** In Phase 6.2.2 werden **nur** die Lobby-Anteile verbessert, die
+> ohne neue Assets und ohne Datenmodell möglich sind: Anzeige der Mitspieler und der bereits
+> vorhandenen Verbindungszustände sowie Status-/Feedbackmeldungen. Die **Avatar-Vorschau** und die
+> **Avatar-Anzeige** gehören zur Charakter-/Avatar-Phase **6.7** (Charakter-Assets fehlen). Gäste
+> nehmen weiterhin mit einer **Standardfigur ohne Avatar-Auswahl** teil. Das **Registrierungsangebot**
+> (Beitritt/Spielende) gehört zu **6.3**. Verbindliche Abgrenzung:
+> `../roadmap/technical-roadmap.md` §3.1.
+
 ### 8.8 Spielerprofil (neu)
 
 - **Zweck:** Fortschritt sichtbar machen – Charakter, Level, XP, Erfolge, **persönliche Statistik**.
@@ -422,6 +430,13 @@ Responsive, technische Abhängigkeiten. **Alle hier genannten neuen Bereiche sin
   Bedingung.
 - **Abhängigkeiten:** Braucht Spielerkonto + XP/Level/Statistik (neu). Daten kommen ausschließlich
   serverseitig (§17 im Briefing; `game-design-concept.md` §4.7).
+
+> **Phasenabgrenzung (Phase 6.2.2):** Ein **echtes** Spielerprofil ist **nicht** Teil von 6.2.2. Es
+> setzt Konto und Rolle `PLAYER` (6.3) sowie das Profilmodell und die Profil-API (6.6) voraus und
+> braucht die Charakter-Assets (6.7) für das zentrale Charakterbild. In 6.2.2 zeigt der Nav-Bereich
+> „Profil" **nur** einen klar gekennzeichneten Platzhalter („Dein Spielerprofil kommt mit Phase 6.6.")
+> – ohne Profil-Datenmodell, ohne Profil-API und ohne Datenbankänderung. Verbindliche Abgrenzung:
+> `../roadmap/technical-roadmap.md` §3.1.
 
 ### 8.9 Blockwelt-Helden-Charakterauswahl (neu)
 
