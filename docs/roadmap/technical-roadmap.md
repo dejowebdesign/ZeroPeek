@@ -182,6 +182,48 @@ ersetzt. `register` ist **additiv**. Die Rolle `PLAYER` hat **keine** Admin-/Tra
 **Spielende** angeboten; sie darf den Gastbeitritt **nicht verzögern** (`game-design-concept.md`
 §4.2).
 
+### 4.1 Phase 6.3 – Vorbereitung: tatsächlich offene Punkte
+
+Diese Zusammenstellung hält **nur** fest, was für die Umsetzung noch entschieden, konfiguriert oder
+geliefert werden muss. Sie wiederholt die verbindlichen Entscheidungen aus Phase 5c **nicht**
+(Registrierung freiwillig, Angebot beim Beitritt/nach Spielende, Gastzugang ohne Konto und ohne
+E-Mail, bestehende Auth bleibt). Ebenso werden bestehende Architektur und Datenmodelle hier **nicht**
+neu analysiert – siehe `docs/analysis/phase-1-technical-inventory.md`.
+
+**Verbindlich bereits vorhanden (kein neuer Entscheid nötig):**
+
+- Passwortregeln: **≥ 10 Zeichen** (`PASSWORD_MIN_LENGTH` in `packages/backend/src/auth.ts`;
+  `game-design-concept.md` §4.3). Argon2id, Sessions und CSRF bleiben unverändert.
+- Kontoanforderungen: E-Mail, Passwort, **E-Mail-Bestätigung**, Anzeigename.
+- Rollen: `ADMIN`/`TRAINER` bleiben; `PLAYER` wird **additiv** ergänzt; `emailVerifiedAt?` ergänzt.
+- Registrierungs-API: `POST /api/auth/register` + Verifizierung; `login`/`logout`/`me` unverändert.
+- Bestehende E-Mail-Konfiguration: `SMTP_URL` und `MAIL_FROM` (bereits in `docs/deployment/ENVIRONMENT.md`
+  und den `.env.*.example`-Dateien vorgesehen).
+
+**Offen – Voraussetzungen, die chrisB bereitstellen oder entscheiden muss:**
+
+| #   | Offener Punkt                                      | Status / Bedarf                                                                                                                                                                                                                                                                                                                                       | Blockiert         |
+| --- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| V1  | **E-Mail-Versandweg**                              | Die vorhandene Konfiguration sieht **generisches SMTP** vor (`SMTP_URL`, `MAIL_FROM`). **Brevo ist im Repository nicht referenziert** – weder in Doku noch Code oder Konfiguration. Falls Brevo gewünscht ist: als SMTP-Relay (Brevo stellt SMTP-Zugang bereit) über die **vorhandenen** Variablen, oder als eigene HTTP-API mit **neuen** Variablen. | Versand (6.3)     |
+| V2  | **Absenderadresse und Absendername**               | `MAIL_FROM` erfindet keine Adresse; eine echte, verifizierte Absenderadresse ist nötig. Brevo verlangt zusätzlich einen **verifizierten Absender**.                                                                                                                                                                                                   | Versand (6.3)     |
+| V3  | **SMTP-/API-Zugangsdaten**                         | Host, Port, Benutzer, Passwort bzw. API-Key. **Ausschließlich** über Umgebungsvariablen, nie im Quellcode/Git.                                                                                                                                                                                                                                        | Versand (6.3)     |
+| V4  | **Verifizierungslink-Gültigkeit**                  | Vorschlag zur Freigabe: **24 Stunden**, einmalige Verwendung. Ohne Festlegung wird dieser Wert angenommen.                                                                                                                                                                                                                                            | keine (Vorschlag) |
+| V5  | **Verhalten bei bereits vergebener E-Mail**        | Vorschlag: generische Antwort (kein Konto-Enumeration-Leak) + Hinweis, sich anzumelden. Ohne Festlegung wird dieser Wert angenommen.                                                                                                                                                                                                                  | keine (Vorschlag) |
+| V6  | **Verhalten nach erfolgreicher Registrierung**     | Vorschlag: Konto bleibt bis zur Bestätigung **unbestätigt**; Login erst nach Bestätigung (Ablehnung `email_unverified`). Ohne Festlegung wird dieser Wert angenommen.                                                                                                                                                                                 | keine (Vorschlag) |
+| V7  | **Oberfläche für Registrierung und Verifizierung** | Wird in 6.3 als **eigene Auth-Seite** angelegt (Login, Registrierung, Bestätigungshinweis), damit der heutige Host-Login als Einstieg für Host/Admin unangetastet bleibt. Der verbindliche **Hinweis beim Spielbeitritt** und **nach Spielende** ist eine **kleine Ergänzung** der bestehenden Spieleroberfläche.                                     | keine (Vorschlag) |
+| V8  | **Abschaltbarkeit des Sternenhimmels**             | Vorschlag: Standard **an**; `prefers-reduced-motion` reduziert Bewegung; zusätzlich eine **Nutzer-Einstellung** zum Abschalten.                                                                                                                                                                                                                       | keine (Vorschlag) |
+
+> **Sternenhimmel (bereits entschieden):** CSS/SVG-basiert, **keine** WebGL-/3D-Engine,
+> performance-bewusst, `prefers-reduced-motion` berücksichtigt, abschaltbar. Kein neuer Entscheid nötig.
+
+**Nicht in 6.3 (bewusst später):** Konto-Übernahme nach Spielende und Übernahme einer laufenden
+Runde gehören laut Roadmap §9.2 zu **6.8** (dort mit `Game.guestClaim`), nicht zu 6.3. Das
+**Profilmodell** (`PlayerProfile`) gehört zu **6.6**.
+
+**Ohne V1–V3 (Zugangsdaten) nicht abschließbar:** der tatsächliche E-Mail-Versand. Registrierung,
+Validierung, Token-Erzeugung/-Prüfung und Rollenlogik sind davon unabhängig und können vorbereitet
+werden; der Versand bleibt bis zur Bereitstellung der Zugangsdaten unvollständig.
+
 ---
 
 ## 5. Phase 6.4 – Quizverwaltung und Editor
