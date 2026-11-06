@@ -17,6 +17,7 @@ import {
 
 import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
+import { appShell } from '../navigation.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
 import { questionResult, solutionText } from '../questionView.js';
 import { leaderboardRow, podiumPlace, questionDisplayOptions } from '../showView.js';
@@ -30,7 +31,6 @@ import {
   errorText,
   field,
   notice,
-  pageHeader,
   setBusy,
   toast,
 } from '../ui.js';
@@ -226,10 +226,13 @@ async function showHome(): Promise<void> {
 
     render(
       app,
-      el(
-        'section',
-        { class: 'wrap' },
-        pageHeader(`Welcome, ${me?.username ?? 'host'}`, [
+      appShell({
+        role: 'host',
+        active: 'overview',
+        badge: 'Host',
+        isAdmin: me?.role === 'ADMIN',
+        title: `Welcome, ${me?.username ?? 'host'}`,
+        actions: [
           button('Editor', { onClick: () => (location.href = './editor.html') }),
           // Only administrators can reach the user management page.
           ...(me?.role === 'ADMIN'
@@ -247,97 +250,110 @@ async function showHome(): Promise<void> {
               }
             },
           }),
-        ]),
-        open.length
-          ? el(
-              'div',
-              null,
-              el('h2', { class: 'section-title' }, 'Open games'),
-              el(
-                'ul',
-                { class: 'quiz-list' },
-                ...open.map((game) =>
+        ],
+        children: [
+          el(
+            'section',
+            { class: 'wrap' },
+            open.length
+              ? el(
+                  'div',
+                  null,
+                  el('h2', { class: 'section-title' }, 'Open games'),
                   el(
-                    'li',
-                    { class: 'quiz-list__item card' },
+                    'ul',
+                    { class: 'quiz-list' },
+                    ...open.map((game) =>
+                      el(
+                        'li',
+                        { class: 'quiz-list__item card' },
+                        el(
+                          'div',
+                          null,
+                          el(
+                            'h2',
+                            { class: 'quiz-list__title' },
+                            `${game.quiz.title} · ${game.pin}`,
+                          ),
+                          el(
+                            'p',
+                            { class: 'muted' },
+                            `${game._count.players} player(s) · ${game.phase}`,
+                          ),
+                        ),
+                        el(
+                          'div',
+                          { class: 'quiz-list__actions' },
+                          button('Resume', {
+                            variant: 'primary',
+                            onClick: () => void resume(game.id),
+                          }),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : null,
+            el('h2', { class: 'section-title' }, 'Start a game'),
+            quizzes.length === 0
+              ? emptyState(
+                  'No quizzes yet',
+                  'Create your first quiz in the editor.',
+                  button('Open editor', { onClick: () => (location.href = './editor.html') }),
+                )
+              : el(
+                  'ul',
+                  { class: 'quiz-list' },
+                  ...quizzes.map((quiz) =>
                     el(
-                      'div',
-                      null,
-                      el('h2', { class: 'quiz-list__title' }, `${game.quiz.title} · ${game.pin}`),
+                      'li',
+                      { class: 'quiz-list__item card' },
+                      el(
+                        'div',
+                        null,
+                        el('h2', { class: 'quiz-list__title' }, quiz.title),
+                        el('p', { class: 'muted' }, `${quiz.questionCount} question(s)`),
+                      ),
+                      el(
+                        'div',
+                        { class: 'quiz-list__actions' },
+                        button('Start', { variant: 'primary', onClick: () => void start(quiz.id) }),
+                      ),
+                    ),
+                  ),
+                ),
+            el('h2', { class: 'section-title' }, 'Finished games'),
+            finished.length === 0
+              ? emptyState('No finished games yet', 'Finished games and their reports appear here.')
+              : el(
+                  'ul',
+                  { class: 'report-list' },
+                  ...finished.map((game) =>
+                    el(
+                      'li',
+                      { class: 'report-list__item card' },
+                      el('h3', null, game.quiz.title),
                       el(
                         'p',
                         { class: 'muted' },
-                        `${game._count.players} player(s) · ${game.phase}`,
+                        `${game._count.players} player(s) · ${new Date(game.createdAt).toLocaleString()}`,
+                      ),
+                      el(
+                        'div',
+                        { class: 'quiz-list__actions' },
+                        button('View report', { onClick: () => void showReport(game.id) }),
+                        button('Ranking CSV', {
+                          onClick: () => {
+                            location.href = `/api/reports/games/${game.id}/ranking.csv`;
+                          },
+                        }),
                       ),
                     ),
-                    el(
-                      'div',
-                      { class: 'quiz-list__actions' },
-                      button('Resume', { variant: 'primary', onClick: () => void resume(game.id) }),
-                    ),
                   ),
                 ),
-              ),
-            )
-          : null,
-        el('h2', { class: 'section-title' }, 'Start a game'),
-        quizzes.length === 0
-          ? emptyState(
-              'No quizzes yet',
-              'Create your first quiz in the editor.',
-              button('Open editor', { onClick: () => (location.href = './editor.html') }),
-            )
-          : el(
-              'ul',
-              { class: 'quiz-list' },
-              ...quizzes.map((quiz) =>
-                el(
-                  'li',
-                  { class: 'quiz-list__item card' },
-                  el(
-                    'div',
-                    null,
-                    el('h2', { class: 'quiz-list__title' }, quiz.title),
-                    el('p', { class: 'muted' }, `${quiz.questionCount} question(s)`),
-                  ),
-                  el(
-                    'div',
-                    { class: 'quiz-list__actions' },
-                    button('Start', { variant: 'primary', onClick: () => void start(quiz.id) }),
-                  ),
-                ),
-              ),
-            ),
-        el('h2', { class: 'section-title' }, 'Finished games'),
-        finished.length === 0
-          ? emptyState('No finished games yet', 'Finished games and their reports appear here.')
-          : el(
-              'ul',
-              { class: 'report-list' },
-              ...finished.map((game) =>
-                el(
-                  'li',
-                  { class: 'report-list__item card' },
-                  el('h3', null, game.quiz.title),
-                  el(
-                    'p',
-                    { class: 'muted' },
-                    `${game._count.players} player(s) · ${new Date(game.createdAt).toLocaleString()}`,
-                  ),
-                  el(
-                    'div',
-                    { class: 'quiz-list__actions' },
-                    button('View report', { onClick: () => void showReport(game.id) }),
-                    button('Ranking CSV', {
-                      onClick: () => {
-                        location.href = `/api/reports/games/${game.id}/ranking.csv`;
-                      },
-                    }),
-                  ),
-                ),
-              ),
-            ),
-      ),
+          ),
+        ],
+      }),
     );
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
@@ -601,54 +617,59 @@ async function showReport(id: string): Promise<void> {
     }>(`/api/reports/games/${id}`);
     render(
       app,
-      el(
-        'section',
-        { class: 'wrap' },
-        pageHeader(report.quiz.title, [button('Back', { onClick: () => void showHome() })]),
-        el('h2', { class: 'section-title' }, 'Players'),
-        el(
-          'ol',
-          { class: 'leaderboard' },
-          ...report.players.map((player) =>
-            el(
-              'li',
-              { class: 'leaderboard__row' },
-              el('span', { class: 'leaderboard__rank' }, String(player.rank)),
-              el('span', { class: 'leaderboard__name' }, player.nickname),
-              el('span', { class: 'leaderboard__score' }, String(player.score)),
-            ),
-          ),
-        ),
-        el('h2', { class: 'section-title' }, 'Questions'),
-        el(
-          'table',
-          { class: 'report-table' },
+      appShell({
+        role: 'host',
+        active: 'reports',
+        badge: 'Host',
+        isAdmin: me?.role === 'ADMIN',
+        title: report.quiz.title,
+        actions: [button('Back', { onClick: () => void showHome() })],
+        children: [
+          el('h2', { class: 'section-title' }, 'Players'),
           el(
-            'thead',
-            null,
-            el(
-              'tr',
-              null,
-              el('th', null, 'Question'),
-              el('th', null, 'Answered'),
-              el('th', null, 'Correct'),
-            ),
-          ),
-          el(
-            'tbody',
-            null,
-            ...report.questions.map((question) =>
+            'ol',
+            { class: 'leaderboard' },
+            ...report.players.map((player) =>
               el(
-                'tr',
-                null,
-                el('td', { 'data-label': 'Question' }, question.text),
-                el('td', { 'data-label': 'Answered' }, String(question.answered)),
-                el('td', { 'data-label': 'Correct' }, String(question.correct)),
+                'li',
+                { class: 'leaderboard__row' },
+                el('span', { class: 'leaderboard__rank' }, String(player.rank)),
+                el('span', { class: 'leaderboard__name' }, player.nickname),
+                el('span', { class: 'leaderboard__score' }, String(player.score)),
               ),
             ),
           ),
-        ),
-      ),
+          el('h2', { class: 'section-title' }, 'Questions'),
+          el(
+            'table',
+            { class: 'report-table' },
+            el(
+              'thead',
+              null,
+              el(
+                'tr',
+                null,
+                el('th', null, 'Question'),
+                el('th', null, 'Answered'),
+                el('th', null, 'Correct'),
+              ),
+            ),
+            el(
+              'tbody',
+              null,
+              ...report.questions.map((question) =>
+                el(
+                  'tr',
+                  null,
+                  el('td', { 'data-label': 'Question' }, question.text),
+                  el('td', { 'data-label': 'Answered' }, String(question.answered)),
+                  el('td', { 'data-label': 'Correct' }, String(question.correct)),
+                ),
+              ),
+            ),
+          ),
+        ],
+      }),
     );
   } catch (error) {
     toast(errorText(error), 'error');

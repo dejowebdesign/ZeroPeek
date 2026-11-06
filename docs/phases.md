@@ -29,7 +29,8 @@ Nothing is implemented until the project owner approves it.
 | 5     | Concept report (approval)  | Done – `docs/reports/phase-5-concept-report.md`                                |
 | 5b    | Revision and first works   | Done (merged, PR #16) – `docs/reports/phase-5b-revision-and-first-works.md`    |
 | 5c    | Binding product decisions  | Done (PR #17) – `docs/reports/phase-5c-product-decisions.md`                   |
-| 6.1   | Design system              | Done (this change) – `docs/design/design-system.md`                            |
+| 6.1   | Design system              | Done (PR #18) – `docs/design/design-system.md`                                 |
+| 6.2.1 | Navigation and shell       | In review (this change) – `docs/design/design-system.md` §8.1                  |
 | 6.2–  | Implementation             | **Not started. Requires explicit approval by the project owner.**              |
 
 See `docs/concept/README.md` for the reading order.

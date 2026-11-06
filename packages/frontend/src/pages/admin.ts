@@ -14,17 +14,8 @@
 
 import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
-import {
-  button,
-  chip,
-  dialog,
-  errorText,
-  field,
-  notice,
-  pageHeader,
-  skeleton,
-  toast,
-} from '../ui.js';
+import { appShell } from '../navigation.js';
+import { button, chip, dialog, errorText, field, notice, skeleton, toast } from '../ui.js';
 
 type UserRole = 'ADMIN' | 'TRAINER';
 
@@ -215,38 +206,39 @@ async function showUsers(): Promise<void> {
 
   render(
     app,
-    el(
-      'section',
-      { class: 'wrap' },
-      pageHeader(
-        'Users',
-        [
-          button('Host', { onClick: () => (location.href = './host.html') }),
-          button('Editor', { onClick: () => (location.href = './editor.html') }),
-        ],
-        undefined,
-        ADMIN_HOME,
-      ),
-      createForm,
-      el('h2', { class: 'section-title' }, 'Accounts'),
-      el(
-        'table',
-        { class: 'report-table' },
+    appShell({
+      role: 'host',
+      active: 'admin',
+      badge: 'Admin',
+      isAdmin: true,
+      brandHref: ADMIN_HOME,
+      title: 'Users',
+      actions: [
+        button('Host', { onClick: () => (location.href = './host.html') }),
+        button('Editor', { onClick: () => (location.href = './editor.html') }),
+      ],
+      children: [
+        createForm,
+        el('h2', { class: 'section-title' }, 'Accounts'),
         el(
-          'thead',
-          null,
+          'table',
+          { class: 'report-table' },
           el(
-            'tr',
+            'thead',
             null,
-            el('th', null, 'User'),
-            el('th', null, 'Role'),
-            el('th', null, 'Disabled'),
-            el('th', null, ''),
+            el(
+              'tr',
+              null,
+              el('th', null, 'User'),
+              el('th', null, 'Role'),
+              el('th', null, 'Disabled'),
+              el('th', null, ''),
+            ),
           ),
+          list,
         ),
-        list,
-      ),
-    ),
+      ],
+    }),
   );
 
   // Show placeholders while the first load is in flight, so the table never

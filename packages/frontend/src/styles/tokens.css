@@ -155,6 +155,22 @@
   --show-gap: clamp(var(--space-2), 0.6vw + 0.6vh, var(--space-5));
   --show-pad: clamp(var(--space-3), 0.8vw + 0.9vh, var(--space-6));
 
+  /* Application shell (Phase 6.2.1). The sidebar is the desktop navigation
+     width; the bottom bar is the phone navigation height (its tap target plus
+     the safe-area inset). */
+  --sidebar-w: 248px;
+  --sidebar-w-compact: 72px;
+  --bottom-bar-h: 60px;
+  --shell-top-h: 64px;
+
+  /* Player content measure (briefing §4). One value drives the lobby, the
+     question and the result, so the three share a width and a centre line. The
+     value steps by viewport: phone fills the space left by the 32px gutter,
+     tablet is ~90%, desktop is ~78% and never exceeds 1000px on a large screen.
+     Overridden in the media queries at the foot of this file. */
+  --player-measure: 100%;
+  --player-gutter: var(--space-4);
+
   /* Podium accents. Gold reuses the legendary rarity colour; silver reuses the
      brand silver; bronze is the one value with no existing token. */
   --podium-bronze: #c98b5e;
@@ -1806,5 +1822,334 @@ body::before {
     content: attr(data-label);
     color: var(--muted);
     font-weight: 600;
+  }
+}
+
+/* ===========================================================================
+   Phase 6.2.1 – application shell and navigation.
+
+   Additive: nothing above changes. The shell wraps a page's existing content
+   with a brand bar and a navigation region; the screens themselves are
+   untouched. Layout by viewport (concept §9.1):
+
+     desktop ≥1024px  – fixed left sidebar with labels
+     tablet 768–1023  – icon rail (labels kept for assistive tech)
+     phone   ≤767px   – bottom bar, at most five entries plus "More"
+
+   The beamer surface (`.centered.show`) stays outside the navigation and keeps
+   its own scaling.
+   =========================================================================== */
+
+.shell {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+}
+
+.shell__side {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100dvh;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-3);
+  background: var(--glass-nav);
+  border-right: var(--hairline) solid var(--border);
+  backdrop-filter: blur(var(--blur-nav));
+  -webkit-backdrop-filter: blur(var(--blur-nav));
+}
+
+.shell__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100dvh;
+}
+
+.shell__top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-height: var(--shell-top-h);
+  padding: var(--space-2) var(--space-5);
+  background: var(--glass-nav);
+  border-bottom: var(--hairline) solid var(--border);
+  backdrop-filter: blur(var(--blur-nav));
+  -webkit-backdrop-filter: blur(var(--blur-nav));
+}
+
+.shell__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.shell__badge {
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius-pill);
+  border: var(--hairline) solid var(--border-strong);
+  color: var(--muted);
+  font-size: var(--type-label);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.shell__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.shell__main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The centred screens inside a shell size themselves to the space left by the
+   top bar, not the whole viewport, so the shell never forces a scrollbar. */
+.shell__main .centered {
+  min-height: calc(100dvh - var(--shell-top-h));
+}
+
+/* ---------- navigation ---------- */
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.nav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: var(--hairline) solid transparent;
+  color: var(--muted);
+  font-size: var(--type-body);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.nav__item:hover {
+  color: var(--text);
+  background: var(--glass-raised);
+}
+
+.nav__item--active {
+  color: var(--text);
+  background: var(--glass-raised);
+  border-color: var(--border-strong);
+  box-shadow: inset 2px 0 0 var(--accent-2);
+}
+
+.nav__icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.nav__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* An entry whose page does not exist yet: visible, clearly not clickable. */
+.nav__item--soon {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+.nav__item--soon:hover {
+  color: var(--faint);
+  background: transparent;
+}
+
+.nav__soon {
+  margin-left: auto;
+  padding: 0 0.4rem;
+  border-radius: var(--radius-pill);
+  border: var(--hairline) solid var(--border);
+  color: var(--faint);
+  font-size: var(--type-help);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* The bottom bar exists only on a phone; hidden everywhere else. */
+.nav--bottom {
+  display: none;
+}
+
+/* ---------- tablet: icon rail ---------- */
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .shell {
+    grid-template-columns: var(--sidebar-w-compact) minmax(0, 1fr);
+  }
+
+  .nav--side .nav__label,
+  .nav--side .nav__soon {
+    display: none;
+  }
+
+  .nav--side .nav__item {
+    justify-content: center;
+    padding: 0.6rem;
+  }
+}
+
+/* ---------- phone: bottom bar ---------- */
+
+@media (max-width: 767px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: calc(var(--bottom-bar-h) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .shell__side {
+    display: none;
+  }
+
+  .shell__top {
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .nav--bottom {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-around;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    min-height: var(--bottom-bar-h);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--glass-nav);
+    border-top: var(--hairline) solid var(--border);
+    backdrop-filter: blur(var(--blur-nav));
+    -webkit-backdrop-filter: blur(var(--blur-nav));
+  }
+
+  .nav--bottom .nav__item {
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 0.4rem 0.2rem;
+    border: none;
+    font-size: var(--type-help);
+    text-align: center;
+  }
+
+  .nav--bottom .nav__item--active {
+    box-shadow: inset 0 2px 0 var(--accent-2);
+  }
+
+  .nav__more {
+    position: relative;
+    flex: 1;
+    display: flex;
+  }
+
+  .nav__more > summary {
+    list-style: none;
+  }
+
+  .nav__more > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .nav__more-list {
+    position: absolute;
+    bottom: calc(100% + var(--space-2));
+    right: var(--space-2);
+    min-width: 190px;
+    padding: var(--space-2);
+    border-radius: var(--radius);
+    border: var(--hairline) solid var(--border-strong);
+    background: var(--glass-dialog);
+    box-shadow: var(--shadow-dialog);
+    backdrop-filter: blur(var(--blur-dialog));
+    -webkit-backdrop-filter: blur(var(--blur-dialog));
+  }
+
+  .nav__more-item {
+    display: block;
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .nav__more-item:hover {
+    color: var(--text);
+    background: var(--glass-raised);
+  }
+
+  .nav__more-item--active {
+    color: var(--text);
+    background: var(--glass-raised);
+  }
+}
+
+/* ---------- player content measure (briefing §4) ---------- */
+
+/**
+ * Lobby, question and result share one width and one centre line. The value
+ * steps by viewport; on a phone the base `100%` inside the gutter leaves
+ * `viewport − 32px`.
+ */
+.shell--player .centered {
+  padding: var(--player-gutter);
+  min-height: calc(100dvh - var(--shell-top-h));
+}
+
+.shell--player .centered > * {
+  width: 100%;
+  max-width: var(--player-measure);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --player-measure: 90%;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --player-measure: 78%;
+  }
+}
+
+@media (min-width: 1440px) {
+  :root {
+    --player-measure: 1000px;
+  }
+}
+
+@media (max-width: 767px) {
+  .shell--player .centered {
+    min-height: calc(100dvh - var(--shell-top-h) - var(--bottom-bar-h));
   }
 }
