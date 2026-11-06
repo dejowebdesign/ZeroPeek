@@ -96,6 +96,13 @@ describe('design tokens – Phase 6.1 additions', () => {
     'wire-cell',
     'wire-line',
     'wire-opacity',
+    // Phase 6.2.1 – application shell.
+    'sidebar-w',
+    'sidebar-w-compact',
+    'bottom-bar-h',
+    'shell-top-h',
+    'player-measure',
+    'player-gutter',
   ];
 
   for (const name of required) {
@@ -167,6 +174,31 @@ describe('design-system components', () => {
     'podium__rank',
     'podium__name',
     'podium__score',
+    // Application shell (Phase 6.2.1). `shell--player` and `shell--host` are
+    // emitted by `appShell`; only the player variant carries its own rules, so
+    // the host class is asserted through the shell test below instead.
+    'shell',
+    'shell--player',
+    'shell__side',
+    'shell__body',
+    'shell__top',
+    'shell__brand',
+    'shell__badge',
+    'shell__actions',
+    'shell__main',
+    'nav',
+    'nav--side',
+    'nav--bottom',
+    'nav__item',
+    'nav__item--active',
+    'nav__item--soon',
+    'nav__icon',
+    'nav__label',
+    'nav__soon',
+    'nav__more',
+    'nav__more-list',
+    'nav__more-item',
+    'nav__more-item--active',
   ];
 
   for (const name of classes) {
@@ -231,6 +263,52 @@ describe('host/player layout regression fix', () => {
     expect(tokens).toMatch(
       /@media \(max-width: 640px\) \{\s*\.question__input:has\(> \.option\) \{\s*grid-template-columns: 1fr;/,
     );
+  });
+});
+
+describe('application shell layout (Phase 6.2.1)', () => {
+  it('lays the desktop shell out as a sidebar plus content', () => {
+    const block = tokens.slice(tokens.indexOf('.shell {'), tokens.indexOf('.shell__side'));
+    expect(block).toContain('grid-template-columns: var(--sidebar-w) minmax(0, 1fr)');
+  });
+
+  it('hides the bottom bar except on a phone', () => {
+    expect(tokens).toMatch(/\.nav--bottom \{\s*display: none;/);
+    const phone = tokens.slice(tokens.indexOf('@media (max-width: 767px)'));
+    expect(phone).toContain('.nav--bottom {');
+    expect(phone).toContain('position: fixed');
+  });
+
+  it('collapses the sidebar to an icon rail on a tablet', () => {
+    expect(tokens).toMatch(
+      /@media \(min-width: 768px\) and \(max-width: 1023px\) \{\s*\.shell \{\s*grid-template-columns: var\(--sidebar-w-compact\)/,
+    );
+  });
+
+  it('hides the rail labels but keeps them as accessible names', () => {
+    const rail = tokens.slice(tokens.indexOf('@media (min-width: 768px) and (max-width: 1023px)'));
+    expect(rail).toContain('.nav--side .nav__label');
+    expect(rail).toContain('display: none');
+  });
+
+  it('steps the player measure by viewport and caps it on a large screen', () => {
+    expect(tokens).toMatch(/@media \(min-width: 768px\) \{\s*:root \{\s*--player-measure: 90%;/);
+    expect(tokens).toMatch(/@media \(min-width: 1024px\) \{\s*:root \{\s*--player-measure: 78%;/);
+    expect(tokens).toMatch(
+      /@media \(min-width: 1440px\) \{\s*:root \{\s*--player-measure: 1000px;/,
+    );
+  });
+
+  it('applies the player measure to the centred content, not the card', () => {
+    const block = tokens.slice(tokens.indexOf('.shell--player .centered > *'));
+    expect(block).toContain('max-width: var(--player-measure)');
+    expect(block).toContain('width: 100%');
+  });
+
+  it('keeps the beamer surface free of shell navigation', () => {
+    // `.centered.show` is the presentation surface; the shell never wraps it.
+    expect(tokens).toContain('.centered.show');
+    expect(tokens).not.toMatch(/\.show\s+\.nav/);
   });
 });
 

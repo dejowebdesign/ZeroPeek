@@ -19,6 +19,7 @@ import {
 
 import { del, get, post, put, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
+import { appShell } from '../navigation.js';
 import { questionForm, newQuestion } from '../questionForm.js';
 import { questionResult, solutionText } from '../questionView.js';
 import {
@@ -28,7 +29,6 @@ import {
   emptyState,
   errorText,
   field,
-  pageHeader,
   skeleton,
   toast,
 } from '../ui.js';
@@ -50,6 +50,9 @@ const app: HTMLElement = appElement;
   /** The quiz currently open, or null when on the list screen. */
   let current: Quiz | null = null;
 
+  /** Whether the signed-in user is an administrator; widens the navigation. */
+  let isAdmin = false;
+
   /** Redirect to the host login if the session has expired. */
   function handleAuth(error: unknown): void {
     if (error instanceof ApiError && error.status === 401) {
@@ -70,82 +73,90 @@ const app: HTMLElement = appElement;
       const { quizzes } = await get<{ quizzes: QuizSummary[] }>('/api/quizzes');
       render(
         app,
-        el(
-          'section',
-          { class: 'wrap' },
-          pageHeader('Your quizzes', [
+        appShell({
+          role: 'host',
+          active: 'quizzes',
+          badge: 'Editor',
+          isAdmin,
+          title: 'Your quizzes',
+          actions: [
             button('New quiz', { variant: 'primary', onClick: () => void createQuiz() }),
             button('Import', { onClick: () => void importQuiz() }),
-          ]),
-          quizzes.length === 0
-            ? emptyState(
-                'No quizzes yet',
-                'Create your first quiz or import one.',
-                button('New quiz', { variant: 'primary', onClick: () => void createQuiz() }),
-              )
-            : el(
-                'ul',
-                { class: 'quiz-list' },
-                ...quizzes.map((quiz) =>
-                  el(
-                    'li',
-                    { class: 'quiz-list__item card' },
+          ],
+          children: [
+            quizzes.length === 0
+              ? emptyState(
+                  'No quizzes yet',
+                  'Create your first quiz or import one.',
+                  button('New quiz', { variant: 'primary', onClick: () => void createQuiz() }),
+                )
+              : el(
+                  'ul',
+                  { class: 'quiz-list' },
+                  ...quizzes.map((quiz) =>
                     el(
-                      'div',
-                      null,
-                      el('h2', { class: 'quiz-list__title' }, quiz.title),
+                      'li',
+                      { class: 'quiz-list__item card' },
                       el(
-                        'p',
-                        { class: 'muted' },
-                        `${quiz.questionCount} question(s) · ${quiz.description || 'No description'}`,
+                        'div',
+                        null,
+                        el('h2', { class: 'quiz-list__title' }, quiz.title),
+                        el(
+                          'p',
+                          { class: 'muted' },
+                          `${quiz.questionCount} question(s) · ${quiz.description || 'No description'}`,
+                        ),
                       ),
-                    ),
-                    el(
-                      'div',
-                      { class: 'quiz-list__actions' },
-                      button('Edit', { variant: 'primary', onClick: () => void openQuiz(quiz.id) }),
-                      button('Duplicate', {
-                        onClick: async () => {
-                          try {
-                            await post(`/api/quizzes/${quiz.id}/duplicate`);
-                            toast('Quiz duplicated.', 'success');
-                            await showList();
-                          } catch (error) {
-                            handleAuth(error);
-                          }
-                        },
-                      }),
-                      button('Export', {
-                        onClick: () => {
-                          location.href = `/api/quizzes/${quiz.id}/export`;
-                        },
-                      }),
-                      button('Delete', {
-                        variant: 'danger',
-                        onClick: () => {
-                          confirmDialog({
-                            title: 'Delete this quiz?',
-                            body: `"${quiz.title}" and its questions will be removed. Finished games keep their own record. This cannot be undone.`,
-                            confirmLabel: 'Delete quiz',
-                            onConfirm: () => {
-                              void (async () => {
-                                try {
-                                  await del(`/api/quizzes/${quiz.id}`);
-                                  toast('Quiz deleted.', 'success');
-                                  await showList();
-                                } catch (error) {
-                                  handleAuth(error);
-                                }
-                              })();
-                            },
-                          });
-                        },
-                      }),
+                      el(
+                        'div',
+                        { class: 'quiz-list__actions' },
+                        button('Edit', {
+                          variant: 'primary',
+                          onClick: () => void openQuiz(quiz.id),
+                        }),
+                        button('Duplicate', {
+                          onClick: async () => {
+                            try {
+                              await post(`/api/quizzes/${quiz.id}/duplicate`);
+                              toast('Quiz duplicated.', 'success');
+                              await showList();
+                            } catch (error) {
+                              handleAuth(error);
+                            }
+                          },
+                        }),
+                        button('Export', {
+                          onClick: () => {
+                            location.href = `/api/quizzes/${quiz.id}/export`;
+                          },
+                        }),
+                        button('Delete', {
+                          variant: 'danger',
+                          onClick: () => {
+                            confirmDialog({
+                              title: 'Delete this quiz?',
+                              body: `"${quiz.title}" and its questions will be removed. Finished games keep their own record. This cannot be undone.`,
+                              confirmLabel: 'Delete quiz',
+                              onConfirm: () => {
+                                void (async () => {
+                                  try {
+                                    await del(`/api/quizzes/${quiz.id}`);
+                                    toast('Quiz deleted.', 'success');
+                                    await showList();
+                                  } catch (error) {
+                                    handleAuth(error);
+                                  }
+                                })();
+                              },
+                            });
+                          },
+                        }),
+                      ),
                     ),
                   ),
                 ),
-              ),
-        ),
+          ],
+        }),
       );
     } catch (error) {
       handleAuth(error);
@@ -320,26 +331,31 @@ const app: HTMLElement = appElement;
     paintQuestions();
     render(
       app,
-      el(
-        'section',
-        { class: 'wrap' },
-        pageHeader('Edit quiz', [button('Back', { onClick: () => void showList() }), saveButton]),
-        el(
-          'div',
-          { class: 'card editor__meta' },
-          field('Title', title),
-          field('Description', description),
-        ),
-        el('h2', { class: 'section-title' }, 'Questions'),
-        list,
-        el(
-          'div',
-          { class: 'card editor__add' },
-          el('h3', null, 'Add a question'),
-          addSelect,
-          addButton,
-        ),
-      ),
+      appShell({
+        role: 'host',
+        active: 'quizzes',
+        badge: 'Editor',
+        isAdmin,
+        title: 'Edit quiz',
+        actions: [button('Back', { onClick: () => void showList() }), saveButton],
+        children: [
+          el(
+            'div',
+            { class: 'card editor__meta' },
+            field('Title', title),
+            field('Description', description),
+          ),
+          el('h2', { class: 'section-title' }, 'Questions'),
+          list,
+          el(
+            'div',
+            { class: 'card editor__add' },
+            el('h3', null, 'Add a question'),
+            addSelect,
+            addButton,
+          ),
+        ],
+      }),
     );
   }
 
@@ -366,11 +382,14 @@ const app: HTMLElement = appElement;
   // it cannot rely on the host page having logged in already.
   void (async () => {
     try {
-      const session = await get<{ user: unknown; csrfToken?: string }>('/api/auth/me');
+      const session = await get<{ user: { role?: string } | null; csrfToken?: string }>(
+        '/api/auth/me',
+      );
       if (!session.user) {
         location.href = './host.html';
         return;
       }
+      isAdmin = session.user.role === 'ADMIN';
       if (session.csrfToken) setCsrfToken(session.csrfToken);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {

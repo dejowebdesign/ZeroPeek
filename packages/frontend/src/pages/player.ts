@@ -10,11 +10,17 @@
 import type { OwnResult, PublicPlayer, PublicQuestion } from '@zeropeek/shared';
 
 import { el, render } from '../dom.js';
+import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { questionInput, questionPrompt } from '../questionView.js';
-import { brand, button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
+import { button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
 
 const STORAGE_KEY = 'zeropeek.player';
+
+/** Wrap a centred screen in the player shell, marking the active nav entry. */
+function shell(active: string, content: HTMLElement): HTMLElement {
+  return appShell({ role: 'player', active, children: [content] });
+}
 
 interface StoredSession {
   gameId: string;
@@ -86,26 +92,28 @@ const app: HTMLElement = appElement;
 
     render(
       app,
-      el(
-        'section',
-        { class: 'centered' },
+      shell(
+        'lobby',
         el(
-          'form',
-          {
-            class: 'card join',
-            onsubmit: (event: Event) => {
-              event.preventDefault();
-              submit.click();
+          'section',
+          { class: 'centered' },
+          el(
+            'form',
+            {
+              class: 'card join',
+              onsubmit: (event: Event) => {
+                event.preventDefault();
+                submit.click();
+              },
             },
-          },
-          brand(),
-          el('h1', { class: 'join__title' }, 'Join a game'),
-          el('p', { class: 'muted' }, 'Enter the PIN shown on the big screen.'),
-          field('Game PIN', pin),
-          field('Your name', nickname),
-          message ? notice(message, 'info') : null,
-          feedback,
-          el('div', { class: 'join__actions' }, submit),
+            el('h1', { class: 'join__title' }, 'Join a game'),
+            el('p', { class: 'muted' }, 'Enter the PIN shown on the big screen.'),
+            field('Game PIN', pin),
+            field('Your name', nickname),
+            message ? notice(message, 'info') : null,
+            feedback,
+            el('div', { class: 'join__actions' }, submit),
+          ),
         ),
       ),
     );
@@ -117,22 +125,24 @@ const app: HTMLElement = appElement;
     const session = loadSession();
     render(
       app,
-      el(
-        'section',
-        { class: 'centered' },
+      shell(
+        'lobby',
         el(
-          'div',
-          { class: 'card' },
-          brand(),
-          el('h1', { class: 'join__title' }, `You're in, ${session?.nickname ?? 'player'}!`),
-          el('p', { class: 'muted' }, 'Look at the big screen. The game starts soon.'),
-          players.length
-            ? el(
-                'div',
-                { class: 'lobby__actions' },
-                chip(`${players.length} player(s) joined`, 'cyan'),
-              )
-            : spinner('Waiting for the host…'),
+          'section',
+          { class: 'centered' },
+          el(
+            'div',
+            { class: 'card' },
+            el('h1', { class: 'join__title' }, `You're in, ${session?.nickname ?? 'player'}!`),
+            el('p', { class: 'muted' }, 'Look at the big screen. The game starts soon.'),
+            players.length
+              ? el(
+                  'div',
+                  { class: 'lobby__actions' },
+                  chip(`${players.length} player(s) joined`, 'cyan'),
+                )
+              : spinner('Waiting for the host…'),
+          ),
         ),
       ),
     );
@@ -157,20 +167,23 @@ const app: HTMLElement = appElement;
 
     render(
       app,
-      el(
-        'section',
-        { class: 'centered' },
+      shell(
+        'questions',
         el(
-          'div',
-          { class: 'card question' },
+          'section',
+          { class: 'centered' },
           el(
             'div',
-            { class: 'question__meta muted' },
-            `Question ${question.index + 1} of ${question.total}`,
+            { class: 'card question' },
+            el(
+              'div',
+              { class: 'question__meta muted' },
+              `Question ${question.index + 1} of ${question.total}`,
+            ),
+            questionPrompt(question),
+            input,
+            feedback,
           ),
-          questionPrompt(question),
-          input,
-          feedback,
         ),
       ),
     );
@@ -198,24 +211,27 @@ const app: HTMLElement = appElement;
           : chip('No answer', 'muted', true);
     render(
       app,
-      el(
-        'section',
-        { class: 'centered' },
+      shell(
+        'questions',
         el(
-          'div',
-          { class: 'card anim-slide-up' },
-          el('p', { class: `notice ${tone}` }, headline),
+          'section',
+          { class: 'centered' },
           el(
-            'p',
-            { class: 'lobby__actions' },
-            outcomeChip,
-            chip(`Score ${result.score}`, 'accent'),
-            chip(`Rank ${result.rank}`, 'cyan'),
-          ),
-          el(
-            'p',
-            { class: 'muted', style: { fontSize: '0.75rem' } },
-            `Question ${questionId.slice(0, 8)}`,
+            'div',
+            { class: 'card anim-slide-up' },
+            el('p', { class: `notice ${tone}` }, headline),
+            el(
+              'p',
+              { class: 'lobby__actions' },
+              outcomeChip,
+              chip(`Score ${result.score}`, 'accent'),
+              chip(`Rank ${result.rank}`, 'cyan'),
+            ),
+            el(
+              'p',
+              { class: 'muted', style: { fontSize: '0.75rem' } },
+              `Question ${questionId.slice(0, 8)}`,
+            ),
           ),
         ),
       ),
@@ -227,28 +243,31 @@ const app: HTMLElement = appElement;
     const session = loadSession();
     render(
       app,
-      el(
-        'section',
-        { class: 'centered' },
+      shell(
+        'questions',
         el(
-          'div',
-          { class: 'card' },
-          el('h1', { class: 'join__title' }, 'Leaderboard'),
+          'section',
+          { class: 'centered' },
           el(
-            'ol',
-            { class: 'leaderboard' },
-            ...players.slice(0, 10).map((player, index) =>
-              el(
-                'li',
-                {
-                  class:
-                    player.id === session?.playerId
-                      ? 'leaderboard__row leaderboard__row--me'
-                      : 'leaderboard__row',
-                },
-                el('span', { class: 'leaderboard__rank' }, String(index + 1)),
-                el('span', { class: 'leaderboard__name' }, player.nickname),
-                el('span', { class: 'leaderboard__score' }, String(player.score)),
+            'div',
+            { class: 'card' },
+            el('h1', { class: 'join__title' }, 'Leaderboard'),
+            el(
+              'ol',
+              { class: 'leaderboard' },
+              ...players.slice(0, 10).map((player, index) =>
+                el(
+                  'li',
+                  {
+                    class:
+                      player.id === session?.playerId
+                        ? 'leaderboard__row leaderboard__row--me'
+                        : 'leaderboard__row',
+                  },
+                  el('span', { class: 'leaderboard__rank' }, String(index + 1)),
+                  el('span', { class: 'leaderboard__name' }, player.nickname),
+                  el('span', { class: 'leaderboard__score' }, String(player.score)),
+                ),
               ),
             ),
           ),
@@ -261,38 +280,40 @@ const app: HTMLElement = appElement;
   function showEnd(payload: { rank: number; score: number; podium: PublicPlayer[] }): void {
     render(
       app,
-      el(
-        'section',
-        { class: 'centered' },
+      shell(
+        'lobby',
         el(
-          'div',
-          { class: 'card' },
-          brand(),
-          el('h1', { class: 'join__title' }, `You finished #${payload.rank}`),
-          el('p', { class: 'muted' }, `Final score: ${payload.score}`),
-          el(
-            'ol',
-            { class: 'leaderboard' },
-            ...payload.podium.map((player, index) =>
-              el(
-                'li',
-                { class: 'leaderboard__row' },
-                el('span', { class: 'leaderboard__rank' }, String(index + 1)),
-                el('span', { class: 'leaderboard__name' }, player.nickname),
-                el('span', { class: 'leaderboard__score' }, String(player.score)),
-              ),
-            ),
-          ),
+          'section',
+          { class: 'centered' },
           el(
             'div',
-            { class: 'join__actions' },
-            button('Play again', {
-              variant: 'primary',
-              onClick: () => {
-                clearSession();
-                showJoin();
-              },
-            }),
+            { class: 'card' },
+            el('h1', { class: 'join__title' }, `You finished #${payload.rank}`),
+            el('p', { class: 'muted' }, `Final score: ${payload.score}`),
+            el(
+              'ol',
+              { class: 'leaderboard' },
+              ...payload.podium.map((player, index) =>
+                el(
+                  'li',
+                  { class: 'leaderboard__row' },
+                  el('span', { class: 'leaderboard__rank' }, String(index + 1)),
+                  el('span', { class: 'leaderboard__name' }, player.nickname),
+                  el('span', { class: 'leaderboard__score' }, String(player.score)),
+                ),
+              ),
+            ),
+            el(
+              'div',
+              { class: 'join__actions' },
+              button('Play again', {
+                variant: 'primary',
+                onClick: () => {
+                  clearSession();
+                  showJoin();
+                },
+              }),
+            ),
           ),
         ),
       ),
@@ -315,7 +336,7 @@ const app: HTMLElement = appElement;
   // ---------------------------------------------------------------------------
   const stored = loadSession();
   if (stored) {
-    render(app, spinner('Reconnecting…'));
+    render(app, shell('lobby', el('section', { class: 'centered' }, spinner('Reconnecting…'))));
     request(socket, 'player:rejoin', {
       gameId: stored.gameId,
       playerId: stored.playerId,

@@ -179,6 +179,45 @@ wide ≥1440, beamer ≥1600.
 Verified in a headless browser at 390×844, 1024×768 and 1920×1080: no horizontal overflow at any
 size, the table transforms only below 768px, and the show surface scales with the viewport.
 
+### 8.1 Application shell and navigation (Phase 6.2.1)
+
+`src/navigation.ts` exports `appShell(options)`, a single node that a page renders into `<main>`. It
+is **additive**: the four existing surfaces (player, host, editor, admin) keep their own entry point
+and URL, and their screens are unchanged — the shell only adds a brand bar, a navigation region and a
+single `<h1>`. No new route and no new HTML entry point.
+
+Navigation is **display only**. It decides what a role sees; every server route and socket event
+still authorises on its own.
+
+| Viewport          | Layout                                              | Navigation                                                                 |
+| ----------------- | --------------------------------------------------- | -------------------------------------------------------------------------- |
+| desktop ≥1024px   | `grid-template-columns: var(--sidebar-w) …`         | fixed left sidebar, icons **and** labels                                   |
+| tablet 768–1023px | `grid-template-columns: var(--sidebar-w-compact) …` | icon rail; labels hidden visually, kept as `aria-label` on the active link |
+| phone ≤767px      | one column, `padding-bottom: var(--bottom-bar-h)`   | fixed bottom bar, at most five entries plus "More"                         |
+
+Tokens: `--sidebar-w 248px`, `--sidebar-w-compact 72px`, `--bottom-bar-h 60px`, `--shell-top-h 64px`.
+
+Role sets:
+
+- **player** — Lobby, Questions, Inventory, Profile, Settings. No sign-out: a guest has no account.
+- **host** — Overview, Game control, Quizzes, Backgrounds, Players, Inventory & avatars, Reports.
+- **admin** — the host set **plus** `ADMIN_ITEM`, appended only when `isAdmin` is set. The server
+  still enforces admin-only access; the UI only mirrors it.
+
+An entry whose page does not exist yet is rendered as a non-clickable `span.nav__item--soon` (with a
+"Soon" tag on desktop, `aria-disabled="true"`), never as a dead link. The bottom bar shows
+`MOBILE_PRIMARY_LIMIT = 5` entries and folds the rest into a `<details>` "More" list, so no
+destination is lost on a phone.
+
+**Player content measure (briefing §4).** One token drives the lobby, the question and the result, so
+the three share a width and a centre line: `--player-measure` is `100%` on a phone (inside
+`--player-gutter: var(--space-4)`, leaving `viewport − 32px`), `90%` at ≥768px, `78%` at ≥1024px and
+a hard `1000px` cap at ≥1440px. It is applied to the centred content (`> *`), not to the card, so a
+wide screen cannot stretch a single card across the whole width.
+
+**Beamer.** The presentation surface (`.centered.show`) is never wrapped in the shell and keeps its
+own `vmin`-based scale; the shell adds no navigation to it.
+
 ## 9. Accessibility
 
 - **Focus:** one shared focus ring
