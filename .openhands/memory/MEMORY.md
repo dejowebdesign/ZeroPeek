@@ -461,7 +461,7 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   host review/shortcuts; report lacks flag/timing columns and Excel/print export;
   `avatar` is an unvalidated free string; "too fast" rule implemented but off.
 
-## Auth surface + player registration (Phase 6.3, branch `feat/phase-6-3-auth-registration`)
+## Auth surface + player registration (Phase 6.3, PR #25, branch `feat/phase-6-3-auth-registration`)
 - Additive only: new `PLAYER` role, `User.emailVerifiedAt` (nullable) and `EmailVerificationToken`
   (stores **SHA-256 hash** only). Migration `20261107120000_phase_6_3_player_role_email_verification`
   backfills existing rows to `created_at` so no current user is locked out. `requireStaff` (ADMIN+
