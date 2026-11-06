@@ -687,6 +687,11 @@ body::before {
   flex: 1;
 }
 
+/* The join feedback slot stays out of the layout until it has a message. */
+.join__feedback:empty {
+  display: none;
+}
+
 /* ---------- question + answer controls ---------- */
 
 .question__prompt {
@@ -962,6 +967,49 @@ body::before {
   gap: var(--space-3);
   justify-content: center;
   margin-top: var(--space-4);
+}
+
+/* The waiting status: the player count and the spinner, centred above the roster. */
+.lobby__status {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+/* The waiting-room roster: one row per player, name left, connection state right. */
+.lobby__roster {
+  list-style: none;
+  width: 100%;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+  text-align: left;
+}
+
+.lobby__roster-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-sm);
+  background: var(--glass-raised);
+  border: var(--hairline) solid var(--border);
+}
+
+.lobby__roster-row--me {
+  border-color: var(--accent);
+}
+
+.lobby__roster-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.lobby__roster-you {
+  font-weight: 400;
 }
 
 /* ---------- quiz + report lists ---------- */
@@ -2128,6 +2176,13 @@ body::before {
 .shell--player .centered > * {
   width: 100%;
   max-width: var(--player-measure);
+}
+
+/* The player question card gets its own reading width instead of relying on the
+   shell alone (B-4). Scoped to the player, so the beamer board is untouched. */
+.shell--player .card.question {
+  width: min(680px, 100%);
+  margin-inline: auto;
 }
 
 @media (min-width: 768px) {

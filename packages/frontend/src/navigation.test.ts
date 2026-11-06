@@ -84,6 +84,12 @@ describe('availability', () => {
       if (!isAvailable(item)) expect(item.href).toBeUndefined();
     }
   });
+
+  it('links the profile entry to its placeholder (Phase 6.2.2)', () => {
+    const profile = PLAYER_NAV.find((item) => item.id === 'profile');
+    expect(profile?.href).toBe('./#profile');
+    expect(isAvailable(profile!)).toBe(true);
+  });
 });
 
 describe('appShell', () => {
