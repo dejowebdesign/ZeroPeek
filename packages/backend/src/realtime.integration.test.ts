@@ -220,4 +220,21 @@ describe.skipIf(!available)('realtime end-to-end', () => {
       request(player, 'player:join', { pin: 'ZZZZZZ', nickname: 'Ghost' }),
     ).rejects.toThrow(/no game/i);
   }, 15_000);
+
+  it('lets a guest join with a nickname only, no account or e-mail', async () => {
+    // Registration (Phase 6.3) is entirely optional: joining a game must still
+    // work with nothing but a nickname, and must not ask for an e-mail.
+    const host = openSocket('/host', { extraHeaders: { cookie } });
+    await once(host, 'connect');
+    const { pin } = await request<{ gameId: string; pin: string }>(host, 'host:create', { quizId });
+
+    const guest = openSocket();
+    await once(guest, 'connect');
+    const joined = await request<{ playerId: string; token: string }>(guest, 'player:join', {
+      pin,
+      nickname: 'Guest',
+    });
+    expect(joined.playerId).toBeTruthy();
+    expect(joined.token).toBeTruthy();
+  }, 15_000);
 });

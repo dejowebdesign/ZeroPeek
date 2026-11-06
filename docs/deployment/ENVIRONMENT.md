@@ -212,10 +212,19 @@ a loop, which only makes it worse.
 
 ## Optional
 
-| Variable    | Required | Default | Description                                                   |
-| ----------- | -------- | ------- | ------------------------------------------------------------- |
-| `SMTP_URL`  | no       | –       | Mail server for verification / password reset (later phases). |
-| `MAIL_FROM` | no       | –       | Sender address for outgoing mail.                             |
+| Variable                | Required | Default    | Description                                                                                                                                                          |
+| ----------------------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SMTP_URL`              | no       | –          | SMTP connection URL used for account confirmation (Phase 6.3). Any provider that speaks SMTP works, e.g. Brevo's relay: `smtps://user:key@smtp-relay.brevo.com:465`. |
+| `MAIL_FROM`             | no       | –          | Verified sender address for outgoing mail.                                                                                                                           |
+| `MAIL_FROM_NAME`        | no       | `ZeroPeek` | Display name shown next to `MAIL_FROM`.                                                                                                                              |
+| `MAIL_VERIFY_TTL_HOURS` | no       | `24`       | How long an e-mail confirmation link stays valid.                                                                                                                    |
+| `AUTH_RATE_LIMITS`      | no       | `true`     | Enforce the stricter per-route limits on the auth endpoints. Set to `false` only when a trusted proxy makes them misfire.                                            |
+
+Player self-registration (Phase 6.3) is optional and works without mail: the
+account is created, but the confirmation link cannot be sent until `SMTP_URL`
+and `MAIL_FROM` are both set. In production the backend logs a warning on start
+when they are missing. Never put credentials in the repository; set them as
+deployment secrets.
 
 ---
 

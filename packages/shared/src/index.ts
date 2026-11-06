@@ -12,6 +12,7 @@
 export * from './constants.js';
 export * from './questions.js';
 export * from './validation.js';
+export * from './account.js';
 export * from './scoring.js';
 export * from './pin.js';
 export * from './events.js';

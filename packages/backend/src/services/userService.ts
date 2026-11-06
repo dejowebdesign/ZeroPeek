@@ -8,6 +8,8 @@
 
 import type { UserRole } from '@prisma/client';
 
+import { normalizeEmail } from '@zeropeek/shared';
+
 import {
   hashPassword,
   isAcceptablePassword,
@@ -24,6 +26,8 @@ export interface PublicUser {
   email: string | null;
   role: UserRole;
   disabled: boolean;
+  /** When the e-mail was confirmed; `null` means not yet confirmed. */
+  emailVerifiedAt: Date | null;
   createdAt: Date;
 }
 
@@ -33,6 +37,7 @@ function toPublic(user: {
   email: string | null;
   role: UserRole;
   disabled: boolean;
+  emailVerifiedAt: Date | null;
   createdAt: Date;
 }): PublicUser {
   return {
@@ -41,6 +46,7 @@ function toPublic(user: {
     email: user.email,
     role: user.role,
     disabled: user.disabled,
+    emailVerifiedAt: user.emailVerifiedAt,
     createdAt: user.createdAt,
   };
 }
@@ -50,12 +56,20 @@ export function normalizeUsername(username: string): string {
   return username.trim().toLowerCase();
 }
 
-/** Create a user. Throws 409 when the username or e-mail is taken. */
+/**
+ * Create a user. Throws 409 when the username or e-mail is taken.
+ *
+ * `emailVerifiedAt` defaults to now, so accounts created by an administrator
+ * (or the bootstrap admin) are treated as confirmed. Player self-registration
+ * passes `null` explicitly so the account stays unconfirmed until the e-mail
+ * link is followed.
+ */
 export async function createUser(input: {
   username: string;
   password: string;
   email?: string | null;
   role?: UserRole;
+  emailVerifiedAt?: Date | null;
 }): Promise<PublicUser> {
   const username = normalizeUsername(input.username);
   if (username.length < 3) throw badRequest('The username must be at least 3 characters.');
@@ -63,15 +77,23 @@ export async function createUser(input: {
     throw badRequest(`The password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
   }
 
+  const email = input.email ? normalizeEmail(input.email) : null;
+
   const existing = await prisma.user.findUnique({ where: { username } });
   if (existing) throw conflict('That username is already taken.', 'username_taken');
+
+  if (email) {
+    const existingEmail = await prisma.user.findUnique({ where: { email } });
+    if (existingEmail) throw conflict('That e-mail address is already registered.', 'email_taken');
+  }
 
   const user = await prisma.user.create({
     data: {
       username,
-      email: input.email ?? null,
+      email,
       passwordHash: await hashPassword(input.password),
       role: input.role ?? 'TRAINER',
+      emailVerifiedAt: input.emailVerifiedAt === undefined ? new Date() : input.emailVerifiedAt,
     },
   });
   return toPublic(user);
@@ -79,10 +101,39 @@ export async function createUser(input: {
 
 /** Verify credentials. Returns the public user, or `null` when they are wrong. */
 export async function authenticate(username: string, password: string): Promise<PublicUser | null> {
+  const result = await verifyCredentials(username, password);
+  return result.status === 'ok' ? result.user : null;
+}
+
+/**
+ * The outcome of a credential check. `invalid` covers an unknown username or a
+ * wrong password (they are deliberately indistinguishable); `unverified` is a
+ * correct password for an account whose e-mail is not confirmed yet.
+ */
+export type CredentialResult =
+  | { status: 'ok'; user: PublicUser }
+  | { status: 'invalid' }
+  | { status: 'unverified'; user: PublicUser };
+
+/**
+ * Check a username and password and report *why* it failed, so the login route
+ * can tell a correct-but-unconfirmed account apart from a wrong password.
+ * Disabled accounts are reported as `invalid` so the state is not disclosed.
+ */
+export async function verifyCredentials(
+  username: string,
+  password: string,
+): Promise<CredentialResult> {
   const user = await prisma.user.findUnique({ where: { username: normalizeUsername(username) } });
-  if (!user || user.disabled) return null;
+  if (!user || user.disabled) return { status: 'invalid' };
   const ok = await verifyPassword(user.passwordHash, password);
-  return ok ? toPublic(user) : null;
+  if (!ok) return { status: 'invalid' };
+  // Only self-registered players are unconfirmed; staff accounts are created
+  // confirmed, so this only ever affects the voluntary player registration.
+  if (user.role === 'PLAYER' && user.emailVerifiedAt === null) {
+    return { status: 'unverified', user: toPublic(user) };
+  }
+  return { status: 'ok', user: toPublic(user) };
 }
 
 /** List every user (admin only). */

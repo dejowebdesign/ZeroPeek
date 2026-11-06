@@ -58,6 +58,13 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-please-generate-a-32-byte-hex-secret}
       COOKIE_NAME: ${COOKIE_NAME:-zp_session}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Account-confirmation mail (Phase 6.3). Empty disables sending; the local
+      # stack then logs the confirmation link so the flow can be completed.
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-ZeroPeek}
+      MAIL_VERIFY_TTL_HOURS: ${MAIL_VERIFY_TTL_HOURS:-24}
+      AUTH_RATE_LIMITS: ${AUTH_RATE_LIMITS:-true}
     ports:
       - '${BACKEND_PORT:-3000}:3000'
     depends_on:

@@ -55,3 +55,33 @@ export function lobbyRoster(players: PublicPlayer[], meId?: string): HTMLElement
 export function profilePlaceholder(): HTMLElement {
   return emptyState('Dein Spielerprofil kommt mit Phase 6.6.');
 }
+
+/**
+ * The optional "keep your progress" offer (Phase 6.3).
+ *
+ * Registration is voluntary: this is a quiet, dismissible invitation shown after
+ * a game, never a gate before one. The wording makes clear it is optional and
+ * that a guest can keep playing without an account.
+ */
+export function registerOffer(): HTMLElement {
+  const link = el(
+    'a',
+    { class: 'btn btn-secondary', href: './auth.html#register' },
+    'Create a free account',
+  );
+  return el(
+    'div',
+    { class: 'auth-offer' },
+    el(
+      'div',
+      { class: 'auth-offer__text' },
+      el('p', { class: 'auth-offer__title' }, 'Keep your progress'),
+      el(
+        'p',
+        { class: 'auth-offer__hint muted' },
+        'An account is optional. It saves your avatar, level and history across games.',
+      ),
+    ),
+    link,
+  );
+}

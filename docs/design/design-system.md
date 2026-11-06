@@ -240,6 +240,28 @@ Scope is fixed in `../roadmap/technical-roadmap.md` §3.1 and analysed in
   rule for `.question`). **Not** touched: B-5 (`pageHeader`), B-6 (unemitted events), B-7/R-5
   (reconnect restores no question).
 
+### 8.3 Auth surface and starfield (Phase 6.3, implemented)
+
+Scope is fixed in `../roadmap/technical-roadmap.md` §4. This phase is **implemented on the
+`feat/phase-6-3-auth-registration` branch** and is additive; it does not change the existing host
+login, the join flow or any server route that already existed.
+
+- **New entry point.** `src/auth.html` (Vite input `auth`) renders `src/pages/auth.ts`: a single glass
+  card over the starfield, offering sign in, registration and the confirmation result. It is a
+  _separate_ page, so the host/player entry points keep their own URLs and markup.
+- **Starfield.** `src/starfield.ts` builds the layer; the stars are pure CSS in `backdrop.css`
+  (tiled `radial-gradient`s, no image). Two fields at different speeds give depth, and a few meteors
+  add motion. It is `aria-hidden`, non-interactive and cheap: the particle count is bounded by the
+  tile, not the viewport. `.centered::before` (Phase 6.1) is kept unchanged so the join screens do
+  not shift.
+- **Motion and preference.** `prefers-reduced-motion: reduce` stops the drift and hides the meteors.
+  A user switch ("Calm the star effects") does the same independently of the OS setting and is
+  stored in `localStorage`; the field is swapped in place so typed form input is preserved.
+- **Glass.** The card reuses `--glass-raised` with `--blur-dialog` and the opaque `--glass-fallback`
+  under `@supports not (backdrop-filter: …)`, so it is legible without blur.
+- **Registration offer.** `playerView.ts` exports `registerOffer()`, a quiet, optional invitation
+  shown after a game; it links to `./auth.html#register`. It never gates joining a game.
+
 ## 9. Accessibility
 
 - **Focus:** one shared focus ring
@@ -256,7 +278,7 @@ more` are all handled.
 ## 10. What Phase 6.1 does not do
 
 - No navigation restructure, no sidebar, no bottom bar — that is Phase 6.2.
-- No animated login screen beyond the reusable starfield layer — Phase 6.3.
+- No animated login screen beyond the reusable starfield layer — Phase 6.3 (see §8.3).
 - No new images or sounds. The wireframe is CSS; any real background art comes from the owner's
   asset briefing and is integrated in Phase 6.10.
 - No character, avatar, XP or inventory UI — Phases 6.6–6.8.

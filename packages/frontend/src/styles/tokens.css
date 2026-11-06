@@ -2208,3 +2208,224 @@ body::before {
     min-height: calc(100dvh - var(--shell-top-h) - var(--bottom-bar-h));
   }
 }
+
+/* ===========================================================================
+   Phase 6.3 – login, registration and the starry sky.
+
+   Everything here is additive. The existing `.join` card and the join screens
+   keep their rules; the auth surface is a new, wider layout that reuses the
+   same glass tiers, fields and buttons.
+   =========================================================================== */
+
+/* ---------- auth shell ---------- */
+
+/* The auth surface fills the viewport and centres a single glass card over the
+   starfield. `position: relative` gives the starfield an inset parent. */
+.auth {
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: clamp(var(--space-4), 4vw, var(--space-7)) var(--space-4);
+  overflow: hidden;
+}
+
+.auth__card {
+  position: relative;
+  width: min(520px, 100%);
+  padding: clamp(var(--space-5), 4vw, var(--space-7));
+  background: var(--glass-raised);
+  backdrop-filter: blur(var(--blur-dialog));
+  -webkit-backdrop-filter: blur(var(--blur-dialog));
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-dialog);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .auth__card {
+    background: var(--glass-fallback);
+  }
+}
+
+.auth__title {
+  margin: var(--space-4) 0 0;
+  font-size: var(--type-page);
+  font-weight: var(--weight-page);
+  letter-spacing: -0.02em;
+}
+
+.auth__subtitle {
+  margin: var(--space-2) 0 0;
+}
+
+.auth__form {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.auth__actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.auth__actions .btn {
+  flex: 1;
+}
+
+.auth__alt {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: var(--hairline) solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  font-size: var(--type-body);
+}
+
+/* A quiet text button used for "switch to register" style links. */
+.auth__link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent-2);
+  font: inherit;
+  font-weight: var(--weight-card);
+  cursor: pointer;
+}
+
+.auth__link:hover {
+  text-decoration: underline;
+}
+
+/* The two-tab switch between sign in and register. */
+.auth__tabs {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  margin-top: var(--space-4);
+  background: var(--glass-input);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.auth__tab {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.auth__tab[aria-selected='true'] {
+  color: var(--text);
+  background: var(--glass-raised);
+  box-shadow: var(--inset-light);
+}
+
+/* ---------- password strength ---------- */
+
+.auth__strength {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.auth__strength-bar {
+  height: 4px;
+  flex: 1;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+}
+
+.auth__strength-bar--on {
+  background: var(--grad);
+}
+
+.auth__hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-help);
+}
+
+/* ---------- result / confirmation screens ---------- */
+
+.auth__icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  font-size: 1.75rem;
+  background: var(--glass-input);
+  border: var(--hairline) solid var(--border);
+}
+
+.auth__icon--ok {
+  color: var(--ok);
+}
+
+.auth__icon--warn {
+  color: var(--warn);
+}
+
+/* A small text row with a status dot, used for "e-mail sent" confirmations. */
+.auth__note {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-4);
+  color: var(--muted);
+  font-size: var(--type-body);
+}
+
+/* ---------- guest-account offer (join / after game) ---------- */
+
+.auth-offer {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: var(--hairline) solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.auth-offer__text {
+  flex: 1 1 60%;
+  min-width: 12rem;
+}
+
+.auth-offer__title {
+  margin: 0;
+  font-weight: var(--weight-card);
+}
+
+.auth-offer__hint {
+  margin: var(--space-1) 0 0;
+  font-size: var(--type-help);
+}
+
+/* ---------- auth responsive ---------- */
+
+@media (max-width: 480px) {
+  .auth {
+    place-items: start center;
+    padding-top: clamp(var(--space-5), 8vh, var(--space-7));
+  }
+
+  .auth__card {
+    padding: var(--space-5);
+    border-radius: var(--radius);
+  }
+
+  .auth__actions {
+    flex-direction: column;
+  }
+}

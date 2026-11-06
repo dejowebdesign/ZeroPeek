@@ -21,22 +21,46 @@ datasource db {
 enum UserRole {
   ADMIN
   TRAINER
+  PLAYER
 }
 
 model User {
-  id           String   @id @default(uuid())
-  username     String   @unique
-  email        String?  @unique
-  passwordHash String   @map("password_hash")
-  role         UserRole @default(TRAINER)
-  disabled     Boolean  @default(false)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id              String    @id @default(uuid())
+  username        String    @unique
+  email           String?   @unique
+  passwordHash    String    @map("password_hash")
+  role            UserRole  @default(TRAINER)
+  disabled        Boolean   @default(false)
+  /// When the e-mail address was confirmed. `null` means not yet confirmed;
+  /// accounts that existed before Phase 6.3 are treated as confirmed by the
+  /// migration, and staff accounts created by an admin are confirmed on
+  /// creation. Only self-registered players start out `null`.
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   sessions Session[]
   quizzes  Quiz[]
+  emailVerificationTokens EmailVerificationToken[]
 
   @@map("users")
+}
+
+/// A single-use e-mail verification token. Only the SHA-256 hash of the token
+/// is stored, so a database leak does not hand out usable links. Rows are
+/// deleted as soon as they are consumed or replaced.
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
 }
 
 /// Server-side session. The cookie only carries the opaque `id`; everything

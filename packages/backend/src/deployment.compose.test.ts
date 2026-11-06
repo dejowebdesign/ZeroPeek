@@ -200,6 +200,58 @@ describe('bootstrap administrator wiring', () => {
   });
 });
 
+describe('account-confirmation mail wiring', () => {
+  const mailVariables = ['SMTP_URL', 'MAIL_FROM', 'MAIL_FROM_NAME', 'MAIL_VERIFY_TTL_HOURS'];
+
+  it('forwards every mail variable to the backend in the Portainer stack', () => {
+    // The backend reads these from its environment; the compose file must pass
+    // them through or the values entered in Portainer never reach the container.
+    for (const name of mailVariables) {
+      expect(compose, `${name} is missing from docker-compose.portainer.yml`).toMatch(
+        new RegExp(`${name}:\\s*\\$\\{${name}:-`),
+      );
+    }
+  });
+
+  it('forwards every mail variable in the local development stack too', () => {
+    for (const name of mailVariables) {
+      expect(devCompose, `${name} is missing from docker-compose.yml`).toMatch(
+        new RegExp(`${name}:\\s*\\$\\{${name}:-`),
+      );
+    }
+  });
+
+  it('does not require the mail variables, so mail stays optional', () => {
+    for (const name of mailVariables) {
+      expect(required, `${name} must not be a required (:?) variable`).not.toContain(name);
+    }
+  });
+
+  it('documents the mail variables in PORTAINER.md, ENVIRONMENT.md and the template', () => {
+    for (const name of mailVariables) {
+      expect(portainerDoc, `${name} is missing from PORTAINER.md`).toContain(`\`${name}\``);
+      expect(environmentDoc, `${name} is missing from ENVIRONMENT.md`).toContain(`\`${name}\``);
+      expect(envTemplate, `${name} is missing from .env.portainer.example`).toContain(name);
+    }
+  });
+});
+
+describe('auth rate-limit wiring', () => {
+  it('forwards AUTH_RATE_LIMITS to the backend in both stacks', () => {
+    expect(compose).toMatch(/AUTH_RATE_LIMITS:\s*\$\{AUTH_RATE_LIMITS:-/);
+    expect(devCompose).toMatch(/AUTH_RATE_LIMITS:\s*\$\{AUTH_RATE_LIMITS:-/);
+  });
+
+  it('does not require the variable, so the default (on) applies', () => {
+    expect(required).not.toContain('AUTH_RATE_LIMITS');
+  });
+
+  it('defaults it to true in the compose files', () => {
+    expect(compose).toMatch(/AUTH_RATE_LIMITS:\s*\$\{AUTH_RATE_LIMITS:-true\}/);
+    expect(devCompose).toMatch(/AUTH_RATE_LIMITS:\s*\$\{AUTH_RATE_LIMITS:-true\}/);
+  });
+});
+
 describe('preliminary deployment values (PORTAINER.md section 5.4)', () => {
   // The documented "get it running once" values must actually pass the backend
   // validation, or the copy-paste instructions start a backend that refuses to

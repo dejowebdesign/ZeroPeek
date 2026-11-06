@@ -303,3 +303,42 @@ describe('loadConfig outside production', () => {
     expect(loadConfig({}).sessionTtlMs).toBe(72 * 60 * 60 * 1000);
   });
 });
+
+describe('mail configuration (Phase 6.3)', () => {
+  it('reads the SMTP variables, defaulting the sender name and TTL', () => {
+    const config = loadConfig({ SMTP_URL: 'smtps://user:key@smtp.example.com:465' });
+    expect(config.smtpUrl).toBe('smtps://user:key@smtp.example.com:465');
+    expect(config.mailFromName).toBe('ZeroPeek');
+    expect(config.emailVerifyTtlMs).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it('reads MAIL_VERIFY_TTL_HOURS and ignores a non-positive value', () => {
+    expect(loadConfig({ MAIL_VERIFY_TTL_HOURS: '2' }).emailVerifyTtlMs).toBe(2 * 60 * 60 * 1000);
+    expect(loadConfig({ MAIL_VERIFY_TTL_HOURS: '0' }).emailVerifyTtlMs).toBe(24 * 60 * 60 * 1000);
+    expect(loadConfig({ MAIL_VERIFY_TTL_HOURS: '-3' }).emailVerifyTtlMs).toBe(24 * 60 * 60 * 1000);
+    expect(loadConfig({ MAIL_VERIFY_TTL_HOURS: 'x' }).emailVerifyTtlMs).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it('never requires mail, so registration works without it', () => {
+    expect(() => loadConfig(VALID_PRODUCTION)).not.toThrow();
+    expect(loadConfig(VALID_PRODUCTION).smtpUrl).toBe('');
+  });
+
+  it('warns in production when mail is not configured', () => {
+    const config = loadConfig(VALID_PRODUCTION);
+    expect(config.warnings.some((warning) => warning.includes('SMTP_URL'))).toBe(true);
+  });
+});
+
+describe('auth rate limits', () => {
+  it('is on outside the test environment', () => {
+    expect(loadConfig({}).authRateLimits).toBe(true);
+    expect(loadConfig(VALID_PRODUCTION).authRateLimits).toBe(true);
+  });
+
+  it('is off in tests unless explicitly requested', () => {
+    expect(loadConfig({ NODE_ENV: 'test' }).authRateLimits).toBe(false);
+    expect(loadConfig({ NODE_ENV: 'test', AUTH_RATE_LIMITS: 'true' }).authRateLimits).toBe(true);
+    expect(loadConfig({ NODE_ENV: 'test', AUTH_RATE_LIMITS: '0' }).authRateLimits).toBe(false);
+  });
+});

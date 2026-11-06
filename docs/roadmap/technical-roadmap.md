@@ -216,6 +216,18 @@ neu analysiert – siehe `docs/analysis/phase-1-technical-inventory.md`.
 > **Sternenhimmel (bereits entschieden):** CSS/SVG-basiert, **keine** WebGL-/3D-Engine,
 > performance-bewusst, `prefers-reduced-motion` berücksichtigt, abschaltbar. Kein neuer Entscheid nötig.
 
+**Umgesetzt in 6.3 (Teil B, additive Auth-Oberfläche):**
+
+- **V4** – 24 h Gültigkeit, einmalige Verwendung (Token wird nach Nutzung gelöscht).
+- **V5** – **generische Antwort**: eine bereits vergebene E-Mail wird **byte-identisch** wie eine
+  frische Registrierung beantwortet (kein Konto-Enumeration-Leak). Der Antwortsatz hängt nur von der
+  Serverkonfiguration ab, nicht vom Ergebnis des Versuchs; die Antwortzeit wird angeglichen
+  (Argon2id-Hash auch im „bereits registriert"-Pfad).
+- **V6** – unbestätigtes Konto bleibt gesperrt (`email_unverified` beim Login).
+- **Sicherheit** – der Verifizierungslink wird **in keiner Umgebung** geloggt (ein Token im Log ist
+  ein Zugangsdatum im Log); die Auth-Endpunkte haben zusätzlich strengere, pro Route gesetzte
+  Ratenbegrenzungen (`AUTH_RATE_LIMITS`, Standard **an**).
+
 **Nicht in 6.3 (bewusst später):** Konto-Übernahme nach Spielende und Übernahme einer laufenden
 Runde gehören laut Roadmap §9.2 zu **6.8** (dort mit `Game.guestClaim`), nicht zu 6.3. Das
 **Profilmodell** (`PlayerProfile`) gehört zu **6.6**.

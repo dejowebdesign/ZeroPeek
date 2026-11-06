@@ -21,7 +21,7 @@ export interface SessionUser {
   id: string;
   username: string;
   email: string | null;
-  role: 'ADMIN' | 'TRAINER';
+  role: 'ADMIN' | 'TRAINER' | 'PLAYER';
 }
 
 /** The authenticated context attached to a request. */
@@ -141,6 +141,25 @@ export function requireAdmin(config: AppConfig) {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     await authGuard(request, reply);
     if (request.auth?.user.role !== 'ADMIN') throw forbidden('Administrator role required.');
+  };
+}
+
+/**
+ * Fastify preHandler: require an ADMIN or TRAINER – a staff account.
+ *
+ * The trainer surfaces (quizzes, reports) and the host socket use this. A
+ * `PLAYER` account, introduced in Phase 6.3, is authenticated but is not staff,
+ * so it cannot reach them. ADMIN and TRAINER keep exactly the access they had
+ * before, so no existing permission is removed.
+ */
+export function requireStaff(config: AppConfig) {
+  const authGuard = requireAuth(config);
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    await authGuard(request, reply);
+    const role = request.auth?.user.role;
+    if (role !== 'ADMIN' && role !== 'TRAINER') {
+      throw forbidden('This area is for hosts and administrators.');
+    }
   };
 }
 

@@ -121,6 +121,12 @@ export function attachSocketIO(
         next(new Error('unauthorized'));
         return;
       }
+      // A player account (Phase 6.3) is authenticated but is not staff, so it
+      // cannot host. ADMIN and TRAINER are unchanged.
+      if (auth.user.role !== 'ADMIN' && auth.user.role !== 'TRAINER') {
+        next(new Error('forbidden'));
+        return;
+      }
       socket.data.user = auth.user;
       next();
     } catch {

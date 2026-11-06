@@ -5,7 +5,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import type { AppConfig } from '../config.js';
-import { currentUser, requireAuth } from '../sessions.js';
+import { currentUser, requireStaff } from '../sessions.js';
 import {
   exportAnswersCsv,
   exportRankingCsv,
@@ -20,7 +20,7 @@ function csv(reply: { header: (k: string, v: string) => unknown }, filename: str
 }
 
 export function registerReportRoutes(app: FastifyInstance, config: AppConfig): void {
-  const guard = { preHandler: requireAuth(config) };
+  const guard = { preHandler: requireStaff(config) };
 
   app.get<{ Querystring: { quizId?: string } }>('/api/reports/games', guard, async (request) => {
     currentUser(request);
