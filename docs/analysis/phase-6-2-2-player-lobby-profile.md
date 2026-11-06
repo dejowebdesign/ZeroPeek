@@ -416,3 +416,32 @@ Phase 6.2.2 ist in `docs/roadmap/technical-roadmap.md` §3.1 festgehalten und in
 Die Umsetzung erfolgt – nach ausdrücklicher Freigabe – auf einem eigenen Branch
 (`feat/phase-6-2-2-player-lobby-profile`) streng innerhalb der in §3.1 dokumentierten Grenzen. Bis
 dahin wird **kein** Anwendungscode, **kein** Datenmodell und **keine** Konfiguration geändert.
+
+---
+
+## 14. Umsetzungsstand (Teil B, Option A)
+
+Branch `feat/phase-6-2-2-player-lobby-profile`. Umgesetzt wurde **Option A** aus §8: das Wartezimmer
+aufgewertet und der Profilbereich als **klar gekennzeichneter Platzhalter**. Alle drei Punkte halten
+sich an §3.1 und §12; es gibt **keine** Server-, Datenmodell- oder Vertragsänderung.
+
+**Wartezimmer (`pages/player.ts`, `playerView.ts`):** Die Liste der Mitspieler wird jetzt aus den
+`PublicPlayer`-Daten gerendert, die der Server bereits über `game:state` sendet (Name + Verbindungs-
+zustand als beschrifteter Chip, eigener Eintrag markiert). Der Zustand wird als Chip/Spinner
+angezeigt; der Screen ersetzt sich weiterhin pro `game:state` (kein inkrementelles Update, B-7
+bleibt außen vor).
+
+**Profil-Platzhalter:** Über `./#profile` (Navigationseintrag **Profile**) erreichbar. Der Inhalt ist
+der in §3.1/`design-system.md` §8.2 festgelegte Hinweis **„Dein Spielerprofil kommt mit Phase 6.6."**
+als `emptyState` – bewusst kein funktionierendes Profil, keine erfundenen Werte. Die Auswahl läuft
+rein clientseitig über `location.hash`; eine Seite „Profil" im Sinne einer Route gibt es nicht.
+
+**Erlaubte Aufräumarbeiten:** **B-2** (`token` im `player:join`-Ack-Typ ergänzt), **B-3**
+(`.join__feedback` erhält eine Regel, `:empty` bleibt aus dem Layout), **B-4** (Spielerkarte
+`.shell--player .card.question` bekommt eine eigene Lesebreite, der Beamer bleibt unberührt).
+**B-5, B-6, B-7/R-5** bleiben unverändert.
+
+**Prüfungen:** Typecheck, Prettier, Frontend-Tests (228) und Backend-Tests (98, inkl. der
+DB-gestützten Integrationssuiten) grün. Die Spielerflächen wurden in einem headless Chromium bei
+390×844, 768×1024, 1024×768, 1280×800 und 1920×1080 geprüft: kein horizontaler Überlauf, das
+Fragekarten-Maß greift (680 px auf Desktop), der Beamer-Board bleibt unverändert.

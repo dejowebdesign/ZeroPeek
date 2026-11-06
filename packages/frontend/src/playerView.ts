@@ -1,0 +1,57 @@
+/**
+ * Pure builders for the player surface (Phase 6.2.2).
+ *
+ * Kept free of the socket and of the DOM root so they can be unit-tested, the
+ * same way `showView.ts` serves the beamer. Everything here is presentation of
+ * data the server already sends (`PublicPlayer`); nothing is invented, and the
+ * play flow itself stays server-authoritative.
+ */
+
+import type { PublicPlayer } from '@zeropeek/shared';
+
+import { el } from './dom.js';
+import { chip, emptyState } from './ui.js';
+
+/** A short, human label for a player's connection state. */
+export function connectionState(connected: boolean): { label: string; tone: 'ok' | 'muted' } {
+  // The label carries the meaning; the chip's dot and colour only reinforce it,
+  // so a status is never signalled by colour alone (design-concept §10).
+  return connected ? { label: 'Connected', tone: 'ok' } : { label: 'Offline', tone: 'muted' };
+}
+
+/**
+ * The waiting-room roster: every player the server has sent, in the order it
+ * sent them, each with their connection state. `meId` marks the current player
+ * so they can find themselves in the list.
+ */
+export function lobbyRoster(players: PublicPlayer[], meId?: string): HTMLElement {
+  return el(
+    'ul',
+    { class: 'lobby__roster', 'aria-label': 'Players in this game' },
+    ...players.map((player) => {
+      const state = connectionState(player.connected);
+      const isMe = player.id === meId;
+      return el(
+        'li',
+        { class: `lobby__roster-row${isMe ? ' lobby__roster-row--me' : ''}` },
+        el(
+          'span',
+          { class: 'lobby__roster-name' },
+          player.nickname,
+          isMe ? el('span', { class: 'lobby__roster-you muted' }, ' (you)') : null,
+        ),
+        chip(state.label, state.tone, true),
+      );
+    }),
+  );
+}
+
+/**
+ * The clearly-marked profile placeholder. A real profile needs an account
+ * (Phase 6.3) and the profile model and API (Phase 6.6), so this must read as
+ * "not built yet" and never look like a working profile. The wording is the one
+ * fixed in `docs/roadmap/technical-roadmap.md` §3.1 and `docs/design/design-system.md` §8.2.
+ */
+export function profilePlaceholder(): HTMLElement {
+  return emptyState('Dein Spielerprofil kommt mit Phase 6.6.');
+}

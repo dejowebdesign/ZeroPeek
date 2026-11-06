@@ -13,6 +13,7 @@ import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { questionInput, questionPrompt } from '../questionView.js';
+import { lobbyRoster, profilePlaceholder } from '../playerView.js';
 import { button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
 
 const STORAGE_KEY = 'zeropeek.player';
@@ -132,18 +133,30 @@ const app: HTMLElement = appElement;
           { class: 'centered' },
           el(
             'div',
-            { class: 'card' },
+            { class: 'card lobby anim-fade-in' },
             el('h1', { class: 'join__title' }, `You're in, ${session?.nickname ?? 'player'}!`),
             el('p', { class: 'muted' }, 'Look at the big screen. The game starts soon.'),
-            players.length
-              ? el(
-                  'div',
-                  { class: 'lobby__actions' },
-                  chip(`${players.length} player(s) joined`, 'cyan'),
-                )
-              : spinner('Waiting for the host…'),
+            el(
+              'div',
+              { class: 'lobby__status' },
+              players.length
+                ? chip(`${players.length} player(s) joined`, 'cyan')
+                : spinner('Waiting for the host…'),
+            ),
+            players.length ? lobbyRoster(players, session?.playerId) : null,
           ),
         ),
+      ),
+    );
+  }
+
+  /** Show the clearly-marked profile placeholder (a real profile is Phase 6.6). */
+  function showProfile(): void {
+    render(
+      app,
+      shell(
+        'profile',
+        el('section', { class: 'centered' }, el('div', { class: 'card' }, profilePlaceholder())),
       ),
     );
   }
@@ -332,22 +345,35 @@ const app: HTMLElement = appElement;
   socket.on('game:ended', (payload) => showEnd(payload));
 
   // ---------------------------------------------------------------------------
-  // Boot: reconnect if a session is stored, otherwise show the join form.
+  // Boot: the profile placeholder is reachable by URL, otherwise reconnect if a
+  // session is stored, otherwise show the join form.
   // ---------------------------------------------------------------------------
-  const stored = loadSession();
-  if (stored) {
-    render(app, shell('lobby', el('section', { class: 'centered' }, spinner('Reconnecting…'))));
-    request(socket, 'player:rejoin', {
-      gameId: stored.gameId,
-      playerId: stored.playerId,
-      token: stored.token,
-    })
-      .then(() => showWaiting())
-      .catch(() => {
-        clearSession();
-        showJoin('Your previous game has ended. Join again.');
-      });
+  const onProfile = (): boolean => location.hash === '#profile';
+
+  window.addEventListener('hashchange', () => {
+    if (onProfile()) showProfile();
+    else if (loadSession()) showWaiting();
+    else showJoin();
+  });
+
+  if (onProfile()) {
+    showProfile();
   } else {
-    showJoin();
+    const stored = loadSession();
+    if (stored) {
+      render(app, shell('lobby', el('section', { class: 'centered' }, spinner('Reconnecting…'))));
+      request(socket, 'player:rejoin', {
+        gameId: stored.gameId,
+        playerId: stored.playerId,
+        token: stored.token,
+      })
+        .then(() => showWaiting())
+        .catch(() => {
+          clearSession();
+          showJoin('Your previous game has ended. Join again.');
+        });
+    } else {
+      showJoin();
+    }
   }
 }

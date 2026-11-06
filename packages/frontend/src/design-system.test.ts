@@ -199,6 +199,14 @@ describe('design-system components', () => {
     'nav__more-list',
     'nav__more-item',
     'nav__more-item--active',
+    // Player lobby (Phase 6.2.2).
+    'lobby__status',
+    'lobby__roster',
+    'lobby__roster-row',
+    'lobby__roster-row--me',
+    'lobby__roster-name',
+    'lobby__roster-you',
+    'join__feedback',
   ];
 
   for (const name of classes) {
@@ -309,6 +317,35 @@ describe('application shell layout (Phase 6.2.1)', () => {
     // `.centered.show` is the presentation surface; the shell never wraps it.
     expect(tokens).toContain('.centered.show');
     expect(tokens).not.toMatch(/\.show\s+\.nav/);
+  });
+});
+
+describe('player lobby layout (Phase 6.2.2)', () => {
+  it('lays the waiting-room roster out as one row per player', () => {
+    const roster = tokens.slice(
+      tokens.indexOf('.lobby__roster {'),
+      tokens.indexOf('.lobby__roster-row'),
+    );
+    expect(roster).toContain('display: grid');
+  });
+
+  it('puts the name and the connection state on opposite ends of a row', () => {
+    const row = tokens.slice(
+      tokens.indexOf('.lobby__roster-row {'),
+      tokens.indexOf('.lobby__roster-row--me'),
+    );
+    expect(row).toContain('justify-content: space-between');
+    expect(row).toContain('align-items: center');
+  });
+
+  it('gives the player question card its own width, scoped away from the beamer', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.shell--player .card.question'),
+      tokens.indexOf('.shell--player .card.question') + 160,
+    );
+    expect(block).toContain('width: min(680px, 100%)');
+    // The beamer board must keep its own sizing.
+    expect(tokens).not.toMatch(/\.show\s+\.card\.question/);
   });
 });
 

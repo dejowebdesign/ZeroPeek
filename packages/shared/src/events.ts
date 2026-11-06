@@ -63,7 +63,7 @@ export interface PlayerServerEvents {
 export interface PlayerClientEvents {
   'player:join': (
     payload: { pin: string; nickname: string; avatar?: string },
-    ack: Ack<{ playerId: string; gameId: string }>,
+    ack: Ack<{ playerId: string; gameId: string; token: string }>,
   ) => void;
   'player:answer': (
     payload: { questionId: string; answer: unknown },
