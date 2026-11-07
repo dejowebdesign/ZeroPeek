@@ -33,7 +33,8 @@ Nothing is implemented until the project owner approves it.
 | 6.2.1 | Navigation and shell                 | Done (merged, PR #21) – `docs/design/design-system.md` §8.1                                                                    |
 | 6.2.2 | Player lobby and profile placeholder | Done (merged, PR #23) – `docs/roadmap/technical-roadmap.md` §3.1; analysis `docs/analysis/phase-6-2-2-player-lobby-profile.md` |
 | 6.2   | Navigation and responsive layout     | **Complete** (6.2.1 + 6.2.2 merged)                                                                                            |
-| 6.3   | Login, registration, starfield       | **Next step.** Scope: `docs/roadmap/technical-roadmap.md` §4 (prep §4.1). Awaiting owner approval.                             |
+| 6.3   | Login, registration, starfield       | Done (merged, PR #25) – `docs/reports/phase-6-3-*`                                                                             |
+| 6.4   | Quiz management, editor, snapshot    | Implemented, awaiting review – `docs/reports/phase-6-4-quiz-editor-snapshot.md`                                                |
 
 See `docs/concept/README.md` for the reading order.
 

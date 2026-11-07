@@ -59,6 +59,17 @@ export const SLIDE_BODY_MAX = 1000;
 export const NICKNAME_MAX = 16;
 export const QUIZ_TITLE_MAX = 120;
 
+/**
+ * Length limit for the optional `category` and `difficulty` labels.
+ *
+ * No fixed taxonomy is defined for either field yet: which categories and which
+ * difficulty scale ZeroPeek should offer is an **open product decision** (see
+ * `docs/roadmap/technical-roadmap.md` §5 and the Phase 6.4 report). Until it is
+ * decided, both are free text, so no invented set of values is imposed on the
+ * data.
+ */
+export const LABEL_MAX = 60;
+
 /** Scale question bounds. */
 export const SCALE_MIN_STEPS = 3;
 export const SCALE_MAX_STEPS = 10;

@@ -2429,3 +2429,116 @@ body::before {
     flex-direction: column;
   }
 }
+
+/* ---------- quiz management + editor (Phase 6.4) ---------- */
+
+.quiz-list__toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.quiz-list__info {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.quiz-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--type-help);
+}
+
+.editor__meta {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.editor__save-state {
+  font-size: var(--type-help);
+}
+
+.editor__section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.editor__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.editor__position {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.question-form__head {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* Drag-and-drop affordance: the whole card is the handle, so the cursor and the
+   lifted/over states are the only feedback needed. ↑/↓ remain the keyboard
+   path. */
+.editor__question {
+  cursor: grab;
+}
+
+.editor__question--dragging {
+  opacity: 0.55;
+}
+
+.editor__question--over {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: 2px;
+}
+
+.editor__question--invalid {
+  border-color: var(--bad);
+  box-shadow: 0 0 0 var(--hairline) var(--bad);
+}
+
+.editor__issues {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+  border: var(--hairline) solid color-mix(in srgb, var(--bad) 45%, transparent);
+}
+
+.editor__issue {
+  margin: 0;
+  font-size: var(--type-help);
+}
+
+@media (max-width: 767px) {
+  .quiz-list__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .editor__question-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .editor__controls {
+    flex-wrap: wrap;
+  }
+}

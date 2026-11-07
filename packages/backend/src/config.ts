@@ -74,9 +74,10 @@ export interface AppConfig {
   /**
    * Outgoing mail (Phase 6.3). `smtpUrl` is a Nodemailer connection URL
    * (`smtp://user:pass@host:port` or `smtps://…`); when empty, mail sending is
-   * disabled and registration still works (the verification link is logged in
-   * development only – never the token in production). `mailFrom` is the
-   * verified sender address, `mailFromName` its display name.
+   * disabled and registration still works (the verification link is never
+   * logged, in any environment – a token in a log is a credential in a log;
+   * the link is re-issued from the UI once mail is configured). `mailFrom` is
+   * the verified sender address, `mailFromName` its display name.
    */
   smtpUrl: string;
   mailFrom: string;

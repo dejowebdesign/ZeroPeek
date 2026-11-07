@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { QUESTION_TYPE_IDS, type QuestionType } from './constants.js';
+import { LABEL_MAX, QUESTION_TYPE_IDS, type QuestionType } from './constants.js';
 import type { Question } from './questions.js';
-import { questionDisplay } from './questions.js';
+import {
+  parseSnapshotData,
+  questionDisplay,
+  SNAPSHOT_VERSION,
+  snapshotToQuiz,
+  toSnapshotData,
+} from './questions.js';
 import { allowedPointsModes, isAnswerable, validateQuestion, validateQuiz } from './validation.js';
 import type { Quiz } from './questions.js';
 
@@ -281,6 +287,88 @@ describe('validateQuiz', () => {
   it('rejects a missing title', () => {
     const quiz = { ...baseQuiz(), title: '   ' };
     expect(validateQuiz(quiz).ok).toBe(false);
+  });
+
+  it('accepts optional category and difficulty labels', () => {
+    const quiz: Quiz = { ...baseQuiz(), category: 'Geography', difficulty: 'Easy' };
+    expect(validateQuiz(quiz).ok).toBe(true);
+  });
+
+  it('rejects an over-long label', () => {
+    const quiz = { ...baseQuiz(), category: 'x'.repeat(LABEL_MAX + 1) };
+    const result = validateQuiz(quiz);
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((i) => i.path)).toContain('category');
+  });
+
+  it('rejects an over-long question label', () => {
+    const quiz = {
+      ...baseQuiz(),
+      questions: [{ ...VALID_EXAMPLES.single, difficulty: 'x'.repeat(LABEL_MAX + 1) }],
+    };
+    const result = validateQuiz(quiz);
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((i) => i.path)).toContain('questions.0.difficulty');
+  });
+});
+
+describe('game snapshot round-trip', () => {
+  const baseQuiz = (): Quiz => ({
+    id: 'quiz-snap',
+    title: 'Snapshot demo',
+    description: 'desc',
+    theme: 'standard',
+    defaultTimeLimit: 15,
+    category: 'Science',
+    difficulty: 'Hard',
+    questions: [VALID_EXAMPLES.single],
+  });
+
+  it('round-trips a quiz through the snapshot envelope', () => {
+    const original = baseQuiz();
+    const parsed = parseSnapshotData(toSnapshotData(original));
+    expect(parsed).not.toBeNull();
+    expect(snapshotToQuiz(parsed!.quiz)).toEqual(original);
+  });
+
+  it('deep-copies the questions, so a later edit cannot reach the snapshot', () => {
+    const original = baseQuiz();
+    const data = toSnapshotData(original);
+    // Mutate the source after the snapshot was taken.
+    (original.questions[0] as { text: string }).text = 'MUTATED';
+    expect(data.quiz.questions[0]!.text).toBe('Which planet is the largest?');
+  });
+
+  it('keeps the frozen title when the live quiz is renamed', () => {
+    const original = baseQuiz();
+    const data = toSnapshotData(original);
+    original.title = 'Renamed';
+    expect(snapshotToQuiz(data.quiz).title).toBe('Snapshot demo');
+  });
+
+  it('returns null for a value that is not a snapshot', () => {
+    expect(parseSnapshotData(null)).toBeNull();
+    expect(parseSnapshotData('nope')).toBeNull();
+    expect(parseSnapshotData({ quiz: {} })).toBeNull();
+  });
+
+  it('tolerates a snapshot from before the labels existed', () => {
+    // No version, no category/difficulty – a row written by an older build.
+    const legacy = {
+      quiz: {
+        quizId: 'quiz-old',
+        title: 'Legacy',
+        description: '',
+        theme: 'standard',
+        defaultTimeLimit: 20,
+        questions: [VALID_EXAMPLES.single],
+      },
+    };
+    const parsed = parseSnapshotData(legacy);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.version).toBe(SNAPSHOT_VERSION);
+    expect(parsed!.quiz.category).toBeUndefined();
+    expect(parsed!.quiz.questions).toHaveLength(1);
   });
 });
 

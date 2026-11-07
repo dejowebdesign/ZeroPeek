@@ -36,6 +36,8 @@ export async function listQuizzes(ownerId: string | null, isAdmin: boolean) {
       title: true,
       description: true,
       theme: true,
+      category: true,
+      difficulty: true,
       updatedAt: true,
       _count: { select: { questions: true } },
     },
@@ -74,6 +76,8 @@ export async function createQuiz(ownerId: string, input: Partial<Quiz>): Promise
     description: input.description ?? '',
     theme: input.theme ?? 'standard',
     defaultTimeLimit: input.defaultTimeLimit ?? 20,
+    category: label(input.category),
+    difficulty: label(input.difficulty),
     questions: (input.questions ?? []).map((question) => ({
       ...question,
       id: question.id || randomUUID(),
@@ -89,6 +93,8 @@ export async function createQuiz(ownerId: string, input: Partial<Quiz>): Promise
       description: quiz.description,
       theme: quiz.theme,
       defaultTimeLimit: quiz.defaultTimeLimit,
+      category: quiz.category ?? null,
+      difficulty: quiz.difficulty ?? null,
       questions: {
         create: quiz.questions.map((question, position) => {
           const { payload, ...rest } = fromQuestion(question);
@@ -109,9 +115,10 @@ export async function createQuiz(ownerId: string, input: Partial<Quiz>): Promise
 /**
  * Replace a quiz's metadata and its entire question list.
  *
- * Questions are replaced inside one transaction. That is safe because the game
- * engine snapshots the quiz into the game when a game starts, so editing a quiz
- * can never alter a finished report.
+ * Questions are replaced inside one transaction. That is safe for history
+ * because a started game reads its questions from its own `GameSnapshot`, which
+ * was frozen when the run began – editing a quiz can no longer alter a finished
+ * report (Phase 6.4, R-3).
  */
 export async function updateQuiz(
   id: string,
@@ -132,6 +139,8 @@ export async function updateQuiz(
     description: input.description ?? current.description,
     theme: input.theme ?? current.theme,
     defaultTimeLimit: input.defaultTimeLimit ?? current.defaultTimeLimit,
+    category: label(input.category ?? current.category),
+    difficulty: label(input.difficulty ?? current.difficulty),
     questions: (input.questions ?? current.questions).map((question) => ({
       ...question,
       id: question.id || randomUUID(),
@@ -147,6 +156,8 @@ export async function updateQuiz(
         description: quiz.description,
         theme: quiz.theme,
         defaultTimeLimit: quiz.defaultTimeLimit,
+        category: quiz.category ?? null,
+        difficulty: quiz.difficulty ?? null,
       },
     });
     if (input.questions) {
@@ -169,7 +180,20 @@ export async function updateQuiz(
   return getQuiz(id);
 }
 
-/** Delete a quiz. Games that referenced it cascade with it. */
+/** Normalise an optional label: trim it, and treat "empty" as "not set". */
+function label(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/**
+ * Delete a quiz.
+ *
+ * Phase 6.4: this no longer touches games. `games.quiz_id` is `ON DELETE SET
+ * NULL`, and each started game keeps its questions in its own snapshot, so
+ * deleting a quiz leaves every game and its history intact. The quiz's own
+ * questions cascade away with it (nothing else references them).
+ */
 export async function deleteQuiz(id: string, ownerId: string, isAdmin: boolean): Promise<void> {
   const existing = await prisma.quiz.findUnique({ where: { id } });
   if (!existing) throw notFound('Quiz not found.');
@@ -187,6 +211,8 @@ export async function duplicateQuiz(id: string, ownerId: string, isAdmin: boolea
     description: source.description,
     theme: source.theme,
     defaultTimeLimit: source.defaultTimeLimit,
+    category: source.category,
+    difficulty: source.difficulty,
     questions: source.questions.map((question) => ({ ...question, id: randomUUID() })),
   });
 }

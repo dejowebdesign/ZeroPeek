@@ -20,6 +20,14 @@ export interface QuestionBase {
   timeLimit: number;
   /** Points mode. Always `none` for unscored types. */
   points: PointsMode;
+  /**
+   * Optional category label (Phase 6.4). Free text; absent on quizzes that
+   * predate the field and on imports that do not carry it. No fixed taxonomy is
+   * defined yet – see `LABEL_MAX` in `constants.ts`.
+   */
+  category?: string;
+  /** Optional difficulty label (Phase 6.4). Free text, same rules as `category`. */
+  difficulty?: string;
 }
 
 /** A single choice question. */
@@ -141,7 +149,118 @@ export interface Quiz {
   description: string;
   theme: string;
   defaultTimeLimit: number;
+  /** Optional category label (Phase 6.4). Free text; see `QuestionBase`. */
+  category?: string;
+  /** Optional difficulty label (Phase 6.4). Free text; see `QuestionBase`. */
+  difficulty?: string;
   questions: Question[];
+}
+
+/**
+ * An immutable snapshot of the quiz a game was started with (Phase 6.4).
+ *
+ * The snapshot is taken **once**, when the host starts the run, and from then on
+ * it is the only source the engine, the reports and the reconnect paths read.
+ * Editing or deleting the original quiz therefore cannot change or destroy a
+ * round that has already begun (product decision, `game-design-concept.md` §8.7).
+ *
+ * It carries the full structure – questions, options, correct solutions, types
+ * and order – plus the metadata that a report needs to render without touching
+ * the live quiz. The `quizId` is kept for provenance only; it may point at a
+ * quiz that no longer exists.
+ */
+export interface GameSnapshotPayload {
+  /** The quiz this snapshot was taken from. Provenance only. */
+  quizId: string;
+  /** The quiz title at the moment of the snapshot (survives a rename). */
+  title: string;
+  description: string;
+  theme: string;
+  defaultTimeLimit: number;
+  category?: string;
+  difficulty?: string;
+  /** The questions, in their original order. */
+  questions: Question[];
+}
+
+/** The current snapshot schema version, so a future change can be detected. */
+export const SNAPSHOT_VERSION = 1;
+
+/** A versioned envelope around the payload, stored as JSONB. */
+export interface GameSnapshotData {
+  version: number;
+  quiz: GameSnapshotPayload;
+  /**
+   * The scoring/ranking settings the game started with (Q1/Q2/Q6). Kept here
+   * too so the snapshot is a self-contained record of "how this round was
+   * played", independent of `Game.settings`.
+   */
+  settings?: unknown;
+}
+
+/** Wrap a quiz (and optionally its settings) into a snapshot envelope. */
+export function toSnapshotData(quiz: Quiz, settings?: unknown): GameSnapshotData {
+  return {
+    version: SNAPSHOT_VERSION,
+    quiz: {
+      quizId: quiz.id,
+      title: quiz.title,
+      description: quiz.description,
+      theme: quiz.theme,
+      defaultTimeLimit: quiz.defaultTimeLimit,
+      ...(quiz.category === undefined ? {} : { category: quiz.category }),
+      ...(quiz.difficulty === undefined ? {} : { difficulty: quiz.difficulty }),
+      questions: quiz.questions.map((question) => structuredCloneQuestion(question)),
+    },
+    ...(settings === undefined ? {} : { settings }),
+  };
+}
+
+/** Deep-copy one question, so a later edit of the source can never reach it. */
+function structuredCloneQuestion(question: Question): Question {
+  return JSON.parse(JSON.stringify(question)) as Question;
+}
+
+/**
+ * Read a snapshot envelope back into the domain shape. Returns `null` for
+ * anything that is not a recognisable snapshot, so a legacy game (started
+ * before the field existed, or a corrupt row) is handled explicitly rather than
+ * crashing the engine.
+ */
+export function parseSnapshotData(value: unknown): GameSnapshotData | null {
+  if (!value || typeof value !== 'object') return null;
+  const envelope = value as Partial<GameSnapshotData>;
+  const quiz = envelope.quiz as Partial<GameSnapshotPayload> | undefined;
+  if (!quiz || typeof quiz !== 'object' || !Array.isArray(quiz.questions)) return null;
+  if (typeof quiz.title !== 'string' || typeof quiz.quizId !== 'string') return null;
+  return {
+    version: typeof envelope.version === 'number' ? envelope.version : SNAPSHOT_VERSION,
+    quiz: {
+      quizId: quiz.quizId,
+      title: quiz.title,
+      description: typeof quiz.description === 'string' ? quiz.description : '',
+      theme: typeof quiz.theme === 'string' ? quiz.theme : 'standard',
+      defaultTimeLimit: typeof quiz.defaultTimeLimit === 'number' ? quiz.defaultTimeLimit : 20,
+      ...(typeof quiz.category === 'string' ? { category: quiz.category } : {}),
+      ...(typeof quiz.difficulty === 'string' ? { difficulty: quiz.difficulty } : {}),
+      questions: quiz.questions as Question[],
+    },
+    ...(envelope.settings === undefined ? {} : { settings: envelope.settings }),
+  };
+}
+
+/** Rebuild the domain `Quiz` a game runs on, from its snapshot payload. */
+export function snapshotToQuiz(snapshot: GameSnapshotPayload): Quiz {
+  return {
+    id: snapshot.quizId,
+    title: snapshot.title,
+    description: snapshot.description,
+    theme: snapshot.theme,
+    defaultTimeLimit: snapshot.defaultTimeLimit,
+    ...(snapshot.category === undefined ? {} : { category: snapshot.category }),
+    ...(snapshot.difficulty === undefined ? {} : { difficulty: snapshot.difficulty }),
+    questions: snapshot.questions,
+  };
 }
 
 /**

@@ -583,7 +583,7 @@ aggregieren müssen – der Ledger bleibt die Wahrheit.
 | `GamePlayer.characterId?`         | gewählte Figur im Spiel (nullable, additiv)                                                                                                                    | **Erweiterung**                                   |
 | `XpLedger`                        | append-only XP-Protokoll: `userId`, `amount`, `reason`, `gameId`, `createdAt`                                                                                  | **neu** (Nachvollziehbarkeit, Anti-Doppelvergabe) |
 | `Game.guestClaim`                 | kurzlebiger, einmaliger Übernahmenachweis (Token-Hash, `expiresAt`, `usedAt`)                                                                                  | **neu** (Gastkonto-Übernahme, §4.4)               |
-| `GameSnapshot`                    | unveränderliche Quiz-Momentaufnahme je Spiel (§8.7)                                                                                                            | **neu**                                           |
+| `GameSnapshot`                    | unveränderliche Quiz-Momentaufnahme je Spiel (§8.7)                                                                                                            | **umgesetzt (6.4)**                               |
 
 **Nicht gespeichert (berechnet):** Trefferquote (`correctAnswers / answeredCount`), Fortschritt bis
 zum nächsten Level (aus `xp` + Levelkurve §5.4), Ranglistenposition. **Nicht** redundant gespeichert,
@@ -710,6 +710,13 @@ Die Spielrunde liest Fragen danach **aus dem Snapshot**, nicht aus dem live edit
 ist eine additive Schemaerweiterung und wird **erst nach Freigabe** migriert.
 
 > **Keine** Migration und **keine** Codeänderung in Phase 5c.
+
+**Umgesetzt (Phase 6.4):** genau so gebaut. Ein JSONB-Umschlag je Spiel (`game_snapshots`,
+`game_id` unique), geschrieben beim Spielstart in derselben Transaktion wie `startedAt`.
+`games.quiz_id` und `game_snapshots.quiz_id` sind `ON DELETE SET NULL`, `player_answers.question_id`
+hat keinen Fremdschlüssel mehr – ein Quiz zu löschen kann also weder eine Runde noch ihre Antworten
+entfernen. Bestandsrunden ohne Snapshot werden beim ersten Report-Lesen nachgefroren. Report:
+`docs/reports/phase-6-4-quiz-editor-snapshot.md`.
 
 ---
 

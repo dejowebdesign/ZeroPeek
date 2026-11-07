@@ -87,6 +87,10 @@ model Quiz {
   description      String   @default("")
   theme            String   @default("standard")
   defaultTimeLimit Int      @default(20) @map("default_time_limit")
+  /// Optional category label (Phase 6.4). Free text; no fixed taxonomy yet.
+  category         String?
+  /// Optional difficulty label (Phase 6.4). Free text; no fixed taxonomy yet.
+  difficulty       String?
   ownerId          String?  @map("owner_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -94,6 +98,7 @@ model Quiz {
   owner     User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   questions Question[]
   games     Game[]
+  snapshots GameSnapshot[]
 
   @@index([ownerId])
   @@map("quizzes")
@@ -103,19 +108,22 @@ model Quiz {
 /// answers, slider bounds, …); its shape is defined and validated by
 /// `@zeropeek/shared` (ADR 0004). `position` gives the ordering.
 model Question {
-  id        String   @id @default(uuid())
-  quizId    String   @map("quiz_id")
-  type      String
-  text      String
-  timeLimit Int      @map("time_limit")
-  points    String   @default("standard")
-  position  Int
-  payload   Json     @default("{}")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid())
+  quizId     String   @map("quiz_id")
+  type       String
+  text       String
+  timeLimit  Int      @map("time_limit")
+  points     String   @default("standard")
+  position   Int
+  payload    Json     @default("{}")
+  /// Optional category label (Phase 6.4). Free text; no fixed taxonomy yet.
+  category   String?
+  /// Optional difficulty label (Phase 6.4). Free text; no fixed taxonomy yet.
+  difficulty String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
-  quiz    Quiz           @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  answers PlayerAnswer[]
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
   @@index([quizId, position])
   @@map("questions")
@@ -125,7 +133,11 @@ model Question {
 model Game {
   id           String    @id @default(uuid())
   pin          String    @unique
-  quizId       String    @map("quiz_id")
+  /// The quiz the game was created from. **Nullable** so deleting a quiz can
+  /// never delete the game or its results: the questions a started game uses
+  /// live in `GameSnapshot`, not here (Phase 6.4). `null` means the source quiz
+  /// is gone; the game is still fully playable and reportable from its snapshot.
+  quizId       String?   @map("quiz_id")
   hostId       String?   @map("host_id")
   phase        String    @default("lobby")
   currentIndex Int       @default(-1) @map("current_index")
@@ -136,13 +148,47 @@ model Game {
   endedAt      DateTime? @map("ended_at")
   createdAt    DateTime  @default(now()) @map("created_at")
 
-  quiz    Quiz        @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  players GamePlayer[]
-  events  GameEvent[]
+  quiz     Quiz?         @relation(fields: [quizId], references: [id], onDelete: SetNull)
+  players  GamePlayer[]
+  events   GameEvent[]
+  snapshot GameSnapshot?
 
   @@index([quizId])
   @@index([phase])
   @@map("games")
+}
+
+/// An immutable copy of the quiz a game was started with (Phase 6.4).
+///
+/// Written once, when the host starts the run. From that moment the engine, the
+/// reports and the reconnect paths read the questions **from here**, never from
+/// the live, editable `Quiz`. Editing or deleting the quiz therefore cannot
+/// change or destroy a round that has already begun (product decision,
+/// `game-design-concept.md` §8.7; roadmap §5).
+///
+/// `payload` is the versioned JSONB envelope defined by `@zeropeek/shared`
+/// (`GameSnapshotData`): the full question list – options, correct solutions,
+/// types and order – plus the quiz metadata. `quizId` is provenance only and
+/// may point at a deleted quiz.
+model GameSnapshot {
+  id        String   @id @default(uuid())
+  gameId    String   @unique @map("game_id")
+  quizId    String?  @map("quiz_id")
+  /// The snapshot schema version, so a future shape change is detectable.
+  version   Int      @default(1)
+  /// Denormalised from the payload so the game list and the report header can be
+  /// rendered without parsing every snapshot's JSON. The payload stays the
+  /// authoritative record; these two only mirror it for cheap reads.
+  title         String
+  questionCount Int      @map("question_count")
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  game Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  quiz Quiz? @relation(fields: [quizId], references: [id], onDelete: SetNull)
+
+  @@index([quizId])
+  @@map("game_snapshots")
 }
 
 /// A participant in one game. `token` lets a player reclaim their slot after a
@@ -170,6 +216,18 @@ model GamePlayer {
 
 /// One player's answer to one question. `answer` keeps the raw payload for the
 /// report; `correctness`/`points` are the server's verdict.
+///
+/// `questionId` is deliberately **not** a foreign key to `Question` any more
+/// (Phase 6.4). A started game answers against its `GameSnapshot`, whose
+/// questions are copies; a foreign key to the live `Question` would cascade a
+/// deletion of the quiz into a deletion of history (the R-3 risk). The id is
+/// kept as a plain string, so answers survive the quiz being edited or deleted.
+///
+/// `ON DELETE SET NULL` is not a viable alternative either: it would null the id
+/// on a quiz delete (and on any editor save, since `updateQuiz` recreates every
+/// question row), and the report attributes answers by this id alone. The
+/// snapshot, not the live table, is the referential guarantee. See
+/// `docs/reports/phase-6-4-quiz-editor-snapshot.md` §7.
 model PlayerAnswer {
   id          String   @id @default(uuid())
   gameId      String   @map("game_id")
@@ -182,8 +240,7 @@ model PlayerAnswer {
   flagged     Boolean  @default(false)
   answeredAt  DateTime @default(now()) @map("answered_at")
 
-  player   GamePlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  question Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  player GamePlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([playerId, questionId])
   @@index([gameId])

@@ -58,8 +58,9 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-please-generate-a-32-byte-hex-secret}
       COOKIE_NAME: ${COOKIE_NAME:-zp_session}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      # Account-confirmation mail (Phase 6.3). Empty disables sending; the local
-      # stack then logs the confirmation link so the flow can be completed.
+      # Account-confirmation mail (Phase 6.3). Empty disables sending; the
+      # verification link is never written to the logs, so the flow is
+      # completed by configuring SMTP_URL/MAIL_FROM (or re-issuing the link).
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-ZeroPeek}

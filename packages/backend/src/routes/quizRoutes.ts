@@ -33,6 +33,8 @@ export function registerQuizRoutes(app: FastifyInstance, config: AppConfig): voi
         title: row.title,
         description: row.description,
         theme: row.theme,
+        category: row.category,
+        difficulty: row.difficulty,
         questionCount: row._count.questions,
         updatedAt: row.updatedAt,
       })),

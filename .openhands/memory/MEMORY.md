@@ -483,6 +483,52 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   + a persisted "calm" switch), `registerOffer()` shown after a game. **Joining a game stays
   guest-only** (nickname, no e-mail) — never gate it.
 
+## Immutable game snapshot (Phase 6.4, branch `feat/phase-6-4-quiz-editor-snapshots`)
+- **R-3 (history loss) is closed by construction.** A started game reads its questions from
+  `game_snapshots` (one JSONB envelope per game, unique `game_id`), never from the live quiz.
+  `snapshotService.startWithSnapshot()` writes it inside the **same transaction** as `startedAt`
+  (called from `engine.start()`), so a game is never running without a valid snapshot. Idempotent
+  (repeat start returns the existing row; unique index is the race backstop). Legacy games with no
+  snapshot **self-heal** on the first `quizForGame()` read.
+- Migration `20261108090000_phase_6_4_quiz_editor_game_snapshot` is **additive + data-preserving**:
+  nullable `category`/`difficulty` TEXT on `quizzes` and `questions`; `games.quiz_id` → nullable with
+  `ON DELETE SET NULL`; and it **drops** `player_answers_question_id_fkey` (was `ON DELETE CASCADE`).
+  Never re-add that FK — it is what destroyed answer history when a quiz was deleted. Re-verified on
+  a populated scratch DB: counts preserved, and `DELETE FROM quizzes` leaves game/players/answers.
+- `engine.evict(gameId)` is a test hook to force a DB reload (proves the snapshot, not the cache, is
+  read). `reportService` reads the snapshot; `GameRow`/report types allow `quiz.id: string | null`
+  with a "Deleted quiz" fallback.
+- `category`/`difficulty` are **free text** — no taxonomy is approved. A controlled vocabulary
+  (selects/filter facets) is an owner decision, not a cleanup.
+- Editor pitfall: `validateQuiz` issue paths use the **dot** form (`questions.0.difficulty`), so the
+  editor's matcher must be `/^questions[.[](\d+)[\]]?/`, not `questions[0]`.
+- Report: `docs/reports/phase-6-4-quiz-editor-snapshot.md`. Not committed/pushed — awaiting owner
+  approval (the owner merges and deploys).
+- **Owner asked (2026-11-04) to replace the dropped FK with nullable `question_id` +
+  `ON DELETE SET NULL`. Answered no, with evidence (report §7).** Three variants tested on real
+  PostgreSQL: (A) no FK → id survives, report/CSV correct; (B) nullable + SET NULL → id becomes
+  NULL and `gameReport()` **throws** `Error converting field "questionId" of expected non-nullable
+  type "String"`; (C) `NOT NULL` + SET NULL → the quiz delete itself fails with
+  `null value in column "question_id" ... violates not-null constraint`. So SET NULL is not a
+  matter of taste — it is unimplementable without either breaking reads or blocking deletes.
+  The second reason is decisive: `updateQuiz` **deletes and recreates every question row** on any
+  editor save, so SET NULL would null the attribution of past games when a trainer merely renames
+  a quiz (verified: id became NULL after an ordinary save).
+- `question_id` is the **only** link from an answer to its question; `reportService` attributes by
+  `row.questionId === question.id` against the snapshot. The snapshot, not the live table, is the
+  referential guarantee. A DB-level guard now pins both constraints in
+  `snapshot.integration.test.ts` ("holds the database guarantees that protect history") — no
+  `player_answers_question_id_fkey`, and `games_quiz_id_fkey` is SET NULL (`confdeltype = 'n'`).
+- **Residual edge case (verified, documented, not fixed):** a game started *before* 6.4 has no
+  snapshot; if its quiz is deleted before the game is ever read, a report throws
+  409 `This game has no snapshot and its quiz no longer exists.` Not a regression and not
+  avoidable (the questions exist nowhere). Self-closing: any game started under 6.4+ is frozen in
+  the start transaction, and any legacy game read once self-heals. Mitigation if wanted: backfill
+  a snapshot for snapshot-less games before deleting a quiz (product decision).
+- If a *hard* DB guarantee is ever wanted, reference the immutable copy, not the live quiz: add a
+  `game_snapshot_questions` table (frozen ids per game) and point `question_id` at it with
+  `ON DELETE CASCADE`. Cost: one table, a write on start, a data migration.
+
 ## Frontend design system (Phase 6.1, PR #18)
 - Style: **"Dark Retro-Futuristic Wireframe & Glassmorphism"** — presentation only.
   Working reference: `docs/design/design-system.md`.

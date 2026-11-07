@@ -20,6 +20,9 @@ export interface QuestionRow {
   points: string;
   position: number;
   payload: unknown;
+  /** Optional labels (Phase 6.4); `null` in the database means "not set". */
+  category?: string | null;
+  difficulty?: string | null;
 }
 
 /** The shape of a `Quiz` row with its questions, as returned by Prisma. */
@@ -29,6 +32,8 @@ export interface QuizRow {
   description: string;
   theme: string;
   defaultTimeLimit: number;
+  category?: string | null;
+  difficulty?: string | null;
   questions: QuestionRow[];
 }
 
@@ -47,6 +52,9 @@ export function toQuestion(row: QuestionRow): Question {
     text: row.text,
     timeLimit: row.timeLimit,
     points: row.points as PointsMode,
+    // `null` in the database means "not set"; the domain uses an absent field.
+    ...(row.category ? { category: row.category } : {}),
+    ...(row.difficulty ? { difficulty: row.difficulty } : {}),
   };
   const payload = asRecord(row.payload);
 
@@ -120,16 +128,29 @@ export function toQuestion(row: QuestionRow): Question {
 /**
  * Split a domain question into the column values and the JSONB payload for
  * storage. The inverse of `toQuestion`.
+ *
+ * `category`/`difficulty` are returned as their own columns, never left inside
+ * `payload`, so there is exactly one place each value is stored.
  */
 export function fromQuestion(question: Question): {
   type: string;
   text: string;
   timeLimit: number;
   points: string;
+  category: string | null;
+  difficulty: string | null;
   payload: Record<string, unknown>;
 } {
-  const { id: _id, type, text, timeLimit, points, ...rest } = question;
-  return { type, text, timeLimit, points, payload: rest as Record<string, unknown> };
+  const { id: _id, type, text, timeLimit, points, category, difficulty, ...rest } = question;
+  return {
+    type,
+    text,
+    timeLimit,
+    points,
+    category: category ?? null,
+    difficulty: difficulty ?? null,
+    payload: rest as Record<string, unknown>,
+  };
 }
 
 /** Rebuild a full quiz (ordered by `position`) from rows. */
@@ -140,6 +161,8 @@ export function toQuiz(row: QuizRow): Quiz {
     description: row.description,
     theme: row.theme,
     defaultTimeLimit: row.defaultTimeLimit,
+    ...(row.category ? { category: row.category } : {}),
+    ...(row.difficulty ? { difficulty: row.difficulty } : {}),
     questions: [...row.questions]
       .sort((a, b) => a.position - b.position)
       .map((question) => toQuestion(question)),
