@@ -5,7 +5,7 @@
 **Datum:** 2026-11-06
 **Grundlage:** `main` @ `030c771` (Merge PR #21, Phase 6.2.1), kein flacher Clone
 (`git rev-parse --is-shallow-repository` → `false`), Arbeitsbaum sauber
-**Status:** Analyse abgeschlossen – **keine Umsetzung freigegeben**, wartet auf Entscheidung von chrisB
+**Status:** Analyse abgeschlossen – **keine Umsetzung freigegeben**, wartet auf Entscheidung von Dejan Popovic
 
 > **Abstract (EN):** This is a verified, text-only analysis of the player surface as it exists on
 > `main` after Phase 6.2.1, written to scope Phase 6.2.2 ("player lobby and profile area"). Every
@@ -47,7 +47,7 @@ ist im Repository **nicht vorhanden** (`grep -rn "6.2.2" docs/` → nur ein beil
 - die technische Roadmap (`docs/roadmap/technical-roadmap.md` §3/§4/§7),
 - den Bestandscode.
 
-Sollte chrisB für 6.2.2 ein konkretes Briefing haben, ist dieses Dokument damit abzugleichen.
+Sollte Dejan Popovic für 6.2.2 ein konkretes Briefing haben, ist dieses Dokument damit abzugleichen.
 
 > **Nachtrag (2026-11-06) – verbindlicher Umfang:** Der Umfang von Phase 6.2.2 wurde nach dieser
 > Analyse festgelegt und ist jetzt in `docs/roadmap/technical-roadmap.md` **§3.1** verbindlich
@@ -79,7 +79,7 @@ echter, datengetriebener Bereich umgesetzt werden**, weil sämtliche Voraussetzu
 - **(C)** ein Vorziehen von Teilen des Profil-Datenmodells/der API (widerspricht der
   Roadmap-Reihenfolge und den Abhängigkeiten 6.3/6.6 – nur mit ausdrücklicher Freigabe).
 
-Diese drei Optionen sind in §8 gegenübergestellt; die Entscheidung liegt bei chrisB.
+Diese drei Optionen sind in §8 gegenübergestellt; die Entscheidung liegt bei Dejan Popovic.
 
 ---
 
@@ -377,7 +377,7 @@ erfundenen Werte; keine Modell-/API-/Migrationsänderung; alle Gates grün.
 
 ---
 
-## 11. Offene Fragen an chrisB – **entschieden (2026-11-06)**
+## 11. Offene Fragen an Dejan Popovic – **entschieden (2026-11-06)**
 
 Die Fragen wurden durch die Auftragsvorgabe für Phase 6.2.2 entschieden und in
 `docs/roadmap/technical-roadmap.md` §3.1 verbindlich festgehalten:
@@ -403,7 +403,7 @@ Die Fragen wurden durch die Auftragsvorgabe für Phase 6.2.2 entschieden und in
 - Keine Datenbankmigration, keine neue Abhängigkeit, keine Portainer-/Deployment-Änderung.
 - Keine eigenständigen Bilder/Ersatzgrafiken (Briefing §31) und keine erfundenen Profilwerte.
 - Navigation bleibt reine Anzeige; serverseitige Autorisierung bleibt unangetastet.
-- Arbeit ausschließlich auf einem eigenen Branch, PR erst nach Freigabe; Merge durch chrisB.
+- Arbeit ausschließlich auf einem eigenen Branch, PR erst nach Freigabe; Merge durch Dejan Popovic.
 
 ---
 

@@ -2,8 +2,9 @@
  * Administration routes: user management (ADMIN only).
  *
  * Every route is guarded by `requireAdmin`, which itself enforces the session
- * and the CSRF token. The last active admin cannot be disabled or demoted, so
- * an installation can never lock itself out.
+ * and the CSRF token. Two lock-out rules are enforced here, never only in the
+ * UI: the last active admin cannot be disabled or demoted, and an admin can
+ * never disable their own account or strip their own admin role.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -66,8 +67,18 @@ export function registerAdminRoutes(app: FastifyInstance, config: AppConfig): vo
       const disabled = request.body?.disabled;
       if (typeof disabled !== 'boolean') throw badRequest('`disabled` must be a boolean.');
       const target = await getUser(request.params.id);
+      // The last administrator is checked first so that disabling the only admin
+      // reports the more specific reason (409). A sole admin is also the current
+      // user, and both rules would apply.
       if (disabled && target.role === 'ADMIN' && (await countAdmins()) <= 1) {
         throw conflict('The last administrator cannot be disabled.');
+      }
+      // An administrator must never disable their own account. The UI hides the
+      // control too, but that is only a convenience: the rule has to hold on the
+      // server, so a direct API call is refused as well. Without it an admin
+      // could lock themselves out whenever a second admin happens to exist.
+      if (disabled && target.id === currentUser(request).id) {
+        throw forbidden('You cannot disable your own account.');
       }
       return setDisabled(request.params.id, disabled);
     },
