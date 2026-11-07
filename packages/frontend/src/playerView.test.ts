@@ -9,9 +9,15 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { PublicPlayer } from '@zeropeek/shared';
+import type { PlayerSync, PublicPlayer } from '@zeropeek/shared';
 
-import { connectionState, lobbyRoster, profilePlaceholder, registerOffer } from './playerView.js';
+import {
+  connectionState,
+  lobbyRoster,
+  profilePlaceholder,
+  registerOffer,
+  screenForSync,
+} from './playerView.js';
 
 function player(overrides: Partial<PublicPlayer> = {}): PublicPlayer {
   return {
@@ -86,5 +92,56 @@ describe('registerOffer', () => {
     expect(link?.getAttribute('href')).toBe('./auth.html#register');
     // The wording makes clear the account is optional.
     expect(node.textContent).toContain('optional');
+  });
+});
+
+describe('screenForSync', () => {
+  const question = {
+    id: 'q1',
+    type: 'single' as const,
+    text: 'Prompt',
+    timeLimit: 20,
+    display: { options: ['a', 'b'] },
+    openedAt: 0,
+    index: 0,
+    total: 1,
+  };
+
+  function sync(overrides: Partial<PlayerSync> = {}): PlayerSync {
+    return {
+      phase: 'lobby',
+      question: null,
+      answer: null,
+      board: null,
+      podium: null,
+      placement: null,
+      ...overrides,
+    };
+  }
+
+  it('maps each running phase to its own screen, never the lobby', () => {
+    expect(screenForSync(sync({ phase: 'lobby' }))).toBe('lobby');
+    expect(screenForSync(sync({ phase: 'question', question }))).toBe('question');
+    expect(screenForSync(sync({ phase: 'reveal', question }))).toBe('reveal');
+    expect(screenForSync(sync({ phase: 'board', question }))).toBe('board');
+    expect(screenForSync(sync({ phase: 'end' }))).toBe('end');
+  });
+
+  it('shows the reveal as soon as a private result is present', () => {
+    const state = sync({
+      phase: 'question',
+      question,
+      answer: {
+        questionId: 'q1',
+        answered: true,
+        answer: 0,
+        result: { outcome: 'correct', points: 10, score: 10, rank: 1 },
+      },
+    });
+    expect(screenForSync(state)).toBe('reveal');
+  });
+
+  it('falls back to the lobby only when the question phase carries no question', () => {
+    expect(screenForSync(sync({ phase: 'question', question: null }))).toBe('lobby');
   });
 });

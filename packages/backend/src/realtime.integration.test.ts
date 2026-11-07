@@ -192,13 +192,19 @@ describe.skipIf(!available)('realtime end-to-end', () => {
     await request(host, 'host:board', { gameId });
     expect((await board).players[0]!.nickname).toBe('Ada');
 
-    // Reconnecting with the stored token reclaims the same player slot.
-    const rejoined = await request<{ ok: boolean }>(ada, 'player:rejoin', {
-      gameId,
-      playerId: adaJoin.playerId,
-      token: adaJoin.token,
-    });
-    expect(rejoined.ok).toBe(true);
+    // Reconnecting with the stored token reclaims the same player slot and now
+    // returns the authoritative state for the phase the game is actually in.
+    const rejoined = await request<{ phase: string; board: unknown[] | null }>(
+      ada,
+      'player:rejoin',
+      {
+        gameId,
+        playerId: adaJoin.playerId,
+        token: adaJoin.token,
+      },
+    );
+    expect(rejoined.phase).toBe('board');
+    expect(Array.isArray(rejoined.board)).toBe(true);
 
     // The game ends.
     const ended = once<{ players: Array<{ nickname: string }> }>(host, 'host:ended');

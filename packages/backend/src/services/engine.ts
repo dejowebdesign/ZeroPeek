@@ -28,14 +28,16 @@ import {
   scoreAnswer,
   snapshotToQuiz,
   type GamePhase,
+  type OwnResult,
   type PublicPlayer,
   type PublicQuestion,
   type Question,
   type Quiz,
+  type PlayerAnswerState,
+  type PlayerSync,
   type RankablePlayer,
   type ScoringSettings,
 } from '@zeropeek/shared';
-
 import { prisma } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { gameSettings, logEvent, listPlayers, setPhase } from './gameService.js';
@@ -96,6 +98,18 @@ function isUniqueViolation(error: unknown): boolean {
   );
 }
 
+/**
+ * The private outcome label for a stored answer's correctness (0..1).
+ *
+ * Matches the reveal path in `socket.ts` (`correctness >= 1 ? 'correct' : 'wrong'`)
+ * and additionally reports `partial`, which `OwnResult` already allows.
+ */
+function outcomeOf(correctness: number): OwnResult['outcome'] {
+  if (correctness >= 1) return 'correct';
+  if (correctness > 0) return 'partial';
+  return 'wrong';
+}
+
 function publicPlayer(player: RuntimePlayer): PublicPlayer {
   return {
     id: player.id,
@@ -132,6 +146,30 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * and still run in parallel. A key is dropped once its last task settles.
    */
   private readonly answerLocks = new Map<string, Promise<void>>();
+
+  /**
+   * In-flight phase transitions, keyed by game id. Every transition runs to
+   * completion before the next one starts, so a fire-and-forget auto-reveal
+   * cannot interleave with a host's `end`: without this, the reveal's
+   * `setPhase('reveal')` write could land *after* `setPhase('end')` and leave a
+   * finished game stuck in the `reveal` phase (and without an `endedAt`).
+   */
+  private readonly phaseLocks = new Map<string, Promise<void>>();
+
+  /** Serialise `task` against any other phase transition of the same game. */
+  private withPhaseLock<T>(gameId: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.phaseLocks.get(gameId) ?? Promise.resolve();
+    const run = previous.then(task, task);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.phaseLocks.set(gameId, tail);
+    void tail.then(() => {
+      if (this.phaseLocks.get(gameId) === tail) this.phaseLocks.delete(gameId);
+    });
+    return run;
+  }
 
   /** Serialise `task` against any other submission for the same key. */
   private withAnswerLock<T>(key: string, task: () => Promise<T>): Promise<T> {
@@ -240,8 +278,58 @@ export class GameEngine extends EventEmitter<EngineEvents> {
         answeredQuestionId: null,
       });
     }
+    // Recover what a restart can rebuild safely: which players already answered
+    // the current question, and when the question opened. Both come from durable
+    // rows, so a reconnecting player sees their real answer state and a
+    // server-consistent clock instead of a fresh one.
+    await this.recoverCurrentQuestion(runtime);
     this.games.set(gameId, runtime);
     return runtime;
+  }
+
+  /**
+   * Restore the per-question runtime state that lives only in memory, from the
+   * rows that survive a restart. A question that is still open when the process
+   * dies has no timer left, so this also re-arms it for the remaining time (or
+   * reveals immediately if it has already expired).
+   */
+  private async recoverCurrentQuestion(runtime: RuntimeGame): Promise<void> {
+    if (runtime.phase !== 'question') return;
+    const question = this.currentQuestion(runtime);
+    if (!question) return;
+
+    const answers = await prisma.playerAnswer.findMany({
+      where: { gameId: runtime.id, questionId: question.id },
+      select: { playerId: true, answer: true },
+    });
+    for (const answer of answers) {
+      const player = runtime.players.get(answer.playerId);
+      if (player) player.answeredQuestionId = question.id;
+      const key = JSON.stringify(answer.answer ?? null);
+      runtime.distribution.set(key, (runtime.distribution.get(key) ?? 0) + 1);
+    }
+
+    const opened = await prisma.gameEvent.findFirst({
+      where: { gameId: runtime.id, type: 'question' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const openedAt = opened ? opened.createdAt.getTime() : Date.now();
+    runtime.openedAt = openedAt;
+
+    if (question.type === 'slide') return;
+    const remainingMs = question.timeLimit * 1000 + ANSWER_GRACE_MS - (Date.now() - openedAt);
+    if (remainingMs <= 0) {
+      // Deferred, not called inline: the runtime is not registered in `games`
+      // until `load` returns, and `reveal` -> `get` would otherwise await the
+      // very load that is awaiting this method.
+      setTimeout(() => {
+        void this.reveal(runtime.id).catch(() => undefined);
+      }, 0);
+      return;
+    }
+    runtime.timer = setTimeout(() => {
+      void this.reveal(runtime.id).catch(() => undefined);
+    }, remainingMs);
   }
 
   /** The current question, or null when there is none. */
@@ -329,13 +417,17 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * snapshot guarantee Phase 6.4 has to keep.
    */
   async next(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.nextInternal(gameId));
+  }
+
+  private async nextInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     if (game.phase === 'lobby') throw conflict('Start the game first.');
     this.clearTimer(game);
 
     const nextIndex = game.currentIndex + 1;
     if (nextIndex >= game.quiz.questions.length) {
-      return this.end(gameId);
+      return this.endInternal(gameId);
     }
 
     game.currentIndex = nextIndex;
@@ -370,6 +462,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /** Start the game: freeze the quiz, leave the lobby and open the first question. */
   async start(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.startInternal(gameId));
+  }
+
+  private async startInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     if (game.phase !== 'lobby') throw conflict('The game has already started.');
     if (game.players.size === 0) throw conflict('Nobody has joined yet.');
@@ -383,7 +479,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     game.currentIndex = -1;
     // The snapshot is in place, so it is safe to leave the lobby now.
     game.phase = 'question';
-    return this.next(gameId);
+    return this.nextInternal(gameId);
   }
 
   /**
@@ -504,6 +600,88 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     return { accepted: true };
   }
 
+  /**
+   * The authoritative, phase-aware state to hand a player on (re)connect.
+   *
+   * This is the single place that decides what a reconnecting player sees, so a
+   * player can never land in the lobby while the game runs. It reuses the public
+   * engine views (`publicQuestion`, `leaderboard`) and reads the player's own
+   * answer row from the database — the same durable row the reveal path uses —
+   * so the runtime mirror cannot hide an answer that was committed before a
+   * restart. The reveal's `correctIndex` and the quiz snapshot are never touched:
+   * only `publicQuestion`, `PublicPlayer` and the player's own answer are sent.
+   */
+  async playerSync(game: RuntimeGame, playerId: string): Promise<PlayerSync> {
+    const player = game.players.get(playerId);
+    if (!player) throw notFound('You are not in this game.');
+
+    const empty: PlayerSync = {
+      phase: game.phase,
+      question: null,
+      answer: null,
+      board: null,
+      podium: null,
+      placement: null,
+    };
+
+    if (game.phase === 'lobby') {
+      return { ...empty, board: this.leaderboard(game) };
+    }
+
+    if (game.phase === 'end') {
+      const ranked = this.leaderboard(game);
+      const index = ranked.findIndex((entry) => entry.id === playerId);
+      return {
+        ...empty,
+        board: ranked,
+        podium: ranked.slice(0, 3),
+        placement: { rank: index === -1 ? ranked.length + 1 : index + 1, score: player.score },
+      };
+    }
+
+    // question / reveal / board all describe a current question. `publicQuestion`
+    // strips the solution, so nothing here can leak the answer before the reveal.
+    const question = this.currentQuestion(game);
+    if (!question) return empty;
+
+    const stored = await prisma.playerAnswer.findUnique({
+      where: { playerId_questionId: { playerId, questionId: question.id } },
+    });
+    // The leaderboard ranks every player, so the player's own rank comes from it;
+    // nothing about another player's answers is exposed.
+    const ranked = this.leaderboard(game);
+    const rank = ranked.findIndex((entry) => entry.id === playerId) + 1;
+    const ownRank = rank === 0 ? ranked.length : rank;
+    const score = player.score;
+
+    const answer: PlayerAnswerState = {
+      questionId: question.id,
+      answered: stored !== null,
+      answer: stored ? (stored.answer ?? null) : null,
+      // Only the reveal makes the result meaningful. This mirrors the live
+      // `game:reveal` event, which also reports `unanswered` for a player who did
+      // not answer, so a reconnect and a live reveal render identically.
+      result:
+        game.phase === 'reveal'
+          ? stored
+            ? {
+                outcome: outcomeOf(stored.correctness),
+                points: stored.points,
+                score,
+                rank: ownRank,
+              }
+            : { outcome: 'unanswered', points: 0, score, rank: ownRank }
+          : null,
+    };
+
+    return {
+      ...empty,
+      question: this.publicQuestion(game),
+      answer,
+      board: game.phase === 'board' ? ranked : null,
+    };
+  }
+
   /** The player's own result for the current question. */
   ownResult(game: RuntimeGame, playerId: string) {
     const question = this.currentQuestion(game);
@@ -524,6 +702,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /** Reveal the answer to the current question and show the distribution. */
   async reveal(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.revealInternal(gameId));
+  }
+
+  private async revealInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     this.clearTimer(game);
     // Idempotent: the auto-reveal when everyone has answered may race a host
@@ -553,6 +735,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /** Show the leaderboard for the current question. */
   async board(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.boardInternal(gameId));
+  }
+
+  private async boardInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     this.clearTimer(game);
     if (game.phase === 'board' || game.phase === 'end') return game.phase;
@@ -569,6 +755,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /** End the game and persist the final ordering. */
   async end(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.endInternal(gameId));
+  }
+
+  private async endInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     this.clearTimer(game);
     if (game.phase === 'end') return 'end';
