@@ -2542,3 +2542,44 @@ body::before {
     flex-wrap: wrap;
   }
 }
+
+/* ===========================================================================
+   Phase 6.5.1 – admin user management.
+
+   Additive: nothing above changes. The admin surface reuses the shared card,
+   chip, stat and report-table primitives; these few rules only arrange the
+   role cell, the action group and the create-form footer, and let the account
+   table stack cleanly on a phone (the shared report-table rules already turn
+   each row into a card below 768px).
+   =========================================================================== */
+
+.admin__cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.admin__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.admin__form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+/* The account summary tiles sit above the create form; on a phone they stack. */
+.admin__summary {
+  margin-bottom: var(--space-5);
+}
+
+@media (max-width: 767px) {
+  .admin__actions {
+    justify-content: flex-start;
+  }
+}

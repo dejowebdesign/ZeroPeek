@@ -34,7 +34,8 @@ Nothing is implemented until the project owner approves it.
 | 6.2.2 | Player lobby and profile placeholder | Done (merged, PR #23) – `docs/roadmap/technical-roadmap.md` §3.1; analysis `docs/analysis/phase-6-2-2-player-lobby-profile.md` |
 | 6.2   | Navigation and responsive layout     | **Complete** (6.2.1 + 6.2.2 merged)                                                                                            |
 | 6.3   | Login, registration, starfield       | Done (merged, PR #25) – `docs/reports/phase-6-3-*`                                                                             |
-| 6.4   | Quiz management, editor, snapshot    | Implemented, awaiting review – `docs/reports/phase-6-4-quiz-editor-snapshot.md`                                                |
+| 6.4   | Quiz management, editor, snapshot    | Done (merged, PR #26) – `docs/reports/phase-6-4-quiz-editor-snapshot.md`                                                       |
+| 6.5.1 | Admin modernisation                  | **Current implementation phase** (PR open, not yet merged) – `feat/phase-6-5-1-admin`                                          |
 
 See `docs/concept/README.md` for the reading order.
 

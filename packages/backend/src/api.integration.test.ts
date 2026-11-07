@@ -375,6 +375,77 @@ describe.skipIf(!available)('REST API integration', () => {
       });
       expect(response.statusCode).toBe(409);
     });
+
+    it('refuses to let an admin disable their own account (P10)', async () => {
+      // A second admin exists, so the last-admin rule does not apply. The
+      // self-disable rule must still refuse, on the server, not only in the UI.
+      await createUser({
+        username: 'root2',
+        password: 'correct-horse-battery',
+        role: 'ADMIN',
+      });
+      const admin = await asAdmin();
+      const me = await admin('GET', '/api/auth/me');
+      const response = await admin('POST', `/api/admin/users/${me.json().user.id}/disabled`, {
+        disabled: true,
+      });
+      expect(response.statusCode).toBe(403);
+      // The account is untouched.
+      const list = await admin('GET', '/api/admin/users');
+      const self = list.json().users.find((u: { id: string }) => u.id === me.json().user.id);
+      expect(self.disabled).toBe(false);
+    });
+
+    it('lets an admin disable another administrator', async () => {
+      const other = await createUser({
+        username: 'root2',
+        password: 'correct-horse-battery',
+        role: 'ADMIN',
+      });
+      const admin = await asAdmin();
+      const response = await admin('POST', `/api/admin/users/${other.id}/disabled`, {
+        disabled: true,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().disabled).toBe(true);
+    });
+
+    it('lets an admin disable and re-enable a normal user', async () => {
+      const target = await createUser({
+        username: 'plain',
+        password: 'correct-horse-battery',
+        role: 'TRAINER',
+      });
+      const admin = await asAdmin();
+
+      const disabled = await admin('POST', `/api/admin/users/${target.id}/disabled`, {
+        disabled: true,
+      });
+      expect(disabled.statusCode).toBe(200);
+      expect(disabled.json().disabled).toBe(true);
+
+      const enabled = await admin('POST', `/api/admin/users/${target.id}/disabled`, {
+        disabled: false,
+      });
+      expect(enabled.statusCode).toBe(200);
+      expect(enabled.json().disabled).toBe(false);
+    });
+
+    it('refuses to let an admin strip their own admin role', async () => {
+      // With a second admin present the last-admin rule is satisfied, so this
+      // exercises the self-demotion guard specifically.
+      await createUser({
+        username: 'root2',
+        password: 'correct-horse-battery',
+        role: 'ADMIN',
+      });
+      const admin = await asAdmin();
+      const me = await admin('GET', '/api/auth/me');
+      const response = await admin('POST', `/api/admin/users/${me.json().user.id}/role`, {
+        role: 'TRAINER',
+      });
+      expect(response.statusCode).toBe(403);
+    });
   });
 });
 

@@ -7,15 +7,36 @@
  * through `el`, so no user data ever reaches `innerHTML`.
  *
  * The rules that protect an installation from locking itself out (the last
- * administrator cannot be disabled or demoted, an admin cannot demote
- * themselves) live on the server. The UI mirrors them by disabling the
+ * administrator cannot be disabled or demoted, an admin cannot demote or
+ * disable themselves) live on the server. The UI mirrors them by disabling the
  * corresponding control, but the server stays the authority.
  */
+
+import {
+  PASSWORD_MIN_LENGTH,
+  USERNAME_MIN_LENGTH,
+  validatePassword,
+  validateUsername,
+  type ValidationIssue,
+} from '@zeropeek/shared';
 
 import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
-import { button, chip, dialog, errorText, field, notice, skeleton, toast } from '../ui.js';
+import {
+  button,
+  chip,
+  confirmDialog,
+  dialog,
+  emptyState,
+  errorText,
+  field,
+  notice,
+  setBusy,
+  skeleton,
+  statTile,
+  toast,
+} from '../ui.js';
 
 type UserRole = 'ADMIN' | 'TRAINER';
 
@@ -43,20 +64,82 @@ const app: HTMLElement = appElement;
  */
 const ADMIN_HOME = './admin.html';
 
+/** Where a signed-out or expired session is sent (the host login). */
+const LOGIN_URL = './host.html';
+
 let me: MeResponse['user'] = null;
 
-/** Load every user and repaint the table. */
-async function refresh(list: HTMLElement): Promise<void> {
-  const { users } = await get<{ users: User[] }>('/api/admin/users');
-  list.replaceChildren(...users.map((user) => row(user, list)));
+/** The nodes a repaint updates. Kept together so `refresh` needs no arguments. */
+interface AdminView {
+  /** Holds either the account table or a state (loading, empty, error). */
+  listWrap: HTMLElement;
+  /** The table itself, re-attached to `listWrap` when there are rows. */
+  table: HTMLTableElement;
+  tbody: HTMLElement;
+  summary: HTMLElement;
+}
+
+function roleLabel(role: UserRole): string {
+  return role === 'ADMIN' ? 'Administrator' : 'Trainer';
 }
 
 /**
- * One user row: identity, role selector, disable toggle and password reset.
- * `list` is repainted after each successful change so the table always shows
+ * Send the user to the login page when the session is gone, so an expired
+ * cookie does not leave a dead admin page behind. Returns `true` when it did.
+ */
+function handleAuthError(error: unknown): boolean {
+  if (error instanceof ApiError && error.status === 401) {
+    location.href = LOGIN_URL;
+    return true;
+  }
+  return false;
+}
+
+/** Load every user and repaint the summary and the table. */
+async function refresh(view: AdminView): Promise<void> {
+  try {
+    const { users } = await get<{ users: User[] }>('/api/admin/users');
+    paint(users, view);
+  } catch (error) {
+    if (handleAuthError(error)) return;
+    // The list could not be loaded: replace it with a clear message rather than
+    // leaving an empty box that looks like "no users".
+    view.listWrap.replaceChildren(
+      notice(`The user list could not be loaded. ${errorText(error)}`, 'error'),
+    );
+  }
+}
+
+/** Render the summary tiles and the account table (or the empty state). */
+function paint(users: User[], view: AdminView): void {
+  const admins = users.filter((user) => user.role === 'ADMIN').length;
+  const disabled = users.filter((user) => user.disabled).length;
+  view.summary.replaceChildren(
+    statTile(String(users.length), users.length === 1 ? 'account' : 'accounts'),
+    statTile(String(admins), admins === 1 ? 'administrator' : 'administrators'),
+    statTile(String(disabled), 'disabled'),
+  );
+
+  if (users.length === 0) {
+    view.listWrap.replaceChildren(
+      emptyState(
+        'No accounts yet',
+        'Use "Add a user" above to create the first trainer or administrator account.',
+      ),
+    );
+    return;
+  }
+
+  view.listWrap.replaceChildren(view.table);
+  view.tbody.replaceChildren(...users.map((user) => row(user, view)));
+}
+
+/**
+ * One user row: identity, role selector, status and the account actions.
+ * `view` is repainted after each successful change so the table always shows
  * what the server actually stored.
  */
-function row(user: User, list: HTMLElement): HTMLElement {
+function row(user: User, view: AdminView): HTMLElement {
   const isSelf = user.id === me?.id;
 
   const roleSelect = el(
@@ -75,25 +158,44 @@ function row(user: User, list: HTMLElement): HTMLElement {
   );
   roleSelect.disabled = isSelf;
   roleSelect.addEventListener('change', () => {
-    void mutate(async () => {
-      await post(`/api/admin/users/${user.id}/role`, { role: roleSelect.value as UserRole });
-      await refresh(list);
-    }, `Role updated for ${user.username}.`);
+    const nextRole = roleSelect.value as UserRole;
+    if (nextRole === user.role) return;
+    changeRole(user, nextRole, roleSelect, view);
   });
 
-  const toggle = el('input', {
-    type: 'checkbox',
-    ...(user.disabled ? { checked: true } : {}),
-  });
-  toggle.disabled = isSelf;
-  toggle.addEventListener('change', () => {
-    void mutate(
-      async () => {
-        await post(`/api/admin/users/${user.id}/disabled`, { disabled: toggle.checked });
-        await refresh(list);
-      },
-      toggle.checked ? `${user.username} disabled.` : `${user.username} enabled.`,
-    );
+  const toggle = button(user.disabled ? 'Enable' : 'Disable', {
+    small: true,
+    variant: user.disabled ? 'secondary' : 'ghost',
+    // An admin cannot disable their own account; the server enforces it, and the
+    // control is disabled here so the rule is visible rather than surprising.
+    disabled: isSelf,
+    onClick: () => {
+      if (user.disabled) {
+        // Re-enabling is not destructive; act directly and report the outcome.
+        void mutate(
+          async () => {
+            await post(`/api/admin/users/${user.id}/disabled`, { disabled: false });
+          },
+          `${user.username} enabled.`,
+          view,
+        );
+        return;
+      }
+      confirmDialog({
+        title: 'Disable this account?',
+        body: `${user.username} will no longer be able to sign in. Existing sessions are ended immediately. This can be reversed at any time.`,
+        confirmLabel: 'Disable account',
+        onConfirm: () => {
+          void mutate(
+            async () => {
+              await post(`/api/admin/users/${user.id}/disabled`, { disabled: true });
+            },
+            `${user.username} disabled.`,
+            view,
+          );
+        },
+      });
+    },
   });
 
   return el(
@@ -109,35 +211,111 @@ function row(user: User, list: HTMLElement): HTMLElement {
     el(
       'td',
       { 'data-label': 'Role' },
-      roleSelect,
-      ' ',
-      chip(user.role === 'ADMIN' ? 'Admin' : 'Trainer', user.role === 'ADMIN' ? 'accent' : 'cyan'),
+      el(
+        'div',
+        { class: 'admin__cell' },
+        roleSelect,
+        chip(roleLabel(user.role), user.role === 'ADMIN' ? 'accent' : 'cyan'),
+      ),
     ),
-    el('td', { 'data-label': 'Disabled' }, toggle),
     el(
       'td',
-      { 'data-label': 'Password' },
-      button('Reset password', {
-        onClick: () => resetPassword(user, list),
-      }),
+      { 'data-label': 'Status' },
+      chip(user.disabled ? 'Disabled' : 'Active', user.disabled ? 'bad' : 'ok', true),
+    ),
+    el(
+      'td',
+      { 'data-label': 'Actions' },
+      el(
+        'div',
+        { class: 'admin__actions' },
+        toggle,
+        button('Reset password', { small: true, onClick: () => resetPassword(user) }),
+      ),
     ),
   );
 }
 
-/** Run a mutation, report the outcome, and refresh the table on success. */
-async function mutate(action: () => Promise<void>, success: string): Promise<void> {
+/** Run a mutation, report the outcome, and repaint from the server on the way out. */
+async function mutate(
+  action: () => Promise<void>,
+  success: string,
+  view: AdminView,
+): Promise<void> {
   try {
     await action();
     toast(success, 'success');
   } catch (error) {
+    if (handleAuthError(error)) return;
     toast(errorText(error), 'error');
+  } finally {
+    // Repaint from the server either way, so a failed write cannot leave the
+    // row showing a state the server never stored.
+    await refresh(view);
   }
 }
 
+/**
+ * Confirm and apply a role change. The confirmation names the account, the old
+ * and the new role, and warns that permissions change; a single stray click
+ * therefore cannot re-role someone.
+ */
+function changeRole(
+  user: User,
+  nextRole: UserRole,
+  select: HTMLSelectElement,
+  view: AdminView,
+): void {
+  let confirmed = false;
+  const { close } = dialog({
+    title: 'Change role?',
+    body: el(
+      'div',
+      null,
+      el('p', null, `${user.username}: ${roleLabel(user.role)} -> ${roleLabel(nextRole)}`),
+      el(
+        'p',
+        { class: 'muted' },
+        nextRole === 'ADMIN'
+          ? 'This account gains full administrative rights, including user management.'
+          : 'This account loses administrative rights. It keeps the trainer areas (quizzes and games).',
+      ),
+    ),
+    actions: [
+      button('Cancel', { variant: 'ghost', onClick: () => close() }),
+      button('Change role', {
+        variant: 'primary',
+        onClick: () => {
+          confirmed = true;
+          close();
+          void mutate(
+            async () => {
+              await post(`/api/admin/users/${user.id}/role`, { role: nextRole });
+            },
+            `Role updated for ${user.username}.`,
+            view,
+          );
+        },
+      }),
+    ],
+    // Dismissed without confirming (Esc or backdrop): put the selector back.
+    onClose: () => {
+      if (!confirmed) select.value = user.role;
+    },
+  });
+}
+
 /** Ask for a new password in a modal and send it to the server. */
-function resetPassword(user: User, list: HTMLElement): void {
-  const password = el('input', { class: 'input', type: 'password', autocomplete: 'new-password' });
-  const form = el('form', null, field('New password', password));
+function resetPassword(user: User): void {
+  const password = el('input', {
+    class: 'input',
+    type: 'password',
+    autocomplete: 'new-password',
+  });
+  const error = el('span', { class: 'field__error' });
+  const node = field('New password', password, `At least ${PASSWORD_MIN_LENGTH} characters.`);
+  node.append(error);
+  const form = el('form', null, node);
   const submit = button('Save', {
     variant: 'primary',
     onClick: () => form.requestSubmit(),
@@ -149,20 +327,57 @@ function resetPassword(user: User, list: HTMLElement): void {
   });
   form.addEventListener('submit', (event: Event) => {
     event.preventDefault();
+    error.textContent = '';
     const value = password.value;
-    if (!value) return;
-    void mutate(async () => {
-      await post(`/api/admin/users/${user.id}/password`, { password: value });
-      close();
-      await refresh(list);
-    }, `Password reset for ${user.username}.`);
+    const issues = validatePassword(value);
+    if (issues.length > 0) {
+      error.textContent = issues[0]!.message;
+      password.setAttribute('aria-invalid', 'true');
+      password.focus();
+      return;
+    }
+    void (async () => {
+      setBusy(submit, true);
+      try {
+        await post(`/api/admin/users/${user.id}/password`, { password: value });
+        close();
+        toast(`Password reset for ${user.username}.`, 'success');
+      } catch (err) {
+        if (handleAuthError(err)) return;
+        error.textContent = errorText(err);
+        password.setAttribute('aria-invalid', 'true');
+      } finally {
+        setBusy(submit, false);
+      }
+    })();
   });
   password.focus();
 }
 
 /** The user management screen. */
 async function showUsers(): Promise<void> {
-  const list = el('tbody');
+  const tbody = el('tbody');
+  const listWrap = el('div');
+  const summary = el('div', { class: 'grid grid--3 admin__summary' });
+  const table = el(
+    'table',
+    { class: 'report-table' },
+    el(
+      'thead',
+      null,
+      el(
+        'tr',
+        null,
+        el('th', null, 'User'),
+        el('th', null, 'Role'),
+        el('th', null, 'Status'),
+        el('th', null, 'Actions'),
+      ),
+    ),
+    tbody,
+  );
+  const view: AdminView = { listWrap, table, tbody, summary };
+
   const username = el('input', { class: 'input', autocomplete: 'off' });
   const password = el('input', { class: 'input', type: 'password', autocomplete: 'new-password' });
   const roleSelect = el(
@@ -172,6 +387,39 @@ async function showUsers(): Promise<void> {
     el('option', { value: 'ADMIN' }, 'Administrator'),
   );
   const feedback = el('div');
+  const submit = button('Create user', { type: 'submit', variant: 'primary' });
+
+  const usernameField = field(
+    'Username',
+    username,
+    `At least ${USERNAME_MIN_LENGTH} characters. Stored lower-cased.`,
+  );
+  const usernameError = el('span', { class: 'field__error' });
+  usernameField.append(usernameError);
+
+  const passwordField = field('Password', password, `At least ${PASSWORD_MIN_LENGTH} characters.`);
+  const passwordError = el('span', { class: 'field__error' });
+  passwordField.append(passwordError);
+
+  /** Show a validation issue on its field, or clear every field error. */
+  const showFieldIssues = (issues: ValidationIssue[]): boolean => {
+    usernameError.textContent = '';
+    passwordError.textContent = '';
+    username.removeAttribute('aria-invalid');
+    password.removeAttribute('aria-invalid');
+    for (const issue of issues) {
+      if (issue.path === 'username') {
+        usernameError.textContent = issue.message;
+        username.setAttribute('aria-invalid', 'true');
+      } else if (issue.path === 'password') {
+        passwordError.textContent = issue.message;
+        password.setAttribute('aria-invalid', 'true');
+      }
+    }
+    if (issues.length === 0) return false;
+    (issues[0]!.path === 'password' ? password : username).focus();
+    return true;
+  };
 
   const createForm = el(
     'form',
@@ -180,28 +428,42 @@ async function showUsers(): Promise<void> {
       onsubmit: (event: Event) => {
         event.preventDefault();
         feedback.replaceChildren();
-        void mutate(async () => {
-          await post('/api/admin/users', {
-            username: username.value.trim(),
-            password: password.value,
-            role: roleSelect.value as UserRole,
-          });
-          username.value = '';
-          password.value = '';
-          await refresh(list);
-        }, 'User created.');
+        const issues = [
+          ...validateUsername(username.value.trim()),
+          ...validatePassword(password.value),
+        ];
+        if (showFieldIssues(issues)) return;
+        void (async () => {
+          setBusy(submit, true);
+          try {
+            await post('/api/admin/users', {
+              username: username.value.trim(),
+              password: password.value,
+              role: roleSelect.value as UserRole,
+            });
+            username.value = '';
+            password.value = '';
+            showFieldIssues([]);
+            feedback.replaceChildren(notice('User created.', 'success'));
+            await refresh(view);
+          } catch (error) {
+            if (handleAuthError(error)) return;
+            // A taken username belongs on the field; anything else is a notice.
+            if (error instanceof ApiError && error.code === 'username_taken') {
+              showFieldIssues([{ path: 'username', message: error.message }]);
+            } else {
+              feedback.replaceChildren(notice(errorText(error), 'error'));
+            }
+          } finally {
+            setBusy(submit, false);
+          }
+        })();
       },
     },
     el('h2', { class: 'section-title' }, 'Add a user'),
-    el(
-      'div',
-      { class: 'grid grid--3' },
-      field('Username', username),
-      field('Password', password),
-      field('Role', roleSelect),
-    ),
+    el('div', { class: 'grid grid--3' }, usernameField, passwordField, field('Role', roleSelect)),
     feedback,
-    button('Create user', { type: 'submit', variant: 'primary' }),
+    el('div', { class: 'admin__form-actions' }, submit),
   );
 
   render(
@@ -218,24 +480,13 @@ async function showUsers(): Promise<void> {
         button('Editor', { onClick: () => (location.href = './editor.html') }),
       ],
       children: [
-        createForm,
-        el('h2', { class: 'section-title' }, 'Accounts'),
         el(
-          'table',
-          { class: 'report-table' },
-          el(
-            'thead',
-            null,
-            el(
-              'tr',
-              null,
-              el('th', null, 'User'),
-              el('th', null, 'Role'),
-              el('th', null, 'Disabled'),
-              el('th', null, ''),
-            ),
-          ),
-          list,
+          'section',
+          { class: 'wrap' },
+          summary,
+          createForm,
+          el('h2', { class: 'section-title' }, 'Accounts'),
+          listWrap,
         ),
       ],
     }),
@@ -243,14 +494,10 @@ async function showUsers(): Promise<void> {
 
   // Show placeholders while the first load is in flight, so the table never
   // appears as an empty box.
-  list.replaceChildren(
-    el(
-      'tr',
-      null,
-      el('td', { colspan: '4' }, skeleton('text'), skeleton('text'), skeleton('text')),
-    ),
+  listWrap.replaceChildren(
+    el('div', { class: 'card' }, skeleton('text'), skeleton('text'), skeleton('text')),
   );
-  await refresh(list);
+  await refresh(view);
 }
 
 /** Bootstrap: require a session, require the ADMIN role, then load the page. */
@@ -258,7 +505,7 @@ void (async () => {
   try {
     const session = await get<MeResponse>('/api/auth/me');
     if (!session.user) {
-      location.href = './host.html';
+      location.href = LOGIN_URL;
       return;
     }
     if (session.csrfToken) setCsrfToken(session.csrfToken);
@@ -269,10 +516,7 @@ void (async () => {
     }
     await showUsers();
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      location.href = './host.html';
-      return;
-    }
+    if (handleAuthError(error)) return;
     toast(errorText(error), 'error');
   }
 })();

@@ -200,7 +200,7 @@ neu analysiert – siehe `docs/analysis/phase-1-technical-inventory.md`.
 - Bestehende E-Mail-Konfiguration: `SMTP_URL` und `MAIL_FROM` (bereits in `docs/deployment/ENVIRONMENT.md`
   und den `.env.*.example`-Dateien vorgesehen).
 
-**Offen – Voraussetzungen, die chrisB bereitstellen oder entscheiden muss:**
+**Offen – Voraussetzungen, die Dejan Popovic bereitstellen oder entscheiden muss:**
 
 | #   | Offener Punkt                                      | Status / Bedarf                                                                                                                                                                                                                                                                                                                                       | Blockiert         |
 | --- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
