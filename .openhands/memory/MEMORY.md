@@ -598,6 +598,13 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   it: `gameReport.skipped`, CSV `skipped` column, `quizStatistics.skippedGames`); a skipped
   reveal carries **no solution** (`HostReveal` union, leak impossible by construction); a
   **slide cannot be paused**. Draft PR opened on explicit owner approval.
+- **Never decide "the latest event" by ordering `GameEvent.createdAt`.** The column is
+  **millisecond precision only**, so two events written in the same tick have no defined order —
+  `reveal` + `skipped` and `paused` + `resumed` are written back to back and do exactly that.
+  This passed locally by timing luck and failed on CI. Recovery reads the game log in **one
+  query** and matches by `questionId` in JS, with no ordering assumption: skipped = a `skipped`
+  event exists; paused = `pauses > resumes` (they strictly alternate); frozen remainder =
+  `min(remainingMs)` over the pauses (successive pauses never increase it).
 
 ## Frontend design system (Phase 6.1, PR #18)
 - Style: **"Dark Retro-Futuristic Wireframe & Glassmorphism"** — presentation only.
