@@ -57,7 +57,9 @@ interface GameRow {
   pin: string;
   phase: string;
   createdAt: string;
-  quiz: { id: string; title: string };
+  /** Null when the source quiz was deleted; the snapshot title is used instead. */
+  quiz: { id: string | null; title: string } | null;
+  questionCount: number | null;
   _count: { players: number };
 }
 
@@ -208,6 +210,15 @@ async function showHome(): Promise<void> {
       }
     };
 
+    // The editor's "Start" action deep-links here as `?quiz=<id>`; honour it
+    // once the quizzes are loaded, then clear it so a reload does not restart.
+    const requestedQuizId = new URLSearchParams(location.search).get('quiz');
+    if (requestedQuizId && quizzes.some((quiz) => quiz.id === requestedQuizId)) {
+      history.replaceState(null, '', location.pathname);
+      await start(requestedQuizId);
+      return;
+    }
+
     const resume = async (gameId: string): Promise<void> => {
       try {
         const state = await request<{ pin: string; players: PublicPlayer[] }>(
@@ -273,7 +284,7 @@ async function showHome(): Promise<void> {
                           el(
                             'h2',
                             { class: 'quiz-list__title' },
-                            `${game.quiz.title} · ${game.pin}`,
+                            `${game.quiz?.title ?? 'Deleted quiz'} · ${game.pin}`,
                           ),
                           el(
                             'p',
@@ -332,7 +343,7 @@ async function showHome(): Promise<void> {
                     el(
                       'li',
                       { class: 'report-list__item card' },
-                      el('h3', null, game.quiz.title),
+                      el('h3', null, game.quiz?.title ?? 'Deleted quiz'),
                       el(
                         'p',
                         { class: 'muted' },

@@ -13,6 +13,7 @@ import {
   IDEA_TEXT_MAX,
   IDEA_VOTES,
   IDEAS_MAX,
+  LABEL_MAX,
   MAX_ANSWER_OPTIONS,
   MIN_ANSWER_OPTIONS,
   OPTION_TEXT_MAX,
@@ -59,6 +60,23 @@ export function isNonEmptyString(value: unknown): value is string {
 /** True when the value is a finite number. */
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+/**
+ * Validate an optional label (`category` / `difficulty`). Absent, empty or
+ * whitespace-only is allowed and simply means "not set", so a quiz that predates
+ * the field, or an import that omits it, stays valid. A present value must be a
+ * string within the length limit.
+ */
+function validateLabel(value: unknown, path: string, issues: ValidationIssue[]): void {
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'string') {
+    issues.push({ path, message: 'This field must be text.' });
+    return;
+  }
+  if (value.length > LABEL_MAX) {
+    issues.push({ path, message: `This field must not exceed ${LABEL_MAX} characters.` });
+  }
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -134,6 +152,9 @@ function validateBase(question: Question, path: string, issues: ValidationIssue[
       message: `Question text must not exceed ${QUESTION_TEXT_MAX} characters.`,
     });
   }
+
+  validateLabel(question.category, `${path}.category`, issues);
+  validateLabel(question.difficulty, `${path}.difficulty`, issues);
 
   const scored = isScoredType(question.type);
 
@@ -371,6 +392,8 @@ export function validateQuiz(quiz: Quiz): ValidationResult<Quiz> {
   if (typeof quiz.description !== 'string') {
     issues.push({ path: 'description', message: 'The description must be a string.' });
   }
+  validateLabel(quiz.category, 'category', issues);
+  validateLabel(quiz.difficulty, 'difficulty', issues);
   if (!Array.isArray(quiz.questions) || quiz.questions.length === 0) {
     issues.push({ path: 'questions', message: 'A quiz needs at least one question.' });
   } else {

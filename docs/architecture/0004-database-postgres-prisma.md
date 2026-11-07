@@ -21,6 +21,11 @@ The 13 question types need to be stored **uniformly** yet keep their type-specif
 - **Hybrid modelling:** stable, queried columns for everything that is filtered or joined on
   (ids, timestamps, scores, foreign keys), plus a **JSONB `payload` column** on `Question` for the
   type-specific fields. The shape of `payload` is defined and validated by `@zeropeek/shared`.
+- **Immutable per-game snapshot (Phase 6.4):** a started game reads its questions from
+  `GameSnapshot` (one JSONB envelope per game), never from the live quiz. `games.quiz_id` and
+  `game_snapshots.quiz_id` are `ON DELETE SET NULL`, and `player_answers.question_id` has no foreign
+  key, so deleting a quiz can never cascade a game, its answers or its history away. See
+  `docs/reports/phase-6-4-quiz-editor-snapshot.md`.
 
 ## Alternatives considered
 

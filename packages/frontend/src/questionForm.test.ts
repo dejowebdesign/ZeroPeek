@@ -77,4 +77,30 @@ describe('questionForm', () => {
     expect(latest).toMatchObject({ text: 'Prompt', timeLimit: 30, points: 'double' });
     expect(latest.type).toBe('single');
   });
+
+  it('carries the optional category and difficulty labels (Phase 6.4)', () => {
+    let latest: Question = single();
+    const form = questionForm(latest, (next) => {
+      latest = next;
+    });
+
+    edit(control(form, 'Category'), 'Geography');
+    expect(latest.category).toBe('Geography');
+
+    // A second field must not wipe the first one.
+    edit(control(form, 'Difficulty'), 'Easy');
+    expect(latest).toMatchObject({ category: 'Geography', difficulty: 'Easy' });
+
+    // Clearing a label stores it as "not set", not as an empty string.
+    edit(control(form, 'Category'), '');
+    expect(latest.category).toBeUndefined();
+    expect(latest.difficulty).toBe('Easy');
+  });
+
+  it('pre-fills the labels of an existing question', () => {
+    const question: Question = { ...single(), category: 'Science', difficulty: 'Hard' };
+    const form = questionForm(question, () => {});
+    expect(control(form, 'Category').value).toBe('Science');
+    expect(control(form, 'Difficulty').value).toBe('Hard');
+  });
 });

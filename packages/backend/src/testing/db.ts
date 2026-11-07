@@ -39,6 +39,9 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.playerAnswer.deleteMany();
   await prisma.gameEvent.deleteMany();
   await prisma.gamePlayer.deleteMany();
+  // Snapshots reference both a game (cascade) and a quiz (set null); deleting
+  // them first keeps the order explicit and independent of the cascade rules.
+  await prisma.gameSnapshot.deleteMany();
   await prisma.game.deleteMany();
   await prisma.question.deleteMany();
   await prisma.quiz.deleteMany();

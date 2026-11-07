@@ -11,6 +11,7 @@ import {
   DEFAULT_TIME,
   IDEAS_MAX,
   IDEA_VOTES,
+  LABEL_MAX,
   MAX_ANSWER_OPTIONS,
   MIN_ANSWER_OPTIONS,
   OPTION_TEXT_MAX,
@@ -189,7 +190,7 @@ function stringList(
   return wrap;
 }
 
-/** The shared header fields (prompt, time limit, points). */
+/** The shared header fields (prompt, time limit, points, optional labels). */
 function commonFields(get: () => Question, onChange: (next: Question) => void): HTMLElement {
   const question = get();
   const timeSelect = el(
@@ -222,18 +223,42 @@ function commonFields(get: () => Question, onChange: (next: Question) => void): 
     onChange({ ...get(), points: pointsSelect.value as PointsMode }),
   );
 
+  // Category and difficulty are free-text and optional (Phase 6.4). No fixed
+  // taxonomy exists yet, so the field suggests nothing and accepts anything
+  // within the length limit. An emptied field is stored as "not set".
+  const category = textInput(
+    question.category ?? '',
+    (value) => onChange({ ...get(), category: value.trim() || undefined }),
+    { maxlength: LABEL_MAX, placeholder: 'e.g. Geography (optional)' },
+  );
+  const difficulty = textInput(
+    question.difficulty ?? '',
+    (value) => onChange({ ...get(), difficulty: value.trim() || undefined }),
+    { maxlength: LABEL_MAX, placeholder: 'e.g. Easy (optional)' },
+  );
+
   return el(
     'div',
-    { class: 'grid grid--3' },
-    field(
-      'Prompt',
-      textInput(question.text, (text) => onChange({ ...get(), text }), {
-        maxlength: QUESTION_TEXT_MAX,
-        placeholder: 'Your question',
-      }),
+    { class: 'question-form__head' },
+    el(
+      'div',
+      { class: 'grid grid--3' },
+      field(
+        'Prompt',
+        textInput(question.text, (text) => onChange({ ...get(), text }), {
+          maxlength: QUESTION_TEXT_MAX,
+          placeholder: 'Your question',
+        }),
+      ),
+      field('Time limit', timeSelect),
+      field('Points', pointsSelect),
     ),
-    field('Time limit', timeSelect),
-    field('Points', pointsSelect),
+    el(
+      'div',
+      { class: 'grid grid--2' },
+      field('Category', category),
+      field('Difficulty', difficulty),
+    ),
   );
 }
 

@@ -26,6 +26,7 @@ import {
   questionDisplay,
   rankPlayers,
   scoreAnswer,
+  snapshotToQuiz,
   type GamePhase,
   type PublicPlayer,
   type PublicQuestion,
@@ -37,8 +38,9 @@ import {
 
 import { prisma } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
-import { getQuiz } from './quizService.js';
 import { gameSettings, logEvent, listPlayers, setPhase } from './gameService.js';
+import { getQuiz } from './quizService.js';
+import { quizForGame, startWithSnapshot } from './snapshotService.js';
 
 /** Grace period in ms added to the limit before a late answer is rejected. */
 const ANSWER_GRACE_MS = 1500;
@@ -110,6 +112,24 @@ function rankable(player: RuntimePlayer): RankablePlayer {
 export class GameEngine extends EventEmitter<EngineEvents> {
   private readonly games = new Map<string, RuntimeGame>();
 
+  /**
+   * Forget the in-memory copy of a game, so the next `get` reloads it from the
+   * database. Used by tests to prove the reload path (a fresh process after a
+   * restart) reads the snapshot rather than a stale quiz.
+   */
+  evict(gameId: string): void {
+    this.clearTimerSafe(gameId);
+    this.games.delete(gameId);
+  }
+
+  private clearTimerSafe(gameId: string): void {
+    const game = this.games.get(gameId);
+    if (game?.timer) {
+      clearTimeout(game.timer);
+      game.timer = null;
+    }
+  }
+
   /** Create a game (in the database) and load it into memory. */
   async create(quizId: string, hostId: string) {
     const { createGame } = await import('./gameService.js');
@@ -139,7 +159,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
     const row = await prisma.game.findUnique({ where: { id: gameId } });
     if (!row) throw notFound('Game not found.');
-    const quiz = await getQuiz(row.quizId);
+    // `quizForGame` prefers the frozen snapshot, so a game that has already
+    // started keeps the exact questions it began with even if the quiz has since
+    // been edited or deleted (Phase 6.4).
+    const quiz = await quizForGame({ id: row.id, quizId: row.quizId, phase: row.phase });
     const runtime: RuntimeGame = {
       id: row.id,
       pin: row.pin,
@@ -249,9 +272,14 @@ export class GameEngine extends EventEmitter<EngineEvents> {
   /**
    * Move to the next question, or to the lead-in of the first one. Opens the
    * question and arms the timer.
+   *
+   * Only a started game may advance: `host:next` from the lobby would otherwise
+   * open a question without freezing the quiz first, which is exactly the
+   * snapshot guarantee Phase 6.4 has to keep.
    */
   async next(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
+    if (game.phase === 'lobby') throw conflict('Start the game first.');
     this.clearTimer(game);
 
     const nextIndex = game.currentIndex + 1;
@@ -265,9 +293,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     game.distribution = new Map();
     game.openedAt = Date.now();
 
-    await setPhase(gameId, 'question', nextIndex, {
-      ...(nextIndex === 0 ? { startedAt: new Date() } : {}),
-    });
+    await setPhase(gameId, 'question', nextIndex);
     await logEvent(gameId, 'question', { index: nextIndex, questionId: question.id });
 
     this.emit('question', { gameId, question: this.publicQuestion(game) });
@@ -291,12 +317,21 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     return 'question';
   }
 
-  /** Start the game: leave the lobby and open the first question. */
+  /** Start the game: freeze the quiz, leave the lobby and open the first question. */
   async start(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     if (game.phase !== 'lobby') throw conflict('The game has already started.');
     if (game.players.size === 0) throw conflict('Nobody has joined yet.');
+
+    // Freeze the quiz **before** the first question opens (Phase 6.4). The copy
+    // is committed in one transaction with the start stamp, so from here on the
+    // run reads the snapshot and a later quiz edit or delete cannot touch it.
+    // If this throws, the game stays in the lobby and nothing is frozen.
+    const snapshot = await startWithSnapshot(gameId);
+    game.quiz = snapshotToQuiz(snapshot.quiz);
     game.currentIndex = -1;
+    // The snapshot is in place, so it is safe to leave the lobby now.
+    game.phase = 'question';
     return this.next(gameId);
   }
 

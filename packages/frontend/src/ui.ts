@@ -83,6 +83,11 @@ export interface ButtonOptions {
   small?: boolean;
   /** Add the shared entry animation. */
   animate?: boolean;
+  /**
+   * An accessible name, for a button whose visible label is a symbol (↑, ↓, ✕).
+   * Without it a screen reader would announce only the glyph.
+   */
+  ariaLabel?: string;
   onClick?: (event: MouseEvent) => void;
 }
 
@@ -100,6 +105,7 @@ export function button(label: string, options: ButtonOptions = {}): HTMLButtonEl
       class: classes.filter(Boolean).join(' '),
       type: options.type ?? 'button',
       ...(options.disabled ? { disabled: true } : {}),
+      ...(options.ariaLabel ? { 'aria-label': options.ariaLabel } : {}),
       ...(options.onClick ? { onclick: options.onClick } : {}),
     },
     label,

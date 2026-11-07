@@ -261,6 +261,12 @@ erstellt (`GameSnapshot`). Spätere Quizänderungen oder das Löschen eines Quiz
 historischen Spielergebnisse verändern oder zerstören (`game-design-concept.md` §8.7). Damit ist
 **R-3 technisch entschärft**. Autospeichern wird dadurch möglich, ohne die Historie zu gefährden.
 
+**Status (umgesetzt):** `GameSnapshot` und die additiven Label-Felder sind implementiert, samt
+Migration, Editor-UI und Tests. Report: `docs/reports/phase-6-4-quiz-editor-snapshot.md`.
+`category`/`difficulty` sind **freier Text** (keine feste Taxonomie freigegeben); Drag-and-drop hat
+mit den ↑/↓-Buttons eine Tastatur-Alternative. Offen für eine spätere Freigabe: feste Kategorien
+und Schwierigkeitsstufen (Selects/Filter).
+
 ---
 
 ## 6. Phase 6.5 – Admin und Host
