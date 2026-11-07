@@ -449,6 +449,19 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   tcp-listen:5432,fork,reuseaddr tcp-connect:db:5432`, set `TEST_DATABASE_URL`,
   `prisma migrate deploy`, then `npm test` → 61/61. `prisma migrate deploy` is
   idempotent ("No pending migrations to apply" on the second run).
+- **Prisma reads `DATABASE_URL`, not `TEST_DATABASE_URL`.** The test helper
+  (`src/testing/db.ts`) accepts either, but the client itself only honours
+  `DATABASE_URL`; set `DATABASE_URL=...zeropeek_test...` when running backend
+  suites, or `canConnect()` may skip the integration files entirely.
+- `packages/backend/vitest.config.ts` sets `fileParallelism: false` because every
+  DB suite truncates the shared database. Keep it; parallel files corrupt each
+  other's state.
+- **Concurrency bugs in the engine need a looped test.** The engine's phase writes
+  are async and fire-and-forget paths (auto-reveal, timers) interleave; a one-shot
+  assertion passes by luck. Loop the scenario 60–150× and count bad states. Real
+  example: the auto-reveal vs. `end` race failed **47/150** on `origin/main` yet
+  passed single runs. `withPhaseLock` (per-game) now serialises
+  `start`/`next`/`reveal`/`board`/`end`; `*Internal` bodies avoid re-entering it.
 
 ## NoPeek reference project (github.com/dejowebdesign/ZeroPeek docs/analysis)
 - Reference app **NoPeek** lives at `https://nopeek.projekt-chrisb.de` (reachable).
@@ -539,6 +552,23 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
 - If a *hard* DB guarantee is ever wanted, reference the immutable copy, not the live quiz: add a
   `game_snapshot_questions` table (frozen ids per game) and point `question_id` at it with
   `ON DELETE CASCADE`. Cost: one table, a write on start, a data migration.
+
+## Host state sync (Phase 6.5.2, branch `feat/phase-6-5-2-host-state-sync`)
+- **Host console is server-driven.** New `HostState` (shared) + `engine.hostState(game)`; both
+  `host:create` and `host:join` ACK it. `host:join` also joins `hostRoom`. `HostState` is
+  deliberately NOT `PlayerSync` (host sees the solution + full distribution, is never a player);
+  `question` is the solution-free `PublicQuestion` until `reveal`, so a reconnect cannot leak.
+- **Listener-accumulation bug (fixed):** old `showLobby` registered 5 listeners per call.
+  `attachHostHandlers` registers once per socket; a re-render swaps the handler via a `WeakMap`.
+- **Reload fix:** old `host:join` ACK was `{pin, phase, players}` and `resume()` ignored `phase`,
+  always drawing the lobby → "Start game" then 409. Now `renderHostState` dispatches on
+  `hostScreen(state)`, and `sessionStorage['zeropeek.host.game']` auto-resumes after a reload.
+- Control bar is derived from `hostActions(phase)` (`controlsFor`), so the host can never be
+  offered an action the phase forbids. `ListenerSocket.on` must be typed `(...args: never[]) =>
+  unknown`, else the real `Socket` (literal event union) is not assignable — cast once inside.
+- Tests: `host-sync.integration.test.ts` (10, real Socket.IO + Postgres, loops the PR #29 phase
+  lock 40×) and `hostView.test.ts` (20). Reverting the socket ACK fails 6/10 (real guard).
+  Report `docs/reports/phase-6-5-2-host-state-sync.md`. PR **#30**, CI green (run 42391730209).
 
 ## Frontend design system (Phase 6.1, PR #18)
 - Style: **"Dark Retro-Futuristic Wireframe & Glassmorphism"** — presentation only.

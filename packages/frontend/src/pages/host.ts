@@ -10,6 +10,9 @@
 
 import {
   questionDisplay,
+  type GamePhase,
+  type HostConnectionStatus,
+  type HostState,
   type PublicPlayer,
   type PublicQuestion,
   type Question,
@@ -21,6 +24,18 @@ import { appShell } from '../navigation.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
 import { questionResult, solutionText } from '../questionView.js';
 import { leaderboardRow, podiumPlace, questionDisplayOptions } from '../showView.js';
+import {
+  attachHostHandlers,
+  canAct,
+  connectionStatus,
+  forgetGame,
+  hostActions,
+  hostScreen,
+  nextStatus,
+  rememberedGame,
+  rememberGame,
+  type HostEventHandlers,
+} from '../hostView.js';
 import {
   brand,
   button,
@@ -80,6 +95,14 @@ let timerHandle: number | null = null;
 let answerCountNode: HTMLElement | null = null;
 /** Players seen in the lobby, used to seed the answer count before the first answer. */
 let lobbyPlayerCount = 0;
+/** The game currently being controlled, so a reconnect can re-request its state. */
+let activeGame: HostGame | null = null;
+/** The host's own connection state, shown in the control bar. */
+let connection: HostConnectionStatus = 'connected';
+/** Whether the socket has connected at least once (so a `connect` is a reconnect). */
+let hasConnected = false;
+/** The node carrying the connection banner, replaced by every game screen. */
+let bannerNode: HTMLElement | null = null;
 
 /** Stop the countdown timer, if running. */
 function stopTimer(): void {
@@ -171,25 +194,138 @@ function showLogin(message?: string): void {
   username.focus();
 }
 
-/** Ensure the host socket is connected and its shared handlers are attached. */
+/**
+ * Ensure the host socket exists, and wire its listeners exactly once.
+ *
+ * The listeners are registered here — never inside a render function — and
+ * `attachHostHandlers` guarantees a single registration per socket. Each handler
+ * dispatches through `renderHostState`, so a re-render or a reconnect changes
+ * what is drawn without ever adding a second listener.
+ */
 function ensureSocket(): HostSocket {
   if (!socket) {
-    socket = connectHost();
-    // One persistent handler for the running answer count; it updates whatever
-    // node the current question screen installed.
-    socket.on('host:answers', (payload) => {
-      if (answerCountNode) {
-        answerCountNode.textContent = `${payload.answered} / ${payload.total} answers`;
-      }
+    const host = connectHost();
+    socket = host;
+
+    attachHostHandlers(host, {
+      lobby: (payload) =>
+        renderHostState({ kind: 'lobby', pin: payload.pin, players: payload.players }),
+      question: (question) => renderHostState({ kind: 'question', question }),
+      answers: (payload) => {
+        if (answerCountNode) {
+          answerCountNode.textContent = `${payload.answered} / ${payload.total} answers`;
+        }
+      },
+      reveal: (payload) =>
+        renderHostState({
+          kind: 'reveal',
+          question: payload.question,
+          distribution: payload.distribution,
+        }),
+      board: (payload) => renderHostState({ kind: 'board', players: payload.players }),
+      ended: (payload) => renderHostState({ kind: 'end', players: payload.players }),
+    } satisfies HostEventHandlers);
+
+    host.on('connect', () => {
+      const wasConnected = hasConnected;
+      hasConnected = true;
+      setConnection('connected');
+      // A reconnect (not the first connect) must re-ask the server, so the host
+      // never keeps acting on a phase that moved on while the socket was away.
+      if (wasConnected) void resync();
     });
+    host.on('disconnect', () => setConnection(nextStatus(connection, 'disconnect')));
+    host.on('connect_error', () => setConnection(nextStatus(connection, 'connect_error')));
   }
   return socket;
+}
+
+/** Update the connection banner, then re-enable or disable the controls. */
+function setConnection(status: HostConnectionStatus): void {
+  connection = status;
+  if (!bannerNode) return;
+  const { label, tone } = connectionStatus(status);
+  bannerNode.replaceChildren(chip(label, tone, true));
+  bannerNode.className = `host-connection host-connection--${status}`;
+  // A disabled control is a courtesy, not a guard: the server still validates.
+  for (const node of app.querySelectorAll<HTMLButtonElement>('button[data-host-action]')) {
+    node.disabled = !canAct(status);
+  }
+}
+
+/** Re-request the authoritative state after a reconnect. */
+async function resync(): Promise<void> {
+  if (!activeGame) return;
+  try {
+    const state = await request<HostState>(ensureSocket(), 'host:join', { gameId: activeGame.id });
+    activeGame = { id: state.gameId, pin: state.pin };
+    renderHostState({ kind: 'sync', state });
+  } catch (error) {
+    toast(errorText(error), 'error');
+  }
+}
+
+/** The events a host screen can be rendered from, live or on reconnect. */
+type HostRender =
+  | { kind: 'lobby'; pin: string; players: PublicPlayer[] }
+  | { kind: 'question'; question: PublicQuestion }
+  | { kind: 'reveal'; question: Question; distribution: Record<string, number> }
+  | { kind: 'board'; players: PublicPlayer[] }
+  | { kind: 'end'; players: PublicPlayer[] }
+  | { kind: 'sync'; state: HostState };
+
+/**
+ * The single entry point for every host screen, whether it was triggered by a
+ * live event or by a reconnect. Nothing here decides the phase from local
+ * state: the payload already carries it, so the host always shows what the
+ * server last said.
+ */
+function renderHostState(input: HostRender): void {
+  if (input.kind === 'sync') {
+    activeGame = { id: input.state.gameId, pin: input.state.pin };
+    const screen = hostScreen(input.state);
+    if (screen === 'lobby') return showLobby(input.state.pin, input.state.players ?? []);
+    if (screen === 'reveal' && input.state.reveal) {
+      return showReveal(input.state.reveal.question, input.state.reveal.distribution);
+    }
+    if (screen === 'board') return showBoard(input.state.players ?? []);
+    if (screen === 'end') return showPodium(input.state.players ?? input.state.podium ?? []);
+    if (input.state.question) return showQuestion(input.state.question, input.state.answers);
+    return showLobby(input.state.pin, input.state.players ?? []);
+  }
+
+  switch (input.kind) {
+    case 'lobby':
+      return showLobby(input.pin, input.players);
+    case 'question':
+      return showQuestion(input.question);
+    case 'reveal':
+      return showReveal(input.question, input.distribution);
+    case 'board':
+      return showBoard(input.players);
+    default:
+      return showPodium(input.players);
+  }
+}
+
+/** Re-request a game's authoritative state and render the phase it reports. */
+async function resumeGame(gameId: string): Promise<void> {
+  try {
+    const state = await request<HostState>(ensureSocket(), 'host:join', { gameId });
+    activeGame = { id: state.gameId, pin: state.pin };
+    rememberGame(state.gameId);
+    renderHostState({ kind: 'sync', state });
+  } catch (error) {
+    forgetGame();
+    toast(errorText(error), 'error');
+  }
 }
 
 /** The home screen: choose a quiz, resume a game, or read the reports. */
 async function showHome(): Promise<void> {
   stopTimer();
   answerCountNode = null;
+  bannerNode = null;
   try {
     const [{ quizzes }, { games }] = await Promise.all([
       get<{ quizzes: QuizSummary[] }>('/api/quizzes'),
@@ -198,13 +334,11 @@ async function showHome(): Promise<void> {
 
     const start = async (quizId: string): Promise<void> => {
       try {
-        // The server ACKs with { gameId, pin }; HostGame uses `id`.
-        const created = await request<{ gameId: string; pin: string }>(
-          ensureSocket(),
-          'host:create',
-          { quizId },
-        );
-        showLobby({ id: created.gameId, pin: created.pin });
+        // The server ACKs with the full host state; the lobby is drawn from it.
+        const state = await request<HostState>(ensureSocket(), 'host:create', { quizId });
+        activeGame = { id: state.gameId, pin: state.pin };
+        rememberGame(state.gameId);
+        renderHostState({ kind: 'sync', state });
       } catch (error) {
         toast(errorText(error), 'error');
       }
@@ -219,18 +353,14 @@ async function showHome(): Promise<void> {
       return;
     }
 
-    const resume = async (gameId: string): Promise<void> => {
-      try {
-        const state = await request<{ pin: string; players: PublicPlayer[] }>(
-          ensureSocket(),
-          'host:join',
-          { gameId },
-        );
-        showLobby({ id: gameId, pin: state.pin }, state.players ?? []);
-      } catch (error) {
-        toast(errorText(error), 'error');
-      }
-    };
+    // A reload mid-game resumes the game the host was controlling, before the
+    // home screen is drawn, so a refresh never strands the host on the overview.
+    const pending = rememberedGame();
+    if (pending && games.some((game) => game.id === pending && game.phase !== 'end')) {
+      await resumeGame(pending);
+      return;
+    }
+    if (pending) forgetGame();
 
     const open = games.filter((game) => game.phase !== 'end');
     const finished = games.filter((game) => game.phase === 'end');
@@ -297,7 +427,7 @@ async function showHome(): Promise<void> {
                           { class: 'quiz-list__actions' },
                           button('Resume', {
                             variant: 'primary',
-                            onClick: () => void resume(game.id),
+                            onClick: () => void resumeGame(game.id),
                           }),
                         ),
                       ),
@@ -375,8 +505,76 @@ async function showHome(): Promise<void> {
   }
 }
 
+/**
+ * The connection banner every game screen shows. Kept in one node that
+ * `setConnection` repaints, so a dropped socket is visible immediately and a
+ * recovered one is announced without re-rendering the screen.
+ */
+function connectionBanner(): HTMLElement {
+  bannerNode = el('div', {
+    class: `host-connection host-connection--${connection}`,
+    role: 'status',
+  });
+  const { label, tone } = connectionStatus(connection);
+  bannerNode.replaceChildren(chip(label, tone, true));
+  return bannerNode;
+}
+
+/** The game id of the game under control; screens are only reachable inside one. */
+function currentGameId(): string {
+  return activeGame?.id ?? '';
+}
+
+/**
+ * The control bar for a phase, built from `hostActions` so the allowed controls
+ * always match the server's phase (hostView §hostActions). The end action keeps
+ * its confirmation dialog; `home` leaves the game instead of commanding it.
+ */
+function controlsFor(phase: GamePhase): HTMLElement {
+  const nodes = hostActions(phase).map((action) => {
+    if (action.id === 'home') {
+      return button(action.label, {
+        variant: action.variant,
+        onClick: () => {
+          activeGame = null;
+          forgetGame();
+          void showHome();
+        },
+      });
+    }
+    if (action.id === 'end') {
+      const node = hostButton(action.label, 'host:end', { variant: action.variant });
+      node.onclick = () => {
+        confirmDialog({
+          title: 'End the game now?',
+          body: 'The current question ends immediately and the final results are shown. This cannot be undone.',
+          confirmLabel: 'End game',
+          onConfirm: () => void send('host:end'),
+        });
+      };
+      return node;
+    }
+    return hostButton(action.label, `host:${action.id}`, { variant: action.variant });
+  });
+  return el('div', { class: 'show__controls' }, ...nodes);
+}
+
+/** A control button, tagged so `setConnection` can disable every host action at
+ * once while the socket is down. */
+function hostButton(
+  label: string,
+  action: string,
+  options: { variant?: 'primary' | 'danger' } = {},
+): HTMLButtonElement {
+  const node = button(label, { variant: options.variant, onClick: () => void send(action) });
+  node.setAttribute('data-host-action', action);
+  return node;
+}
+
 /** The lobby screen with the join PIN and the growing player list. */
-function showLobby(game: HostGame, initialPlayers: PublicPlayer[] = []): void {
+function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
+  stopTimer();
+  answerCountNode = null;
   const players = el('ul', { class: 'lobby__players' });
   const paint = (list: PublicPlayer[]): void => {
     lobbyPlayerCount = list.length;
@@ -395,45 +593,50 @@ function showLobby(game: HostGame, initialPlayers: PublicPlayer[] = []): void {
       el(
         'div',
         { class: 'card lobby anim-fade-in' },
+        connectionBanner(),
         el('p', { class: 'muted' }, 'Join at this address with the PIN'),
-        el('p', { class: 'lobby__pin' }, game.pin),
+        el('p', { class: 'lobby__pin' }, pin),
         el('p', { class: 'lobby__actions' }, chip(location.origin + '/', 'cyan')),
         players,
-        el(
-          'div',
-          { class: 'lobby__actions' },
-          button('Start game', {
-            variant: 'primary',
-            onClick: async () => {
-              try {
-                await request(ensureSocket(), 'host:start', { gameId: game.id });
-              } catch (error) {
-                toast(errorText(error), 'error');
-              }
-            },
-          }),
-        ),
+        controlsFor('lobby'),
       ),
     ),
   );
 
-  const host = ensureSocket();
   paint(initialPlayers);
-  host.on('host:lobby', (payload) => paint(payload.players));
-  host.on('host:question', (question) => showQuestion(game, question));
-  host.on('host:reveal', (payload) => showReveal(game, payload.question, payload.distribution));
-  host.on('host:board', (payload) => showBoard(game, payload.players));
-  host.on('host:ended', (payload) => showPodium(game, payload.players));
+  setConnection(connection);
+}
+
+/**
+ * Send a host command for the game under control, refusing to fire while the
+ * socket is down so a stale click cannot be mistaken for a successful action.
+ */
+async function send(event: string): Promise<void> {
+  if (!canAct(connection)) {
+    toast('Reconnect before you continue.', 'error');
+    return;
+  }
+  const gameId = currentGameId();
+  if (!gameId) return;
+  try {
+    await request(ensureSocket(), event, { gameId });
+  } catch (error) {
+    toast(errorText(error), 'error');
+  }
 }
 
 /** The beamer question screen with a live timer and a running answer count. */
-function showQuestion(game: HostGame, question: PublicQuestion): void {
+function showQuestion(
+  question: PublicQuestion,
+  answers?: { answered: number; total: number } | null,
+): void {
   const timer = countdown(question.timeLimit, 1);
   const count = el('p', { class: 'show__answers muted' }, '0 answers');
   answerCountNode = count;
-  // The server only emits `host:answers` on the first answer, so seed the total
-  // from the lobby size to keep the wording stable before anyone answers.
-  if (lobbyPlayerCount) count.textContent = `0 / ${lobbyPlayerCount} answers`;
+  // Prefer the server's count from a reconnect; otherwise seed the total from
+  // the lobby size so the wording is stable before the first answer arrives.
+  if (answers) count.textContent = `${answers.answered} / ${answers.total} answers`;
+  else if (lobbyPlayerCount) count.textContent = `0 / ${lobbyPlayerCount} answers`;
 
   const options = questionDisplayOptions(question);
 
@@ -445,6 +648,7 @@ function showQuestion(game: HostGame, question: PublicQuestion): void {
       el(
         'div',
         { class: 'show__board card question anim-fade-in' },
+        connectionBanner(),
         el(
           'div',
           { class: 'question__meta muted' },
@@ -470,30 +674,20 @@ function showQuestion(game: HostGame, question: PublicQuestion): void {
         el(
           'div',
           { class: 'show__controls' },
-          button('Reveal', {
-            variant: 'primary',
-            onClick: async () => {
-              try {
-                await request(ensureSocket(), 'host:reveal', { gameId: game.id });
-              } catch (error) {
-                toast(errorText(error), 'error');
-              }
-            },
-          }),
+          hostButton('Reveal', 'host:reveal', { variant: 'primary' }),
         ),
       ),
     ),
   );
 
+  // The timer is derived from the server's original `openedAt`, so a reconnect
+  // continues the same countdown instead of restarting it.
   startTimer(timer, question.openedAt, question.timeLimit);
+  setConnection(connection);
 }
 
 /** The reveal screen: the distribution of answers. */
-function showReveal(
-  game: HostGame,
-  question: Question,
-  distribution: Record<string, number>,
-): void {
+function showReveal(question: Question, distribution: Record<string, number>): void {
   stopTimer();
   answerCountNode = null;
   render(
@@ -504,32 +698,21 @@ function showReveal(
       el(
         'div',
         { class: 'show__board card question anim-fade-in' },
+        connectionBanner(),
         questionResult(
           { text: question.text, type: question.type, display: questionDisplay(question) },
           distribution,
           solutionText(question),
         ),
-        el(
-          'div',
-          { class: 'show__controls' },
-          button('Leaderboard', {
-            variant: 'primary',
-            onClick: async () => {
-              try {
-                await request(ensureSocket(), 'host:board', { gameId: game.id });
-              } catch (error) {
-                toast(errorText(error), 'error');
-              }
-            },
-          }),
-        ),
+        controlsFor('reveal'),
       ),
     ),
   );
+  setConnection(connection);
 }
 
 /** The leaderboard screen. */
-function showBoard(game: HostGame, players: PublicPlayer[]): void {
+function showBoard(players: PublicPlayer[]): void {
   stopTimer();
   answerCountNode = null;
   render(
@@ -540,45 +723,19 @@ function showBoard(game: HostGame, players: PublicPlayer[]): void {
       el(
         'div',
         { class: 'show__board card anim-fade-in' },
+        connectionBanner(),
         el('h2', { class: 'show__title' }, 'Leaderboard'),
         el('p', { class: 'show__meta' }, chip(`${players.length} player(s)`, 'cyan')),
         el('ol', { class: 'leaderboard leaderboard--show' }, ...players.map(leaderboardRow)),
-        el(
-          'div',
-          { class: 'show__controls' },
-          button('Next question', {
-            variant: 'primary',
-            onClick: async () => {
-              try {
-                await request(ensureSocket(), 'host:next', { gameId: game.id });
-              } catch (error) {
-                toast(errorText(error), 'error');
-              }
-            },
-          }),
-          button('End game', {
-            variant: 'danger',
-            onClick: () => {
-              confirmDialog({
-                title: 'End the game now?',
-                body: 'The current question ends immediately and the final results are shown. This cannot be undone.',
-                confirmLabel: 'End game',
-                onConfirm: () => {
-                  void request(ensureSocket(), 'host:end', { gameId: game.id }).catch((error) =>
-                    toast(errorText(error), 'error'),
-                  );
-                },
-              });
-            },
-          }),
-        ),
+        controlsFor('board'),
       ),
     ),
   );
+  setConnection(connection);
 }
 
 /** The final results: a podium for the top three plus the full ranking. */
-function showPodium(game: HostGame, players: PublicPlayer[]): void {
+function showPodium(players: PublicPlayer[]): void {
   stopTimer();
   answerCountNode = null;
   const [first, second, third, ...rest] = players;
@@ -591,6 +748,7 @@ function showPodium(game: HostGame, players: PublicPlayer[]): void {
       el(
         'div',
         { class: 'show__board card anim-pop' },
+        connectionBanner(),
         el('h2', { class: 'show__title' }, 'Final results'),
         first ? el('p', { class: 'show__winner' }, `Winner: ${first.nickname}`) : null,
         el(
@@ -607,15 +765,11 @@ function showPodium(game: HostGame, players: PublicPlayer[]): void {
               ...rest.map((player, index) => leaderboardRow(player, index + 3)),
             )
           : null,
-        el(
-          'div',
-          { class: 'show__controls' },
-          button('Back to home', { variant: 'primary', onClick: () => void showHome() }),
-        ),
+        controlsFor('end'),
       ),
     ),
   );
-  void game;
+  setConnection(connection);
 }
 
 /** A full report for one finished game. */
