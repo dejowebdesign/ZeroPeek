@@ -48,6 +48,41 @@ export interface OwnResult {
   rank: number;
 }
 
+/** The player's own state for the current question, safe to send at any time. */
+export interface PlayerAnswerState {
+  /** The id of the question this state describes. */
+  questionId: string;
+  /** Whether this player has already submitted an answer for it. */
+  answered: boolean;
+  /** The answer this player submitted, or null. Only their own answer. */
+  answer: unknown | null;
+  /** The player's private result, populated only from `reveal` onwards. */
+  result: OwnResult | null;
+}
+
+/**
+ * The authoritative, phase-aware state a player receives on (re)connect.
+ *
+ * One envelope covers every phase, so a reconnect can never land a player in the
+ * lobby while the game is running. `question` is always the solution-free public
+ * view; `result` is the player's own private result; `board`/`podium` are the
+ * same public rankings every player may see. Nothing here is derived on the
+ * client and no field carries the correct answer before the reveal.
+ */
+export interface PlayerSync {
+  phase: GamePhase;
+  /** The current public question, or null outside `question`/`reveal`/`board`. */
+  question: PublicQuestion | null;
+  /** This player's own answer state for the current question, or null. */
+  answer: PlayerAnswerState | null;
+  /** The public roster / leaderboard, ordered by rank, or null if not applicable. */
+  board: PublicPlayer[] | null;
+  /** The final top-three placement, only in the `end` phase. */
+  podium: PublicPlayer[] | null;
+  /** This player's own final rank and score, only in the `end` phase. */
+  placement: { rank: number; score: number } | null;
+}
+
 /** Server → player events (namespace `/`). */
 export interface PlayerServerEvents {
   'game:joined': (payload: { playerId: string; gameId: string; nickname: string }) => void;
@@ -71,7 +106,7 @@ export interface PlayerClientEvents {
   ) => void;
   'player:rejoin': (
     payload: { gameId: string; playerId: string; token: string },
-    ack: Ack<{ ok: boolean }>,
+    ack: Ack<PlayerSync>,
   ) => void;
 }
 

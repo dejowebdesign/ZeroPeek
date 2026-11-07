@@ -7,13 +7,19 @@
  * so a refresh reconnects to the same slot instead of joining twice.
  */
 
-import type { OwnResult, PublicPlayer, PublicQuestion } from '@zeropeek/shared';
+import type {
+  OwnResult,
+  PlayerAnswerState,
+  PlayerSync,
+  PublicPlayer,
+  PublicQuestion,
+} from '@zeropeek/shared';
 
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { questionInput, questionPrompt } from '../questionView.js';
-import { lobbyRoster, profilePlaceholder, registerOffer } from '../playerView.js';
+import { lobbyRoster, profilePlaceholder, registerOffer, screenForSync } from '../playerView.js';
 import { button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
 
 const STORAGE_KEY = 'zeropeek.player';
@@ -161,10 +167,11 @@ const app: HTMLElement = appElement;
     );
   }
 
-  /** Show an open question. */
-  function showQuestion(question: PublicQuestion): void {
-    let submitted = false;
+  /** Show an open question. `prior` carries a reconnect's existing answer. */
+  function showQuestion(question: PublicQuestion, prior?: PlayerAnswerState | null): void {
+    let submitted = prior?.answered === true;
     const feedback = el('div');
+    if (submitted) feedback.replaceChildren(notice('Answer received.', 'success'));
     const input = questionInput(question, async (answer) => {
       if (submitted) return;
       submitted = true;
@@ -177,6 +184,13 @@ const app: HTMLElement = appElement;
         feedback.replaceChildren(notice(errorText(error), 'error'));
       }
     });
+    if (prior?.answered) {
+      // Already answered: the control stays visible but inert, so a reconnecting
+      // player cannot submit a second answer for the same question.
+      input.querySelectorAll('button, input, select, textarea').forEach((node) => {
+        (node as HTMLButtonElement).disabled = true;
+      });
+    }
 
     render(
       app,
@@ -336,6 +350,44 @@ const app: HTMLElement = appElement;
     );
   }
 
+  /**
+   * Render the screen the server says the player is on. This is the single entry
+   * point for a reconnect, so the client never decides the phase itself.
+   */
+  function renderSync(sync: PlayerSync): void {
+    switch (screenForSync(sync)) {
+      case 'question':
+        if (sync.question) showQuestion(sync.question, sync.answer);
+        else showWaiting(sync.board ?? []);
+        break;
+      case 'reveal':
+        if (sync.question && sync.answer?.result) {
+          showResult(sync.question.id, sync.answer.result);
+        } else if (sync.question) {
+          showQuestion(sync.question, sync.answer);
+        } else {
+          showWaiting(sync.board ?? []);
+        }
+        break;
+      case 'board':
+        showBoard(sync.board ?? []);
+        break;
+      case 'end':
+        if (sync.placement) {
+          showEnd({
+            rank: sync.placement.rank,
+            score: sync.placement.score,
+            podium: sync.podium ?? [],
+          });
+        } else {
+          showWaiting(sync.board ?? []);
+        }
+        break;
+      default:
+        showWaiting(sync.board ?? []);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Server events.
   // ---------------------------------------------------------------------------
@@ -365,12 +417,12 @@ const app: HTMLElement = appElement;
     const stored = loadSession();
     if (stored) {
       render(app, shell('lobby', el('section', { class: 'centered' }, spinner('Reconnecting…'))));
-      request(socket, 'player:rejoin', {
+      request<PlayerSync>(socket, 'player:rejoin', {
         gameId: stored.gameId,
         playerId: stored.playerId,
         token: stored.token,
       })
-        .then(() => showWaiting())
+        .then((sync) => renderSync(sync))
         .catch(() => {
           clearSession();
           showJoin('Your previous game has ended. Join again.');

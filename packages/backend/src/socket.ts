@@ -257,7 +257,10 @@ export function attachSocketIO(
           socket.data.gameId = gameId;
           await setPlayerConnected(player.id, true);
           await engine.markConnected(gameId, player.id, true);
-          return { ok: true };
+          // Hand back the real current state, so a reconnect during a running
+          // game renders the live phase instead of dropping into the lobby.
+          const game = await engine.get(gameId);
+          return engine.playerSync(game, player.id);
         });
       },
     );

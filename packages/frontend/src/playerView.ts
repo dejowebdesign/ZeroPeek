@@ -7,10 +7,33 @@
  * play flow itself stays server-authoritative.
  */
 
-import type { PublicPlayer } from '@zeropeek/shared';
+import type { PlayerSync, PublicPlayer } from '@zeropeek/shared';
 
 import { el } from './dom.js';
 import { chip, emptyState } from './ui.js';
+
+/** Which player screen a reconnect state maps to. */
+export type PlayerScreen = 'lobby' | 'question' | 'reveal' | 'board' | 'end';
+
+/**
+ * Decide which screen a `PlayerSync` must render.
+ *
+ * This is the whole point of the reconnect fix: the screen follows the server's
+ * authoritative phase, never a client guess, so a player can never fall back to
+ * the lobby while the game runs. A `question` phase whose private result is
+ * already present renders the reveal view, which covers a reconnect that arrives
+ * in the same tick as the reveal (the event may already have passed the socket).
+ */
+export function screenForSync(sync: PlayerSync): PlayerScreen {
+  if (sync.phase === 'lobby') return 'lobby';
+  if (sync.phase === 'end') return 'end';
+  if (sync.phase === 'board') return 'board';
+  if (sync.phase === 'reveal') return 'reveal';
+  // `question` (and any phase that carries an open question): the private result
+  // is only set from the reveal onwards.
+  if (sync.answer?.result) return 'reveal';
+  return sync.question ? 'question' : 'lobby';
+}
 
 /** A short, human label for a player's connection state. */
 export function connectionState(connected: boolean): { label: string; tone: 'ok' | 'muted' } {

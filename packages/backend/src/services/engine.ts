@@ -28,14 +28,16 @@ import {
   scoreAnswer,
   snapshotToQuiz,
   type GamePhase,
+  type OwnResult,
   type PublicPlayer,
   type PublicQuestion,
   type Question,
   type Quiz,
+  type PlayerAnswerState,
+  type PlayerSync,
   type RankablePlayer,
   type ScoringSettings,
 } from '@zeropeek/shared';
-
 import { prisma } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { gameSettings, logEvent, listPlayers, setPhase } from './gameService.js';
@@ -94,6 +96,18 @@ function isUniqueViolation(error: unknown): boolean {
     'code' in error &&
     (error as { code?: string }).code === 'P2002'
   );
+}
+
+/**
+ * The private outcome label for a stored answer's correctness (0..1).
+ *
+ * Matches the reveal path in `socket.ts` (`correctness >= 1 ? 'correct' : 'wrong'`)
+ * and additionally reports `partial`, which `OwnResult` already allows.
+ */
+function outcomeOf(correctness: number): OwnResult['outcome'] {
+  if (correctness >= 1) return 'correct';
+  if (correctness > 0) return 'partial';
+  return 'wrong';
 }
 
 function publicPlayer(player: RuntimePlayer): PublicPlayer {
@@ -240,8 +254,58 @@ export class GameEngine extends EventEmitter<EngineEvents> {
         answeredQuestionId: null,
       });
     }
+    // Recover what a restart can rebuild safely: which players already answered
+    // the current question, and when the question opened. Both come from durable
+    // rows, so a reconnecting player sees their real answer state and a
+    // server-consistent clock instead of a fresh one.
+    await this.recoverCurrentQuestion(runtime);
     this.games.set(gameId, runtime);
     return runtime;
+  }
+
+  /**
+   * Restore the per-question runtime state that lives only in memory, from the
+   * rows that survive a restart. A question that is still open when the process
+   * dies has no timer left, so this also re-arms it for the remaining time (or
+   * reveals immediately if it has already expired).
+   */
+  private async recoverCurrentQuestion(runtime: RuntimeGame): Promise<void> {
+    if (runtime.phase !== 'question') return;
+    const question = this.currentQuestion(runtime);
+    if (!question) return;
+
+    const answers = await prisma.playerAnswer.findMany({
+      where: { gameId: runtime.id, questionId: question.id },
+      select: { playerId: true, answer: true },
+    });
+    for (const answer of answers) {
+      const player = runtime.players.get(answer.playerId);
+      if (player) player.answeredQuestionId = question.id;
+      const key = JSON.stringify(answer.answer ?? null);
+      runtime.distribution.set(key, (runtime.distribution.get(key) ?? 0) + 1);
+    }
+
+    const opened = await prisma.gameEvent.findFirst({
+      where: { gameId: runtime.id, type: 'question' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const openedAt = opened ? opened.createdAt.getTime() : Date.now();
+    runtime.openedAt = openedAt;
+
+    if (question.type === 'slide') return;
+    const remainingMs = question.timeLimit * 1000 + ANSWER_GRACE_MS - (Date.now() - openedAt);
+    if (remainingMs <= 0) {
+      // Deferred, not called inline: the runtime is not registered in `games`
+      // until `load` returns, and `reveal` -> `get` would otherwise await the
+      // very load that is awaiting this method.
+      setTimeout(() => {
+        void this.reveal(runtime.id).catch(() => undefined);
+      }, 0);
+      return;
+    }
+    runtime.timer = setTimeout(() => {
+      void this.reveal(runtime.id).catch(() => undefined);
+    }, remainingMs);
   }
 
   /** The current question, or null when there is none. */
@@ -502,6 +566,88 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     }
 
     return { accepted: true };
+  }
+
+  /**
+   * The authoritative, phase-aware state to hand a player on (re)connect.
+   *
+   * This is the single place that decides what a reconnecting player sees, so a
+   * player can never land in the lobby while the game runs. It reuses the public
+   * engine views (`publicQuestion`, `leaderboard`) and reads the player's own
+   * answer row from the database — the same durable row the reveal path uses —
+   * so the runtime mirror cannot hide an answer that was committed before a
+   * restart. The reveal's `correctIndex` and the quiz snapshot are never touched:
+   * only `publicQuestion`, `PublicPlayer` and the player's own answer are sent.
+   */
+  async playerSync(game: RuntimeGame, playerId: string): Promise<PlayerSync> {
+    const player = game.players.get(playerId);
+    if (!player) throw notFound('You are not in this game.');
+
+    const empty: PlayerSync = {
+      phase: game.phase,
+      question: null,
+      answer: null,
+      board: null,
+      podium: null,
+      placement: null,
+    };
+
+    if (game.phase === 'lobby') {
+      return { ...empty, board: this.leaderboard(game) };
+    }
+
+    if (game.phase === 'end') {
+      const ranked = this.leaderboard(game);
+      const index = ranked.findIndex((entry) => entry.id === playerId);
+      return {
+        ...empty,
+        board: ranked,
+        podium: ranked.slice(0, 3),
+        placement: { rank: index === -1 ? ranked.length + 1 : index + 1, score: player.score },
+      };
+    }
+
+    // question / reveal / board all describe a current question. `publicQuestion`
+    // strips the solution, so nothing here can leak the answer before the reveal.
+    const question = this.currentQuestion(game);
+    if (!question) return empty;
+
+    const stored = await prisma.playerAnswer.findUnique({
+      where: { playerId_questionId: { playerId, questionId: question.id } },
+    });
+    // The leaderboard ranks every player, so the player's own rank comes from it;
+    // nothing about another player's answers is exposed.
+    const ranked = this.leaderboard(game);
+    const rank = ranked.findIndex((entry) => entry.id === playerId) + 1;
+    const ownRank = rank === 0 ? ranked.length : rank;
+    const score = player.score;
+
+    const answer: PlayerAnswerState = {
+      questionId: question.id,
+      answered: stored !== null,
+      answer: stored ? (stored.answer ?? null) : null,
+      // Only the reveal makes the result meaningful. This mirrors the live
+      // `game:reveal` event, which also reports `unanswered` for a player who did
+      // not answer, so a reconnect and a live reveal render identically.
+      result:
+        game.phase === 'reveal'
+          ? stored
+            ? {
+                outcome: outcomeOf(stored.correctness),
+                points: stored.points,
+                score,
+                rank: ownRank,
+              }
+            : { outcome: 'unanswered', points: 0, score, rank: ownRank }
+          : null,
+    };
+
+    return {
+      ...empty,
+      question: this.publicQuestion(game),
+      answer,
+      board: game.phase === 'board' ? ranked : null,
+    };
   }
 
   /** The player's own result for the current question. */
