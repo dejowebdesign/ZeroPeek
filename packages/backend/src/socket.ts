@@ -18,7 +18,7 @@ import type { AppConfig } from './config.js';
 import { AppError, badRequest, conflict, forbidden, notFound } from './errors.js';
 import { prisma } from './db.js';
 import { engine } from './services/engine.js';
-import { findGameById, joinGame, rejoinGame, setPlayerConnected } from './services/gameService.js';
+import { rejoinGame, setPlayerConnected } from './services/gameService.js';
 import { resolveSession } from './sessions.js';
 
 /** Room helpers. Each player also gets a personal room for private results. */
@@ -287,17 +287,15 @@ export function attachSocketIO(
           const nickname = asString(payload?.nickname, 'nickname');
           const avatar = typeof payload?.avatar === 'string' ? payload.avatar : '';
 
-          const { game, player } = await joinGame(pin, nickname, avatar);
+          // The engine owns the join, because it must be serialised against the
+          // host's `start` under the same per-game phase lock (bugfix: a join
+          // that raced the start could otherwise leave the host on a stale
+          // lobby whose "Start game" the engine then rejects).
+          const { game, player } = await engine.join(pin, nickname, avatar);
           await socket.join(playerRoom(game.id));
           await socket.join(personalRoom(player.id));
           socket.data.playerId = player.id;
           socket.data.gameId = game.id;
-          await engine.addPlayer(game.id, {
-            id: player.id,
-            nickname: player.nickname,
-            avatar: player.avatar,
-            joinedAt: player.joinedAt,
-          });
           // Tell this player whether the host is reachable, so the status is
           // correct from the first screen rather than after the next change.
           socket.emit('game:host', { status: presenceFor(game.id) });
