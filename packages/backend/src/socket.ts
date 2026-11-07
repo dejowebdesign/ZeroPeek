@@ -12,10 +12,10 @@ import type { Server as HttpServer } from 'node:http';
 
 import { Server, type Socket } from 'socket.io';
 
-import type { PublicPlayer, Question } from '@zeropeek/shared';
+import type { PublicPlayer, Question, HostPresence } from '@zeropeek/shared';
 
 import type { AppConfig } from './config.js';
-import { AppError, badRequest, forbidden, notFound } from './errors.js';
+import { AppError, badRequest, conflict, forbidden, notFound } from './errors.js';
 import { prisma } from './db.js';
 import { engine } from './services/engine.js';
 import { findGameById, joinGame, rejoinGame, setPlayerConnected } from './services/gameService.js';
@@ -27,6 +27,13 @@ const hostRoom = (gameId: string): string => `game:${gameId}:hosts`;
 const personalRoom = (playerId: string): string => `player:${playerId}`;
 
 type AckFn<T> = (result: { ok: true; data: T } | { ok: false; error: string }) => void;
+
+/**
+ * How long a host presence change must hold before it is announced to players
+ * (Phase 6.5.3). A host socket that reconnects within this window is never shown
+ * as gone, so a brief network hiccup does not make the status flicker.
+ */
+const PRESENCE_DEBOUNCE_MS = 1500;
 
 /**
  * Parse a `Cookie` header.
@@ -89,6 +96,48 @@ export function attachSocketIO(
   const players = io.of('/');
   const hosts = io.of('/host');
 
+  /**
+   * The last host-presence value announced per game, and the debounce timers.
+   *
+   * A host dropping for a moment (a phone switching networks, a reload) must not
+   * flash "reconnecting" at the players, so a change is only announced once it
+   * has settled for `PRESENCE_DEBOUNCE_MS`. The very first `connected` for a game
+   * is sent without waiting, so players joining a live game are not told the host
+   * is away while the check runs.
+   */
+  const presenceByGame = new Map<string, HostPresence>();
+  const presenceTimers = new Map<string, NodeJS.Timeout>();
+
+  const currentPresence = (gameId: string): HostPresence =>
+    hosts.adapter.rooms.get(hostRoom(gameId))?.size ? 'connected' : 'reconnecting';
+
+  const publishPresence = (gameId: string): void => {
+    const status = currentPresence(gameId);
+    if (presenceByGame.get(gameId) === status) return;
+    presenceByGame.set(gameId, status);
+    // Only the host's reachability leaves the server here — never a phase, a
+    // session or any host data (Phase 6.5.3).
+    players.to(playerRoom(gameId)).emit('game:host', { status });
+  };
+
+  const announceHostPresence = (socket: Socket, gameId: string): void => {
+    const existing = presenceTimers.get(gameId);
+    if (existing) clearTimeout(existing);
+    if (presenceByGame.get(gameId) === undefined) {
+      publishPresence(gameId);
+      return;
+    }
+    const timer = setTimeout(() => {
+      presenceTimers.delete(gameId);
+      publishPresence(gameId);
+    }, PRESENCE_DEBOUNCE_MS);
+    presenceTimers.set(gameId, timer);
+  };
+
+  /** The presence a newly joined player should be told right away. */
+  const presenceFor = (gameId: string): HostPresence =>
+    presenceByGame.get(gameId) ?? currentPresence(gameId);
+
   // ---------------------------------------------------------------------------
   // Host namespace: authenticated from the session cookie.
   // ---------------------------------------------------------------------------
@@ -136,6 +185,7 @@ export function attachSocketIO(
         const game = await engine.create(quizId, user.id);
         await socket.join(hostRoom(game.id));
         socket.data.gameId = game.id;
+        announceHostPresence(socket, game.id);
         return engine.hostState(game);
       });
     });
@@ -147,6 +197,7 @@ export function attachSocketIO(
         const game = await engine.get(gameId);
         await socket.join(hostRoom(gameId));
         socket.data.gameId = gameId;
+        announceHostPresence(socket, gameId);
         // The full, phase-aware state, so a host that reloads mid-game resumes
         // the live screen instead of dropping back to the lobby.
         return engine.hostState(game);
@@ -183,6 +234,18 @@ export function attachSocketIO(
       'host:end',
       command((id) => engine.end(id)),
     );
+    socket.on(
+      'host:pause',
+      command((id) => engine.pause(id)),
+    );
+    socket.on(
+      'host:resume',
+      command((id) => engine.resume(id)),
+    );
+    socket.on(
+      'host:skip',
+      command((id) => engine.skip(id)),
+    );
 
     socket.on('host:kick', (payload: { gameId?: string; playerId?: string }, ack) => {
       guard(ack, async () => {
@@ -190,10 +253,25 @@ export function attachSocketIO(
         const playerId = asString(payload?.playerId, 'playerId');
         await assertHost(gameId);
         const game = await engine.get(gameId);
+        // Kick is a lobby action only (Phase 6.5.3): removing a player mid-game
+        // would silently rewrite a live ranking.
+        if (game.phase !== 'lobby') throw conflict('Players can only be removed in the lobby.');
+        if (!game.players.has(playerId)) throw notFound('That player is not in this game.');
         game.players.delete(playerId);
         await prisma.gamePlayer.deleteMany({ where: { id: playerId, gameId } });
+        // Tell the removed player first, then everyone else, so the roster the
+        // remaining players see never includes someone who has been told to go.
+        io.of('/').to(personalRoom(playerId)).emit('game:kicked', { reason: 'kicked' });
+        io.of('/').in(personalRoom(playerId)).socketsLeave(personalRoom(playerId));
+        io.of('/').in(personalRoom(playerId)).socketsLeave(playerRoom(gameId));
+        engine.emitLobby(game);
         return { ok: true };
       });
+    });
+
+    socket.on('disconnect', () => {
+      const gameId = socket.data.gameId as string | undefined;
+      if (gameId) announceHostPresence(socket, gameId);
     });
   });
 
@@ -220,6 +298,9 @@ export function attachSocketIO(
             avatar: player.avatar,
             joinedAt: player.joinedAt,
           });
+          // Tell this player whether the host is reachable, so the status is
+          // correct from the first screen rather than after the next change.
+          socket.emit('game:host', { status: presenceFor(game.id) });
           return { playerId: player.id, gameId: game.id, token: player.token };
         });
       },
@@ -242,6 +323,7 @@ export function attachSocketIO(
           // Hand back the real current state, so a reconnect during a running
           // game renders the live phase instead of dropping into the lobby.
           const game = await engine.get(gameId);
+          socket.emit('game:host', { status: presenceFor(gameId) });
           return engine.playerSync(game, player.id);
         });
       },
@@ -285,9 +367,21 @@ export function attachSocketIO(
     hosts.to(hostRoom(payload.gameId)).emit('host:answers', payload);
   });
 
-  engine.on('reveal', ({ gameId, question, distribution }) => {
-    hosts.to(hostRoom(gameId)).emit('host:reveal', { question, distribution });
-    void sendPlayerResults(io, gameId, question).catch(() => undefined);
+  engine.on('reveal', ({ gameId, reveal }) => {
+    hosts.to(hostRoom(gameId)).emit('host:reveal', reveal);
+    // A skipped reveal carries no solution, so `sendPlayerResults` only needs the
+    // question id and the fact that the question was neutralised.
+    void sendPlayerResults(io, gameId, reveal.question.id, reveal.skipped).catch(() => undefined);
+  });
+
+  engine.on('paused', ({ gameId, questionId, remainingMs }) => {
+    hosts.to(hostRoom(gameId)).emit('host:paused', { questionId, remainingMs });
+    players.to(playerRoom(gameId)).emit('game:paused', { questionId, remainingMs });
+  });
+
+  engine.on('resumed', ({ gameId, questionId, remainingMs }) => {
+    hosts.to(hostRoom(gameId)).emit('host:resumed', { questionId, remainingMs });
+    players.to(playerRoom(gameId)).emit('game:resumed', { questionId, remainingMs });
   });
 
   engine.on('board', ({ gameId, players: list }) => {
@@ -310,9 +404,14 @@ export function attachSocketIO(
 }
 
 /** Send each player their own private result for the revealed question. */
-async function sendPlayerResults(io: Server, gameId: string, question: Question): Promise<void> {
+async function sendPlayerResults(
+  io: Server,
+  gameId: string,
+  questionId: string,
+  skipped = false,
+): Promise<void> {
   const rows = await prisma.playerAnswer.findMany({
-    where: { gameId, questionId: question.id },
+    where: { gameId, questionId },
     select: { playerId: true, correctness: true, points: true },
   });
   const byPlayer = new Map(rows.map((row) => [row.playerId, row]));
@@ -323,8 +422,23 @@ async function sendPlayerResults(io: Server, gameId: string, question: Question)
   for (const player of game.players.values()) {
     const row = byPlayer.get(player.id);
     const rank = leaderboard.findIndex((entry) => entry.id === player.id) + 1;
+    // A skipped question is never scored: the player is told it was skipped, not
+    // handed a correct/wrong verdict for a question nobody was graded on.
+    if (skipped) {
+      io.to(personalRoom(player.id)).emit('game:reveal', {
+        questionId,
+        skipped: true,
+        result: {
+          outcome: 'skipped',
+          points: 0,
+          score: player.score,
+          rank: rank === 0 ? leaderboard.length : rank,
+        },
+      });
+      continue;
+    }
     io.to(personalRoom(player.id)).emit('game:reveal', {
-      questionId: question.id,
+      questionId,
       result: {
         outcome: row ? (row.correctness >= 1 ? 'correct' : 'wrong') : 'unanswered',
         points: row?.points ?? 0,

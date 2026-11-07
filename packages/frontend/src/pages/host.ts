@@ -9,20 +9,19 @@
  */
 
 import {
-  questionDisplay,
   type GamePhase,
   type HostConnectionStatus,
+  type HostReveal,
   type HostState,
   type PublicPlayer,
   type PublicQuestion,
-  type Question,
+  type QuestionType,
 } from '@zeropeek/shared';
 
 import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
-import { questionResult, solutionText } from '../questionView.js';
 import { leaderboardRow, podiumPlace, questionDisplayOptions } from '../showView.js';
 import {
   attachHostHandlers,
@@ -34,6 +33,7 @@ import {
   nextStatus,
   rememberedGame,
   rememberGame,
+  revealBody,
   type HostEventHandlers,
 } from '../hostView.js';
 import {
@@ -103,6 +103,9 @@ let connection: HostConnectionStatus = 'connected';
 let hasConnected = false;
 /** The node carrying the connection banner, replaced by every game screen. */
 let bannerNode: HTMLElement | null = null;
+/** The open question and its answer count, so pause/resume can re-render in place. */
+let currentQuestion: PublicQuestion | null = null;
+let currentAnswers: { answered: number; total: number } | null = null;
 
 /** Stop the countdown timer, if running. */
 function stopTimer(): void {
@@ -212,18 +215,50 @@ function ensureSocket(): HostSocket {
         renderHostState({ kind: 'lobby', pin: payload.pin, players: payload.players }),
       question: (question) => renderHostState({ kind: 'question', question }),
       answers: (payload) => {
+        // Keep the held count in step with the DOM, so a pause/resume re-render
+        // (which redraws from `currentAnswers`) shows the current number rather
+        // than the one from when the question opened.
+        currentAnswers = { answered: payload.answered, total: payload.total };
         if (answerCountNode) {
           answerCountNode.textContent = `${payload.answered} / ${payload.total} answers`;
         }
       },
-      reveal: (payload) =>
-        renderHostState({
-          kind: 'reveal',
-          question: payload.question,
-          distribution: payload.distribution,
-        }),
+      reveal: (payload) => renderHostState({ kind: 'reveal', reveal: payload }),
       board: (payload) => renderHostState({ kind: 'board', players: payload.players }),
       ended: (payload) => renderHostState({ kind: 'end', players: payload.players }),
+      // A pause/resume only changes the clock and the controls, so the question
+      // screen is re-rendered in place from the state already held, rather than
+      // waiting for a fresh `host:question`.
+      paused: (payload) => {
+        if (currentQuestion && currentQuestion.id === payload.questionId) {
+          renderHostState({
+            kind: 'question',
+            question: {
+              ...currentQuestion,
+              paused: true,
+              remainingMs: payload.remainingMs,
+            },
+            answers: currentAnswers,
+          });
+        }
+      },
+      resumed: (payload) => {
+        if (currentQuestion && currentQuestion.id === payload.questionId) {
+          const resumedAt = Date.now();
+          renderHostState({
+            kind: 'question',
+            question: {
+              ...currentQuestion,
+              paused: false,
+              remainingMs: null,
+              // The timer restarts from the resumed moment for the remaining time.
+              openedAt: resumedAt,
+              timeLimit: Math.max(1, Math.ceil(payload.remainingMs / 1000)),
+            },
+            answers: currentAnswers,
+          });
+        }
+      },
     } satisfies HostEventHandlers);
 
     host.on('connect', () => {
@@ -268,8 +303,12 @@ async function resync(): Promise<void> {
 /** The events a host screen can be rendered from, live or on reconnect. */
 type HostRender =
   | { kind: 'lobby'; pin: string; players: PublicPlayer[] }
-  | { kind: 'question'; question: PublicQuestion }
-  | { kind: 'reveal'; question: Question; distribution: Record<string, number> }
+  | {
+      kind: 'question';
+      question: PublicQuestion;
+      answers?: { answered: number; total: number } | null;
+    }
+  | { kind: 'reveal'; reveal: HostReveal }
   | { kind: 'board'; players: PublicPlayer[] }
   | { kind: 'end'; players: PublicPlayer[] }
   | { kind: 'sync'; state: HostState };
@@ -285,9 +324,7 @@ function renderHostState(input: HostRender): void {
     activeGame = { id: input.state.gameId, pin: input.state.pin };
     const screen = hostScreen(input.state);
     if (screen === 'lobby') return showLobby(input.state.pin, input.state.players ?? []);
-    if (screen === 'reveal' && input.state.reveal) {
-      return showReveal(input.state.reveal.question, input.state.reveal.distribution);
-    }
+    if (screen === 'reveal' && input.state.reveal) return showReveal(input.state.reveal);
     if (screen === 'board') return showBoard(input.state.players ?? []);
     if (screen === 'end') return showPodium(input.state.players ?? input.state.podium ?? []);
     if (input.state.question) return showQuestion(input.state.question, input.state.answers);
@@ -298,9 +335,9 @@ function renderHostState(input: HostRender): void {
     case 'lobby':
       return showLobby(input.pin, input.players);
     case 'question':
-      return showQuestion(input.question);
+      return showQuestion(input.question, input.answers);
     case 'reveal':
-      return showReveal(input.question, input.distribution);
+      return showReveal(input.reveal);
     case 'board':
       return showBoard(input.players);
     default:
@@ -527,11 +564,11 @@ function currentGameId(): string {
 
 /**
  * The control bar for a phase, built from `hostActions` so the allowed controls
- * always match the server's phase (hostView §hostActions). The end action keeps
- * its confirmation dialog; `home` leaves the game instead of commanding it.
+ * always match the server's phase (hostView §hostActions). Ending and skipping
+ * keep a confirmation dialog; `home` leaves the game instead of commanding it.
  */
-function controlsFor(phase: GamePhase): HTMLElement {
-  const nodes = hostActions(phase).map((action) => {
+function controlsFor(phase: GamePhase, isPaused = false, type?: QuestionType): HTMLElement {
+  const nodes = hostActions(phase, isPaused, type).map((action) => {
     if (action.id === 'home') {
       return button(action.label, {
         variant: action.variant,
@@ -550,6 +587,18 @@ function controlsFor(phase: GamePhase): HTMLElement {
           body: 'The current question ends immediately and the final results are shown. This cannot be undone.',
           confirmLabel: 'End game',
           onConfirm: () => void send('host:end'),
+        });
+      };
+      return node;
+    }
+    if (action.id === 'skip') {
+      const node = hostButton(action.label, 'host:skip', { variant: action.variant });
+      node.onclick = () => {
+        confirmDialog({
+          title: 'Skip this question?',
+          body: 'The question ends and is shown without its solution. It is not scored; answers already given stay on record.',
+          confirmLabel: 'Skip question',
+          onConfirm: () => void send('host:skip'),
         });
       };
       return node;
@@ -580,7 +629,12 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
     lobbyPlayerCount = list.length;
     players.replaceChildren(
       ...list.map((player) =>
-        el('li', { class: 'lobby__player' }, el('span', null, player.nickname)),
+        el(
+          'li',
+          { class: 'lobby__player' },
+          el('span', { class: 'lobby__player-name' }, player.nickname),
+          kickButton(player.id, player.nickname),
+        ),
       ),
     );
   };
@@ -608,6 +662,42 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
 }
 
 /**
+ * Remove a player from the lobby. Confirmed, because the removal is immediate
+ * and the player cannot rejoin the same slot without joining again.
+ */
+function kickButton(playerId: string, nickname: string): HTMLButtonElement {
+  const node = button('Remove', {
+    variant: 'danger',
+    small: true,
+    onClick: () => {
+      confirmDialog({
+        title: `Remove ${nickname}?`,
+        body: 'The player is removed from this lobby. They can join again with the PIN.',
+        confirmLabel: 'Remove',
+        onConfirm: () => void sendKick(playerId),
+      });
+    },
+  });
+  node.setAttribute('data-host-action', 'host:kick');
+  return node;
+}
+
+/** Send a kick for the game under control; the server re-checks the lobby. */
+async function sendKick(playerId: string): Promise<void> {
+  if (!canAct(connection)) {
+    toast('Reconnect before you continue.', 'error');
+    return;
+  }
+  const gameId = currentGameId();
+  if (!gameId) return;
+  try {
+    await request(ensureSocket(), 'host:kick', { gameId, playerId });
+  } catch (error) {
+    toast(errorText(error), 'error');
+  }
+}
+
+/**
  * Send a host command for the game under control, refusing to fire while the
  * socket is down so a stale click cannot be mistaken for a successful action.
  */
@@ -630,6 +720,9 @@ function showQuestion(
   question: PublicQuestion,
   answers?: { answered: number; total: number } | null,
 ): void {
+  currentQuestion = question;
+  currentAnswers = answers ?? null;
+
   const timer = countdown(question.timeLimit, 1);
   const count = el('p', { class: 'show__answers muted' }, '0 answers');
   answerCountNode = count;
@@ -655,6 +748,7 @@ function showQuestion(
           `Question ${question.index + 1} of ${question.total}`,
         ),
         el('h2', { class: 'question__prompt' }, question.text),
+        question.paused ? el('p', { class: 'show__paused' }, chip('Paused', 'warn', true)) : null,
         timer,
         count,
         options.length
@@ -671,25 +765,43 @@ function showQuestion(
               ),
             )
           : null,
-        el(
-          'div',
-          { class: 'show__controls' },
-          hostButton('Reveal', 'host:reveal', { variant: 'primary' }),
-        ),
+        controlsFor('question', question.paused, question.type),
       ),
     ),
   );
 
-  // The timer is derived from the server's original `openedAt`, so a reconnect
-  // continues the same countdown instead of restarting it.
-  startTimer(timer, question.openedAt, question.timeLimit);
+  if (question.paused) {
+    // Frozen at the server's remaining time: no interval runs, so the clock
+    // cannot move while the game is paused.
+    const remaining = Math.ceil((question.remainingMs ?? 0) / 1000);
+    const value = timer.querySelector<HTMLElement>('.countdown__value');
+    const limit = question.timeLimit * 1000;
+    if (value) value.textContent = `${remaining}s`;
+    timer.style.setProperty(
+      '--progress',
+      String(limit > 0 ? (question.remainingMs ?? 0) / limit : 0),
+    );
+  } else {
+    // The timer is derived from the server's original `openedAt`, so a reconnect
+    // continues the same countdown instead of restarting it.
+    startTimer(timer, question.openedAt, question.timeLimit);
+  }
   setConnection(connection);
 }
 
-/** The reveal screen: the distribution of answers. */
-function showReveal(question: Question, distribution: Record<string, number>): void {
+/**
+ * The reveal screen. A skipped question was neutralised, so it is shown as
+ * "Question skipped" and never with its solution or answer distribution
+ * (Phase 6.5.3, decision B). A regular reveal is unchanged.
+ */
+function showReveal(reveal: HostReveal): void {
   stopTimer();
   answerCountNode = null;
+  currentQuestion = null;
+  currentAnswers = null;
+
+  const body = revealBody(reveal);
+
   render(
     app,
     el(
@@ -699,11 +811,7 @@ function showReveal(question: Question, distribution: Record<string, number>): v
         'div',
         { class: 'show__board card question anim-fade-in' },
         connectionBanner(),
-        questionResult(
-          { text: question.text, type: question.type, display: questionDisplay(question) },
-          distribution,
-          solutionText(question),
-        ),
+        body,
         controlsFor('reveal'),
       ),
     ),

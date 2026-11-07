@@ -954,11 +954,34 @@ body::before {
 }
 
 .lobby__player {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 0.4rem 0.8rem;
   border-radius: var(--radius-pill);
   background: var(--glass-raised);
   border: var(--hairline) solid var(--border-strong);
   font-weight: 600;
+}
+
+.lobby__player-name {
+  overflow-wrap: anywhere;
+}
+
+/* The player's host-reachability banner (Phase 6.5.3). Only rendered while the
+   host is away, so it stays a real signal rather than permanent chrome. */
+.player-host-status {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-3);
+}
+
+/* The paused and skipped markers on the show surface. */
+.show__paused,
+.show__skipped {
+  display: flex;
+  justify-content: center;
+  margin: 0;
 }
 
 .lobby__actions {

@@ -1,7 +1,13 @@
-# Project memory — IHK Prüfungsübersicht
+# Project memory — ZeroPeek
 
 Durable, expensive-to-learn facts about this repo. Deep detail belongs in the
 daily logs; keep this file short.
+
+> NOTE: this file is far over the intended budget (~45 KB) and still carries
+> sections from unrelated projects (IHK, "Phase 12 header", the IHK verification
+> env). It needs a pruning pass — do that as its own change, not inside a feature
+> branch. `.openhands/memory/MEMORY.md` IS tracked in git, so keep it out of
+> feature PRs.
 
 ## Local verification environment (rebuild after any sandbox restart)
 
@@ -569,6 +575,36 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
 - Tests: `host-sync.integration.test.ts` (10, real Socket.IO + Postgres, loops the PR #29 phase
   lock 40×) and `hostView.test.ts` (20). Reverting the socket ACK fails 6/10 (real guard).
   Report `docs/reports/phase-6-5-2-host-state-sync.md`. PR **#30**, CI green (run 42391730209).
+
+## Extended host control (Phase 6.5.3, branch `feat/phase-6-5-3-extended-host-controls`)
+- Adds `host:pause`/`host:resume`/`host:skip` (engine `pause`/`resume`/`skip`), a lobby-only
+  `host:kick` with `game:kicked`, and **host presence** for players (`game:host`, from the
+  `/host` room size, debounced). `PublicQuestion` + `paused`/`remainingMs`; `HostState`/
+  `PlayerSync` + `paused`/`skipped`; `OwnResult.outcome` + `'skipped'`.
+- **No migration:** paused/skipped state is rows in the existing `GameEvent` log;
+  `recoverCurrentQuestion` restores a paused game **paused** (no timer) and the skipped flag
+  from the last `question`/`reveal`/`skipped`. `prisma migrate status` stays "up to date".
+- **Pause maths:** one `limitMs(q) = timeLimit*1000 + ANSWER_GRACE_MS` helper is the only place
+  that expression lives; resume shifts `openedAt` forward by the pause duration and re-arms the
+  timer once. `revealInternal` no-ops while paused unless `skipped`, so a stray timer/racing
+  click cannot un-pause. `submitAnswer` refuses while paused.
+- **Dead buttons:** a paused question offers only Resume+Skip (engine refuses plain reveal while
+  paused); no Pause for a `slide` (engine refuses it). Frontend must mirror engine refusals.
+- **`playerSync` must equal the live event.** A skipped reveal now reports `outcome:'skipped'`
+  from `playerSync` too — otherwise a reconnect mid-skip re-showed the live question.
+- Report `docs/reports/phase-6-5-3-extended-host-controls.md`, roadmap §6.2. Gate: 201+318+89 =
+  **608** green, typecheck/format/lint/build clean. Owner decisions (2026-11-07): a skip
+  **neutralises** the question (points refunded, `refundQuestion` atomic+idempotent; reports mark
+  it: `gameReport.skipped`, CSV `skipped` column, `quizStatistics.skippedGames`); a skipped
+  reveal carries **no solution** (`HostReveal` union, leak impossible by construction); a
+  **slide cannot be paused**. Draft PR opened on explicit owner approval.
+- **Never decide "the latest event" by ordering `GameEvent.createdAt`.** The column is
+  **millisecond precision only**, so two events written in the same tick have no defined order —
+  `reveal` + `skipped` and `paused` + `resumed` are written back to back and do exactly that.
+  This passed locally by timing luck and failed on CI. Recovery reads the game log in **one
+  query** and matches by `questionId` in JS, with no ordering assumption: skipped = a `skipped`
+  event exists; paused = `pauses > resumes` (they strictly alternate); frozen remainder =
+  `min(remainingMs)` over the pauses (successive pauses never increase it).
 
 ## Frontend design system (Phase 6.1, PR #18)
 - Style: **"Dark Retro-Futuristic Wireframe & Glassmorphism"** — presentation only.

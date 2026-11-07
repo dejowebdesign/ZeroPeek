@@ -8,6 +8,7 @@
  */
 
 import type {
+  HostPresence,
   OwnResult,
   PlayerAnswerState,
   PlayerSync,
@@ -19,14 +20,43 @@ import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { questionInput, questionPrompt } from '../questionView.js';
-import { lobbyRoster, profilePlaceholder, registerOffer, screenForSync } from '../playerView.js';
+import {
+  hostStatusChip,
+  lobbyRoster,
+  profilePlaceholder,
+  registerOffer,
+  screenForSync,
+} from '../playerView.js';
 import { button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
 
 const STORAGE_KEY = 'zeropeek.player';
 
+/** The host's reachability as last announced, or null before the first event. */
+let hostStatus: HostPresence | null = null;
+/** The open question and this player's prior answer, so pause/resume re-renders in place. */
+let currentQuestion: PublicQuestion | null = null;
+let currentPrior: PlayerAnswerState | null = null;
+/** A closure that repaints the current screen, so a host-status change re-renders it. */
+let repaint: (() => void) | null = null;
+
+/** Repaint the current screen in place (used when only the host status changed). */
+function rerenderCurrent(): void {
+  repaint?.();
+}
+
 /** Wrap a centred screen in the player shell, marking the active nav entry. */
 function shell(active: string, content: HTMLElement): HTMLElement {
-  return appShell({ role: 'player', active, children: [content] });
+  // Remember how to redraw this exact screen, so a host-status change can repaint
+  // in place (the chip is part of the shell) without losing the current view.
+  repaint = () => render(app, shell(active, content));
+  // The host-status chip is prepended to every screen, so a host dropping out is
+  // visible wherever the player is. It renders nothing while the host is fine.
+  const host = hostStatusChip(hostStatus);
+  return appShell({
+    role: 'player',
+    active,
+    children: host ? [host, content] : [content],
+  });
 }
 
 interface StoredSession {
@@ -169,11 +199,13 @@ const app: HTMLElement = appElement;
 
   /** Show an open question. `prior` carries a reconnect's existing answer. */
   function showQuestion(question: PublicQuestion, prior?: PlayerAnswerState | null): void {
+    currentQuestion = question;
+    currentPrior = prior ?? null;
     let submitted = prior?.answered === true;
     const feedback = el('div');
     if (submitted) feedback.replaceChildren(notice('Answer received.', 'success'));
     const input = questionInput(question, async (answer) => {
-      if (submitted) return;
+      if (submitted || question.paused) return;
       submitted = true;
       feedback.replaceChildren(spinner('Sending…'));
       try {
@@ -184,9 +216,10 @@ const app: HTMLElement = appElement;
         feedback.replaceChildren(notice(errorText(error), 'error'));
       }
     });
-    if (prior?.answered) {
-      // Already answered: the control stays visible but inert, so a reconnecting
-      // player cannot submit a second answer for the same question.
+    if (prior?.answered || question.paused) {
+      // Already answered (or the question is paused): the control stays visible
+      // but inert, so a player cannot submit a second answer or answer a frozen
+      // question.
       input.querySelectorAll('button, input, select, textarea').forEach((node) => {
         (node as HTMLButtonElement).disabled = true;
       });
@@ -208,6 +241,7 @@ const app: HTMLElement = appElement;
               `Question ${question.index + 1} of ${question.total}`,
             ),
             questionPrompt(question),
+            question.paused ? notice('The host paused the game.', 'info') : null,
             input,
             feedback,
           ),
@@ -218,6 +252,30 @@ const app: HTMLElement = appElement;
 
   /** Show the player's own result for the revealed question. */
   function showResult(questionId: string, result: OwnResult): void {
+    if (result.outcome === 'skipped') {
+      render(
+        app,
+        shell(
+          'questions',
+          el(
+            'section',
+            { class: 'centered' },
+            el(
+              'div',
+              { class: 'card anim-slide-up' },
+              el('p', { class: 'notice notice--info' }, 'Question skipped'),
+              el(
+                'p',
+                { class: 'lobby__actions' },
+                chip('Not scored', 'muted', true),
+                chip(`Score ${result.score}`, 'accent'),
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
     const tone =
       result.outcome === 'correct'
         ? 'notice--success'
@@ -398,6 +456,38 @@ const app: HTMLElement = appElement;
   socket.on('game:reveal', (payload) => showResult(payload.questionId, payload.result));
   socket.on('game:board', (payload) => showBoard(payload.players));
   socket.on('game:ended', (payload) => showEnd(payload));
+
+  // The host's reachability: update the banner state and re-render the current
+  // screen so the chip appears or disappears without a full navigation.
+  socket.on('game:host', (payload) => {
+    hostStatus = payload.status;
+    rerenderCurrent();
+  });
+
+  // Pause/resume only change the clock and the controls, so the open question is
+  // re-rendered from the state already held.
+  socket.on('game:paused', (payload) => {
+    if (currentQuestion && currentQuestion.id === payload.questionId) {
+      currentQuestion = { ...currentQuestion, paused: true, remainingMs: payload.remainingMs };
+      showQuestion(currentQuestion, currentPrior);
+    }
+  });
+  socket.on('game:resumed', (payload) => {
+    if (currentQuestion && currentQuestion.id === payload.questionId) {
+      // The player screen shows no clock of its own, so resuming only has to
+      // unfreeze the answer control.
+      currentQuestion = { ...currentQuestion, paused: false, remainingMs: null };
+      showQuestion(currentQuestion, currentPrior);
+    }
+  });
+
+  // The host removed this player. Clear the stored session so a reload does not
+  // try to reclaim a slot that no longer exists, and return to the join form.
+  socket.on('game:kicked', () => {
+    clearSession();
+    hostStatus = null;
+    showJoin('You were removed from the game by the host.');
+  });
 
   // ---------------------------------------------------------------------------
   // Boot: the profile placeholder is reachable by URL, otherwise reconnect if a

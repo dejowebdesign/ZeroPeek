@@ -23,6 +23,8 @@ function question(display: Record<string, unknown>): PublicQuestion {
     openedAt: 0,
     index: 0,
     total: 1,
+    paused: false,
+    remainingMs: null,
   };
 }
 

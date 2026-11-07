@@ -7,7 +7,7 @@
  * play flow itself stays server-authoritative.
  */
 
-import type { PlayerSync, PublicPlayer } from '@zeropeek/shared';
+import type { HostPresence, PlayerSync, PublicPlayer } from '@zeropeek/shared';
 
 import { el } from './dom.js';
 import { chip, emptyState } from './ui.js';
@@ -33,6 +33,36 @@ export function screenForSync(sync: PlayerSync): PlayerScreen {
   // is only set from the reveal onwards.
   if (sync.answer?.result) return 'reveal';
   return sync.question ? 'question' : 'lobby';
+}
+
+/**
+ * The label and tone for the host's reachability, as the player sees it.
+ *
+ * This is about the host's connection only — never the game phase — so a player
+ * is told that the host is away without any suggestion the game itself stopped.
+ * The wording carries the meaning; the chip's dot and colour only reinforce it.
+ */
+export function hostPresenceStatus(status: HostPresence): {
+  label: string;
+  tone: 'ok' | 'warn';
+} {
+  return status === 'connected'
+    ? { label: 'Host connected', tone: 'ok' }
+    : { label: 'Host reconnecting…', tone: 'warn' };
+}
+
+/**
+ * The player's host-status indicator.
+ *
+ * Rendered only when the host is *not* reachable: a permanent "Host connected"
+ * badge would be noise on every screen, and the meaningful signal is the host
+ * being away. Returns `null` while the host is fine or before the first event,
+ * so the shell adds nothing.
+ */
+export function hostStatusChip(status: HostPresence | null): HTMLElement | null {
+  if (status !== 'reconnecting') return null;
+  const { label, tone } = hostPresenceStatus(status);
+  return el('div', { class: 'player-host-status', role: 'status' }, chip(label, tone, true));
 }
 
 /** A short, human label for a player's connection state. */
