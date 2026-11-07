@@ -42,7 +42,14 @@ import {
 } from '@zeropeek/shared';
 import { prisma } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
-import { gameSettings, logEvent, listPlayers, setPhase } from './gameService.js';
+import {
+  findGameByPin,
+  gameSettings,
+  joinGame as joinGameRow,
+  logEvent,
+  listPlayers,
+  setPhase,
+} from './gameService.js';
 import { getQuiz } from './quizService.js';
 import { quizForGame, startWithSnapshot } from './snapshotService.js';
 
@@ -453,10 +460,45 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /** The lobby roster and PIN, broadcast to hosts and players. */
   emitLobby(game: RuntimeGame): void {
+    // Never broadcast a lobby once the game has left it. A roster that arrives
+    // after the question opened is exactly what stranded a host on the lobby
+    // screen while the engine had already moved on.
+    if (game.phase !== 'lobby') return;
     this.emit('lobby', {
       gameId: game.id,
       pin: game.pin,
       players: [...game.players.values()].map(publicPlayer),
+    });
+  }
+
+  /**
+   * Join a player to a game's lobby, serialised against the host's `start`.
+   *
+   * The row is written and the runtime updated under the same per-game phase
+   * lock `start` takes, so the two can never interleave: either the join lands
+   * first — and the player is in the roster the start freezes — or the start
+   * lands first and the join is refused because the game has left the lobby.
+   * Without this, a join that passed its own phase check could still commit its
+   * row and broadcast a stale lobby *after* the game had started, leaving the
+   * host on a lobby whose "Start game" the engine then rejects with "The game
+   * has already started."
+   */
+  async join(pin: string, nickname: string, avatar = '') {
+    // The lock is keyed by game id, so the game has to be resolved first. This
+    // lookup is read-only and safe outside the lock.
+    const found = await findGameByPin(pin);
+    return this.withPhaseLock(found.id, async () => {
+      // Re-checks the lobby phase from the database and rejects a duplicate
+      // nickname; both happen under the lock, so the check and the write cannot
+      // be split by a concurrent start.
+      const { game, player } = await joinGameRow(pin, nickname, avatar);
+      await this.addPlayer(game.id, {
+        id: player.id,
+        nickname: player.nickname,
+        avatar: player.avatar,
+        joinedAt: player.joinedAt,
+      });
+      return { game, player };
     });
   }
 
