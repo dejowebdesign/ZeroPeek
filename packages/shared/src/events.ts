@@ -83,6 +83,38 @@ export interface PlayerSync {
   placement: { rank: number; score: number } | null;
 }
 
+/**
+ * The authoritative, phase-aware state a host receives on (re)connect.
+ *
+ * Deliberately separate from `PlayerSync`: a host may see the solution and the
+ * full answer distribution, and may never answer, so the two contracts must not
+ * be interchangeable. Every field maps 1:1 onto an existing host event payload,
+ * so a reconnect renders through the same code as the live events and the host
+ * screen can never drift from what the engine broadcasts.
+ *
+ * Nothing here is derived on the client. `question` carries the full `Question`
+ * (with `correctIndex`) only from the reveal onwards, mirroring `host:reveal`;
+ * before that it is the solution-free `PublicQuestion` of `host:question`.
+ */
+export interface HostState {
+  gameId: string;
+  pin: string;
+  phase: GamePhase;
+  /** The open question, or null outside `question`/`reveal`/`board`. */
+  question: PublicQuestion | null;
+  /** The revealed question with its solution, only in `reveal`. */
+  reveal: { question: Question; distribution: Record<string, number> } | null;
+  /** The full roster / leaderboard, or null if not applicable. */
+  players: PublicPlayer[] | null;
+  /** The final ranking, only in `end`. */
+  podium: PublicPlayer[] | null;
+  /** Answered / total for the open question, or null. */
+  answers: { answered: number; total: number } | null;
+}
+
+/** The host's own connection state, as shown in the control bar. */
+export type HostConnectionStatus = 'connected' | 'reconnecting' | 'offline';
+
 /** Server → player events (namespace `/`). */
 export interface PlayerServerEvents {
   'game:joined': (payload: { playerId: string; gameId: string; nickname: string }) => void;
@@ -123,17 +155,14 @@ export interface HostServerEvents {
 
 /** Host → server events (namespace `/host`). */
 export interface HostClientEvents {
-  'host:create': (payload: { quizId: string }, ack: Ack<{ gameId: string; pin: string }>) => void;
+  'host:create': (payload: { quizId: string }, ack: Ack<HostState>) => void;
   'host:start': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:next': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:reveal': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:board': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:end': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:kick': (payload: { gameId: string; playerId: string }, ack: Ack<{ ok: boolean }>) => void;
-  'host:join': (
-    payload: { gameId: string },
-    ack: Ack<{ pin: string; phase: GamePhase; players: PublicPlayer[] }>,
-  ) => void;
+  'host:join': (payload: { gameId: string }, ack: Ack<HostState>) => void;
 }
 
 /** Convenience alias used by the frontend socket wrapper. */

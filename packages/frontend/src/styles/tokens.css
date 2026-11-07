@@ -1708,6 +1708,22 @@ body::before {
   margin-top: var(--space-2);
 }
 
+/*
+ * The host's connection banner (Phase 6.5.2). Present on every game screen so a
+ * dropped socket is visible at once; the chip carries the meaning, the colour
+ * only reinforces it (design-concept §3.3). Hidden while connected so it does
+ * not add noise to the beamer.
+ */
+.host-connection {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-3);
+}
+
+.host-connection--connected {
+  display: none;
+}
+
 /* Leaderboard on the beamer: roomier rows and larger type. */
 .leaderboard--show {
   width: 100%;

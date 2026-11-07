@@ -70,22 +70,6 @@ function asString(value: unknown, field: string): string {
   return value;
 }
 
-function toPublic(player: {
-  id: string;
-  nickname: string;
-  avatar: string;
-  score: number;
-  connected: boolean;
-}): PublicPlayer {
-  return {
-    id: player.id,
-    nickname: player.nickname,
-    avatar: player.avatar,
-    score: player.score,
-    connected: player.connected,
-  };
-}
-
 export interface SocketLayer {
   io: Server;
   close: () => Promise<void>;
@@ -152,7 +136,7 @@ export function attachSocketIO(
         const game = await engine.create(quizId, user.id);
         await socket.join(hostRoom(game.id));
         socket.data.gameId = game.id;
-        return { gameId: game.id, pin: game.pin };
+        return engine.hostState(game);
       });
     });
 
@@ -163,11 +147,9 @@ export function attachSocketIO(
         const game = await engine.get(gameId);
         await socket.join(hostRoom(gameId));
         socket.data.gameId = gameId;
-        return {
-          pin: game.pin,
-          phase: game.phase,
-          players: [...game.players.values()].map(toPublic),
-        };
+        // The full, phase-aware state, so a host that reloads mid-game resumes
+        // the live screen instead of dropping back to the lobby.
+        return engine.hostState(game);
       });
     });
 

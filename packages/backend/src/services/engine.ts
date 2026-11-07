@@ -28,6 +28,7 @@ import {
   scoreAnswer,
   snapshotToQuiz,
   type GamePhase,
+  type HostState,
   type OwnResult,
   type PublicPlayer,
   type PublicQuestion,
@@ -680,6 +681,61 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       answer,
       board: game.phase === 'board' ? ranked : null,
     };
+  }
+
+  /**
+   * The authoritative, phase-aware state to hand a host on (re)connect.
+   *
+   * The host is the game master, never a participant: this never includes an
+   * answer slot, and the roster is the same `PublicPlayer[]` the leaderboard
+   * already uses, so a host can never appear in it. Unlike `PlayerSync` this may
+   * expose the solution — but only from the reveal onwards, mirroring exactly
+   * when `host:reveal` fires, so a reconnect cannot leak the answer early.
+   */
+  hostState(game: RuntimeGame): HostState {
+    const roster = [...game.players.values()].map(publicPlayer);
+    const empty: HostState = {
+      gameId: game.id,
+      pin: game.pin,
+      phase: game.phase,
+      question: null,
+      reveal: null,
+      players: null,
+      podium: null,
+      answers: null,
+    };
+
+    if (game.phase === 'lobby') {
+      return { ...empty, players: roster };
+    }
+
+    if (game.phase === 'end') {
+      const ranked = this.leaderboard(game);
+      return { ...empty, players: ranked, podium: ranked.slice(0, 3) };
+    }
+
+    const question = this.currentQuestion(game);
+    if (!question) return empty;
+
+    const answered = [...game.players.values()].filter(
+      (player) => player.answeredQuestionId === question.id,
+    ).length;
+    const answers = { answered, total: game.players.size };
+
+    if (game.phase === 'reveal') {
+      return {
+        ...empty,
+        question: this.publicQuestion(game),
+        reveal: { question, distribution: Object.fromEntries(game.distribution) },
+        answers,
+      };
+    }
+
+    if (game.phase === 'board') {
+      return { ...empty, players: this.leaderboard(game) };
+    }
+
+    return { ...empty, question: this.publicQuestion(game), answers };
   }
 
   /** The player's own result for the current question. */

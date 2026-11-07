@@ -36,6 +36,7 @@ Nothing is implemented until the project owner approves it.
 | 6.3   | Login, registration, starfield       | Done (merged, PR #25) – `docs/reports/phase-6-3-*`                                                                             |
 | 6.4   | Quiz management, editor, snapshot    | Done (merged, PR #26) – `docs/reports/phase-6-4-quiz-editor-snapshot.md`                                                       |
 | 6.5.1 | Admin modernisation                  | Done (merged, PR #27) – `docs/reports/phase-6-5-1-admin.md`                                                                    |
+| 6.5.2 | Host control and phase display       | In review – `docs/reports/phase-6-5-2-host-state-sync.md`; roadmap §6.1                                                        |
 
 See `docs/concept/README.md` for the reading order.
 
