@@ -90,8 +90,13 @@ openedAt }`.
   racing host click cannot un-pause the game.
 - `submitAnswer` refuses while paused, so the closed window cannot be reopened.
 - `recoverCurrentQuestion` restores a paused game **paused** (no timer armed), and re-derives
-  the skipped flag from the last of `question`/`reveal`/`skipped`. A restart therefore cannot
-  make a paused game run on or auto-end.
+  the skipped flag and the pause state from the event log. It reads the log in **one query** and
+  matches by `questionId` rather than ordering by `createdAt`: that column has only millisecond
+  precision, so two events written in the same tick (`reveal` + `skipped`, `paused` + `resumed`)
+  have no defined order and a "latest event" lookup would be a coin flip. Pause vs. resume is
+  decided by counting (`pauses > resumes`) and the frozen remainder is the smallest of the pauses
+  (successive pauses never increase the remainder) — both order-free. A restart therefore cannot
+  make a paused game run on or auto-end, and cannot lose a skip.
 - `playerSync` now reports `outcome: 'skipped'` (not `null`) during a skipped reveal, so a
   reconnecting player sees the same screen the live event showed.
 

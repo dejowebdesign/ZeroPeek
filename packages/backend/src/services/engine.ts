@@ -339,21 +339,32 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * a paused game run on or auto-end (Phase 6.5.3).
    */
   private async recoverCurrentQuestion(runtime: RuntimeGame): Promise<void> {
-    // The skipped flag outlives a restart: the last of `question`/`reveal`/`skipped`
-    // for this game tells us whether the current question was skipped (a fresh
-    // question logs `question`, which resets it). Recovered before the phase guard
-    // so a restart during `reveal`/`board` still marks the question as skipped.
-    const lastTransition = await prisma.gameEvent.findFirst({
-      where: { gameId: runtime.id, type: { in: ['question', 'reveal', 'skipped'] } },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (lastTransition?.type === 'skipped') {
-      runtime.skippedQuestionId = this.currentQuestion(runtime)?.id ?? null;
-    }
-
-    if (runtime.phase !== 'question') return;
     const question = this.currentQuestion(runtime);
-    if (!question) return;
+
+    // Everything the recovery needs is in the game's event log, read in one query
+    // and matched by `questionId` in JS rather than ordered by `createdAt`: the
+    // column has only millisecond precision, so events written in the same tick
+    // (a `reveal` and its `skipped`, a `paused` and its `resumed`) have no defined
+    // order and a "latest event" lookup would be a coin flip.
+    const events = await prisma.gameEvent.findMany({
+      where: { gameId: runtime.id, type: { in: ['question', 'paused', 'resumed', 'skipped'] } },
+      select: { type: true, data: true, createdAt: true },
+    });
+    const forQuestion = (type: string) =>
+      events.filter(
+        (event) =>
+          event.type === type &&
+          (event.data as { questionId?: string }).questionId === question?.id,
+      );
+
+    // The skipped flag outlives a restart: a question was skipped iff the log
+    // holds a `skipped` event for it. A question is asked once per game and a skip
+    // is never followed by re-asking it, so this is an existence check, and it
+    // runs before the phase guard so a restart during `reveal`/`board` still
+    // marks the question as skipped.
+    runtime.skippedQuestionId = question && forQuestion('skipped').length > 0 ? question.id : null;
+
+    if (runtime.phase !== 'question' || !question) return;
 
     const answers = await prisma.playerAnswer.findMany({
       where: { gameId: runtime.id, questionId: question.id },
@@ -366,32 +377,30 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       runtime.distribution.set(key, (runtime.distribution.get(key) ?? 0) + 1);
     }
 
-    const opened = await prisma.gameEvent.findFirst({
-      where: { gameId: runtime.id, type: 'question' },
-      orderBy: { createdAt: 'desc' },
-    });
-    const openedAt = opened ? opened.createdAt.getTime() : Date.now();
-    runtime.openedAt = openedAt;
+    const opened = forQuestion('question')[0];
+    runtime.openedAt = opened ? opened.createdAt.getTime() : Date.now();
 
-    // Was the last word on this question a pause (rather than a resume)? If so the
-    // remaining time is frozen in that event and no timer may run.
-    const lastPause = await prisma.gameEvent.findFirst({
-      where: { gameId: runtime.id, type: { in: ['paused', 'resumed'] } },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (lastPause?.type === 'paused') {
-      const data = (lastPause.data ?? {}) as { remainingMs?: number; openedAt?: number };
+    // Was the last word on this question a pause (rather than a resume)? Pause and
+    // resume strictly alternate, starting with pause, so a count comparison is
+    // order-free: more pauses than resumes means the game is paused at rest.
+    const pauses = forQuestion('paused');
+    if (pauses.length > forQuestion('resumed').length) {
+      // Successive pauses freeze a non-increasing remainder, so the smallest is
+      // the current one — again no reliance on event order.
+      const remainingMs = Math.min(
+        ...pauses.map((event) => (event.data as { remainingMs?: number }).remainingMs ?? 0),
+      );
       runtime.paused = true;
-      runtime.pausedAt = lastPause.createdAt.getTime();
-      runtime.remainingMs = data.remainingMs ?? 0;
-      // Shift the clock forward by the pause so a later resume keeps the timing
-      // consistent with what the host paused at.
-      if (typeof data.openedAt === 'number') runtime.openedAt = data.openedAt;
+      runtime.remainingMs = remainingMs;
+      // Anchor the clock to "now" so the frozen remainder is exact and a later
+      // resume continues from here; this needs no historical pause timestamp.
+      runtime.pausedAt = Date.now();
+      runtime.openedAt = Date.now() - (limitMs(question) - remainingMs);
       return;
     }
 
     if (question.type === 'slide') return;
-    const remainingMs = limitMs(question) - (Date.now() - openedAt);
+    const remainingMs = limitMs(question) - (Date.now() - runtime.openedAt);
     if (remainingMs <= 0) {
       // Deferred, not called inline: the runtime is not registered in `games`
       // until `load` returns, and `reveal` -> `get` would otherwise await the
@@ -1011,12 +1020,9 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     game.remainingMs = remainingMs;
 
     // Persisted in the existing event log (no migration): after a restart a
-    // paused game must not silently run on or auto-end (Phase 6.5.3).
-    await logEvent(gameId, 'paused', {
-      questionId: question.id,
-      remainingMs,
-      openedAt: game.openedAt ?? Date.now(),
-    });
+    // paused game must not silently run on or auto-end (Phase 6.5.3). Recovery
+    // reads this back by `questionId`, so no event ordering is needed.
+    await logEvent(gameId, 'paused', { questionId: question.id, remainingMs });
 
     this.emit('paused', { gameId, questionId: question.id, remainingMs });
     return game.phase;
