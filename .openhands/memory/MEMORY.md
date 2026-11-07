@@ -568,7 +568,7 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   unknown`, else the real `Socket` (literal event union) is not assignable — cast once inside.
 - Tests: `host-sync.integration.test.ts` (10, real Socket.IO + Postgres, loops the PR #29 phase
   lock 40×) and `hostView.test.ts` (20). Reverting the socket ACK fails 6/10 (real guard).
-  Report `docs/reports/phase-6-5-2-host-state-sync.md`.
+  Report `docs/reports/phase-6-5-2-host-state-sync.md`. PR **#30**, CI green (run 42391730209).
 
 ## Frontend design system (Phase 6.1, PR #18)
 - Style: **"Dark Retro-Futuristic Wireframe & Glassmorphism"** — presentation only.
