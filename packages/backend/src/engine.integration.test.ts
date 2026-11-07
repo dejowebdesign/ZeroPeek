@@ -380,4 +380,25 @@ describe.skipIf(!available)('game engine integration', () => {
     expect(runtime.players.get(playerId)!.answeredQuestionId).toBe(question.id);
     expect(runtime.players.get(playerId)!.score).toBe(stored!.points);
   });
+
+  it('never lets an auto-reveal overwrite a finished game', async () => {
+    // With a single player, `submitAnswer` auto-reveals fire-and-forget while the
+    // host may `end` the game in the same tick. Before the fix the two ran
+    // concurrently and the reveal's `setPhase('reveal')` could land *after*
+    // `setPhase('end')`, leaving a finished game persisted as `reveal` with no
+    // `endedAt`. This drives that race many times to catch the interleaving.
+    let stuck = 0;
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const { gameId, playerId } = await freshGame(['Ada']);
+      await engine.start(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, playerId, question.id, 0);
+      await engine.end(gameId);
+
+      const row = await prisma.game.findUnique({ where: { id: gameId } });
+      if (row!.phase !== 'end' || row!.endedAt === null) stuck += 1;
+      engine.evict(gameId);
+    }
+    expect(stuck).toBe(0);
+  }, 60_000);
 });

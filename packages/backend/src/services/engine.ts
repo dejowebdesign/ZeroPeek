@@ -147,6 +147,30 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    */
   private readonly answerLocks = new Map<string, Promise<void>>();
 
+  /**
+   * In-flight phase transitions, keyed by game id. Every transition runs to
+   * completion before the next one starts, so a fire-and-forget auto-reveal
+   * cannot interleave with a host's `end`: without this, the reveal's
+   * `setPhase('reveal')` write could land *after* `setPhase('end')` and leave a
+   * finished game stuck in the `reveal` phase (and without an `endedAt`).
+   */
+  private readonly phaseLocks = new Map<string, Promise<void>>();
+
+  /** Serialise `task` against any other phase transition of the same game. */
+  private withPhaseLock<T>(gameId: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.phaseLocks.get(gameId) ?? Promise.resolve();
+    const run = previous.then(task, task);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.phaseLocks.set(gameId, tail);
+    void tail.then(() => {
+      if (this.phaseLocks.get(gameId) === tail) this.phaseLocks.delete(gameId);
+    });
+    return run;
+  }
+
   /** Serialise `task` against any other submission for the same key. */
   private withAnswerLock<T>(key: string, task: () => Promise<T>): Promise<T> {
     const previous = this.answerLocks.get(key) ?? Promise.resolve();
@@ -393,13 +417,17 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * snapshot guarantee Phase 6.4 has to keep.
    */
   async next(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.nextInternal(gameId));
+  }
+
+  private async nextInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     if (game.phase === 'lobby') throw conflict('Start the game first.');
     this.clearTimer(game);
 
     const nextIndex = game.currentIndex + 1;
     if (nextIndex >= game.quiz.questions.length) {
-      return this.end(gameId);
+      return this.endInternal(gameId);
     }
 
     game.currentIndex = nextIndex;
@@ -434,6 +462,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /** Start the game: freeze the quiz, leave the lobby and open the first question. */
   async start(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.startInternal(gameId));
+  }
+
+  private async startInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     if (game.phase !== 'lobby') throw conflict('The game has already started.');
     if (game.players.size === 0) throw conflict('Nobody has joined yet.');
@@ -447,7 +479,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     game.currentIndex = -1;
     // The snapshot is in place, so it is safe to leave the lobby now.
     game.phase = 'question';
-    return this.next(gameId);
+    return this.nextInternal(gameId);
   }
 
   /**
@@ -670,6 +702,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /** Reveal the answer to the current question and show the distribution. */
   async reveal(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.revealInternal(gameId));
+  }
+
+  private async revealInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     this.clearTimer(game);
     // Idempotent: the auto-reveal when everyone has answered may race a host
@@ -699,6 +735,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /** Show the leaderboard for the current question. */
   async board(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.boardInternal(gameId));
+  }
+
+  private async boardInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     this.clearTimer(game);
     if (game.phase === 'board' || game.phase === 'end') return game.phase;
@@ -715,6 +755,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /** End the game and persist the final ordering. */
   async end(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.endInternal(gameId));
+  }
+
+  private async endInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     this.clearTimer(game);
     if (game.phase === 'end') return 'end';
