@@ -286,6 +286,25 @@ und Schwierigkeitsstufen (Selects/Filter).
 
 **Bestandsschutz:** Alle vorhandenen Admin-Funktionen bleiben. Die Regeln bleiben **serverseitig**.
 
+### 6.1 Phase 6.5.2 – Host-Steuerung und Phasenanzeige
+
+**Stand:** umgesetzt (Branch `feat/phase-6-5-2-host-state-sync`, Report
+`docs/reports/phase-6-5-2-host-state-sync.md`).
+
+| Punkt                      | Inhalt                                                                                                                                                    |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Die Host-Konsole wird **servergeführt**: verbindlicher Phasenzustand, aus der Phase abgeleitete Steuerung, Verbindungsanzeige, Reconnect-Synchronisierung |
+| **Betroffene Komponenten** | `packages/shared/src/events.ts`, `services/engine.ts`, `socket.ts`, `pages/host.ts`, neue `hostView.ts`, `styles/tokens.css`                              |
+| **Datenmodelle**           | keine                                                                                                                                                     |
+| **API-Änderungen**         | keine Route; `host:create`/`host:join` ACKen jetzt mit `HostState` (erweitert, nicht ersetzt)                                                             |
+| **Abhängigkeiten**         | 6.1, 6.2, 6.5.1                                                                                                                                           |
+| **Risiken**                | Phasen-Lock (PR #29) muss erhalten bleiben; Steuerung darf keine unerlaubte Aktion anbieten                                                               |
+| **Teststrategie**          | Integration über echtes Socket.IO (A–E, H, I); Unit für die reinen Regeln (`hostView.test.ts`)                                                            |
+| **Abnahmekriterien**       | Reload mitten im Spiel setzt die laufende Szene fort; keine doppelten Listener; Phase immer sichtbar; Punkte-Lock bleibt                                  |
+| **Aufwand**                | klein–mittel                                                                                                                                              |
+
+**Nicht Teil von 6.5.2:** Pause/Fortsetzen und Frage überspringen (6.5.3, eigene Freigabe).
+
 ---
 
 ## 7. Phase 6.6 – Spielerprofile
