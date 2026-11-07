@@ -323,6 +323,17 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
 - **Socket.IO namespaces: player = default `/`, host = `/host`** (host is
   auth-gated). Client wrappers live in `packages/frontend/src/socket.ts`.
 - **Contract traps that cost real debugging time:**
+  - **`engine.submitAnswer` (fixed PR #28, `fix/concurrent-answer-submission`):** it was
+    check-then-act **and** mutated the runtime *before* the DB write, so two overlapping answers
+    both scored and the `@@unique([playerId,questionId])` `P2002` surfaced as a 500. Now: both writes
+    commit in one `prisma.$transaction`, the runtime is mirrored only after it resolves, `P2002` →
+    `conflict('You have already answered.')`, and same-player+question submissions are serialised by
+    `withAnswerLock('playerId:questionId')`. `engine.get()` also shares one in-flight load per game
+    (a cache miss used to build two runtimes; last `games.set` won and the others mutated an orphan).
+    **A warm game is NOT racy** (Node run-to-completion) — repro/regression tests must `engine.evict()`
+    first. Report: `docs/reports/concurrent-answer-submission-fix.md`.
+  - **The Prisma client is a `Proxy`:** `vi.spyOn(prisma, '$transaction').mockRestore()` leaves the
+    property **undefined**. Reassign the original method in a `finally`.
   - `host:create` ACKs with `{ gameId, pin }` — **not** `{ id, pin }`.
   - `host:join` ACKs with `{ pin, players }` — resume must paint `players`.
   - Game report route is `/api/reports/games/:id` and the body is
