@@ -20,13 +20,7 @@ import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { questionInput, questionPrompt } from '../questionView.js';
-import {
-  hostStatusChip,
-  lobbyRoster,
-  profilePlaceholder,
-  registerOffer,
-  screenForSync,
-} from '../playerView.js';
+import { hostStatusChip, lobbyRoster, registerOffer, screenForSync } from '../playerView.js';
 import { button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
 
 const STORAGE_KEY = 'zeropeek.player';
@@ -182,17 +176,6 @@ const app: HTMLElement = appElement;
             players.length ? lobbyRoster(players, session?.playerId) : null,
           ),
         ),
-      ),
-    );
-  }
-
-  /** Show the clearly-marked profile placeholder (a real profile is Phase 6.6). */
-  function showProfile(): void {
-    render(
-      app,
-      shell(
-        'profile',
-        el('section', { class: 'centered' }, el('div', { class: 'card' }, profilePlaceholder())),
       ),
     );
   }
@@ -490,35 +473,23 @@ const app: HTMLElement = appElement;
   });
 
   // ---------------------------------------------------------------------------
-  // Boot: the profile placeholder is reachable by URL, otherwise reconnect if a
-  // session is stored, otherwise show the join form.
+  // Boot: reconnect if a session is stored, otherwise show the join form. The
+  // profile is its own page (profile.html, Phase 6.6), so it is not routed here.
   // ---------------------------------------------------------------------------
-  const onProfile = (): boolean => location.hash === '#profile';
-
-  window.addEventListener('hashchange', () => {
-    if (onProfile()) showProfile();
-    else if (loadSession()) showWaiting();
-    else showJoin();
-  });
-
-  if (onProfile()) {
-    showProfile();
+  const stored = loadSession();
+  if (stored) {
+    render(app, shell('lobby', el('section', { class: 'centered' }, spinner('Reconnecting…'))));
+    request<PlayerSync>(socket, 'player:rejoin', {
+      gameId: stored.gameId,
+      playerId: stored.playerId,
+      token: stored.token,
+    })
+      .then((sync) => renderSync(sync))
+      .catch(() => {
+        clearSession();
+        showJoin('Your previous game has ended. Join again.');
+      });
   } else {
-    const stored = loadSession();
-    if (stored) {
-      render(app, shell('lobby', el('section', { class: 'centered' }, spinner('Reconnecting…'))));
-      request<PlayerSync>(socket, 'player:rejoin', {
-        gameId: stored.gameId,
-        playerId: stored.playerId,
-        token: stored.token,
-      })
-        .then((sync) => renderSync(sync))
-        .catch(() => {
-          clearSession();
-          showJoin('Your previous game has ended. Join again.');
-        });
-    } else {
-      showJoin();
-    }
+    showJoin();
   }
 }

@@ -85,9 +85,9 @@ describe('availability', () => {
     }
   });
 
-  it('links the profile entry to its placeholder (Phase 6.2.2)', () => {
+  it('links the profile entry to the real profile page (Phase 6.6)', () => {
     const profile = PLAYER_NAV.find((item) => item.id === 'profile');
-    expect(profile?.href).toBe('./#profile');
+    expect(profile?.href).toBe('./profile.html');
     expect(isAvailable(profile!)).toBe(true);
   });
 });

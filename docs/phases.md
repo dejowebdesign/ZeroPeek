@@ -37,7 +37,8 @@ Nothing is implemented until the project owner approves it.
 | 6.4   | Quiz management, editor, snapshot       | Done (merged, PR #26) – `docs/reports/phase-6-4-quiz-editor-snapshot.md`                                                       |
 | 6.5.1 | Admin modernisation                     | Done (merged, PR #27) – `docs/reports/phase-6-5-1-admin.md`                                                                    |
 | 6.5.2 | Host control and phase display          | Done (merged, PR #30) – `docs/reports/phase-6-5-2-host-state-sync.md`; roadmap §6.1                                            |
-| 6.5.3 | Extended host control (pause/skip/kick) | In review – `docs/reports/phase-6-5-3-extended-host-controls.md`; roadmap §6.2                                                 |
+| 6.5.3 | Extended host control (pause/skip/kick) | Done (merged, PR #31) – `docs/reports/phase-6-5-3-extended-host-controls.md`; roadmap §6.2                                     |
+| 6.6   | Player profiles                         | In review – `docs/reports/phase-6-6-player-profiles.md`; roadmap §7                                                            |
 
 See `docs/concept/README.md` for the reading order.
 

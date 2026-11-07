@@ -483,7 +483,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * host on a lobby whose "Start game" the engine then rejects with "The game
    * has already started."
    */
-  async join(pin: string, nickname: string, avatar = '') {
+  async join(pin: string, nickname: string, avatar = '', userId?: string) {
     // The lock is keyed by game id, so the game has to be resolved first. This
     // lookup is read-only and safe outside the lock.
     const found = await findGameByPin(pin);
@@ -491,7 +491,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       // Re-checks the lobby phase from the database and rejects a duplicate
       // nickname; both happen under the lock, so the check and the write cannot
       // be split by a concurrent start.
-      const { game, player } = await joinGameRow(pin, nickname, avatar);
+      const { game, player } = await joinGameRow(pin, nickname, avatar, userId);
       await this.addPlayer(game.id, {
         id: player.id,
         nickname: player.nickname,

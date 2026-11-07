@@ -19,6 +19,7 @@ export default defineConfig({
         editor: resolve(__dirname, 'src/editor.html'),
         admin: resolve(__dirname, 'src/admin.html'),
         auth: resolve(__dirname, 'src/auth.html'),
+        profile: resolve(__dirname, 'src/profile.html'),
       },
     },
   },
