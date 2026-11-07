@@ -86,6 +86,16 @@ export interface EngineEvents {
 export const REVEAL_MS = 6000;
 export const BOARD_MS = 6000;
 
+/** Whether an error is Prisma's unique-constraint violation (P2002). */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'P2002'
+  );
+}
+
 function publicPlayer(player: RuntimePlayer): PublicPlayer {
   return {
     id: player.id,
@@ -111,6 +121,33 @@ function rankable(player: RuntimePlayer): RankablePlayer {
  */
 export class GameEngine extends EventEmitter<EngineEvents> {
   private readonly games = new Map<string, RuntimeGame>();
+
+  /** In-flight game loads, so concurrent `get` calls share one runtime object. */
+  private readonly loading = new Map<string, Promise<RuntimeGame>>();
+
+  /**
+   * In-flight answer submissions, keyed by `playerId:questionId`. Two events for
+   * the same player and question are chained so the second sees the first's
+   * committed result; different players or different questions use different keys
+   * and still run in parallel. A key is dropped once its last task settles.
+   */
+  private readonly answerLocks = new Map<string, Promise<void>>();
+
+  /** Serialise `task` against any other submission for the same key. */
+  private withAnswerLock<T>(key: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.answerLocks.get(key) ?? Promise.resolve();
+    const run = previous.then(task, task);
+    // The tail never rejects, so one failure cannot poison the next in the queue.
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.answerLocks.set(key, tail);
+    void tail.then(() => {
+      if (this.answerLocks.get(key) === tail) this.answerLocks.delete(key);
+    });
+    return run;
+  }
 
   /**
    * Forget the in-memory copy of a game, so the next `get` reloads it from the
@@ -156,7 +193,21 @@ export class GameEngine extends EventEmitter<EngineEvents> {
   async get(gameId: string): Promise<RuntimeGame> {
     const existing = this.games.get(gameId);
     if (existing) return existing;
+    // A game that is not in memory yet may be requested by several sockets at
+    // once. Without this, each caller would build its own runtime object and the
+    // last `set` would win, leaving the others mutating an orphaned copy.
+    const inFlight = this.loading.get(gameId);
+    if (inFlight) return inFlight;
+    const load = this.load(gameId);
+    this.loading.set(gameId, load);
+    try {
+      return await load;
+    } finally {
+      if (this.loading.get(gameId) === load) this.loading.delete(gameId);
+    }
+  }
 
+  private async load(gameId: string): Promise<RuntimeGame> {
     const row = await prisma.game.findUnique({ where: { id: gameId } });
     if (!row) throw notFound('Game not found.');
     // `quizForGame` prefers the frozen snapshot, so a game that has already
@@ -337,8 +388,13 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   /**
    * Accept a player's answer. Enforces: the game is in the question phase, the
-   * question id matches, the player has not answered yet, and the answer
-   * arrives within the time limit (+grace). Returns whether it was accepted.
+   * question id matches, the player has not answered yet, and the answer arrives
+   * within the time limit (+grace). Returns whether it was accepted.
+   *
+   * Submissions for the same player and question are serialised by
+   * `withAnswerLock`, and the runtime is advanced only once the write has
+   * committed. Two near-simultaneous answers can therefore not both pass the
+   * "already answered" check, double the score or inflate the distribution.
    */
   async submitAnswer(
     gameId: string,
@@ -347,6 +403,27 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     answer: unknown,
   ): Promise<{ accepted: boolean }> {
     const game = await this.get(gameId);
+    return this.withAnswerLock(`${playerId}:${questionId}`, () =>
+      this.acceptAnswer(game, playerId, questionId, answer),
+    );
+  }
+
+  /**
+   * The body of `submitAnswer`, always run under the per-(player, question) lock.
+   *
+   * The order matters: validate, commit both writes in one transaction, and only
+   * then mirror the result into the runtime. A failed or duplicate write leaves
+   * the in-memory state untouched, so it can never drift from the database.
+   */
+  private async acceptAnswer(
+    game: RuntimeGame,
+    playerId: string,
+    questionId: string,
+    answer: unknown,
+  ): Promise<{ accepted: boolean }> {
+    const gameId = game.id;
+    // Re-validated inside the lock: the phase, the open question and the player's
+    // own state may all have moved on while this submission waited its turn.
     if (game.phase !== 'question') throw conflict('No question is open.');
     const question = this.currentQuestion(game);
     if (!question || question.id !== questionId) throw conflict('That question is not open.');
@@ -369,41 +446,56 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const result = scoreAnswer(question, elapsedMs, correctness, game.settings);
     const points = flagged && game.settings.speed.onSuspicious === 'zero' ? 0 : result.points;
 
+    const score = player.score + points;
+    const totalTimeMs = player.totalTimeMs + elapsedMs;
+    const correctCount = player.correctCount + (result.outcome === 'correct' ? 1 : 0);
+
+    try {
+      // One transaction: the answer row and the running totals commit together,
+      // so the database can never hold half of an accepted answer.
+      await prisma.$transaction([
+        prisma.playerAnswer.create({
+          data: {
+            gameId,
+            playerId,
+            questionId,
+            answer: (answer ?? null) as Prisma.InputJsonValue,
+            correctness,
+            points,
+            elapsedMs,
+            flagged,
+          },
+        }),
+        prisma.gamePlayer.update({
+          where: { id: playerId },
+          data: { score, correctCount, totalTimeMs },
+        }),
+      ]);
+    } catch (error) {
+      // The unique index on (playerId, questionId) is the backstop for a duplicate
+      // that slipped past the in-memory guard (a second process, or a retry after a
+      // lost acknowledgement). Report it with the same conflict the guard raises,
+      // so the API contract does not change.
+      if (isUniqueViolation(error)) throw conflict('You have already answered.');
+      throw error;
+    }
+
+    // Committed: only now may the runtime mirror what the database stored.
     player.answeredQuestionId = questionId;
-    player.score += points;
-    player.totalTimeMs += elapsedMs;
-    if (result.outcome === 'correct') player.correctCount += 1;
+    player.score = score;
+    player.totalTimeMs = totalTimeMs;
+    player.correctCount = correctCount;
 
     const key = JSON.stringify(answer ?? null);
     game.distribution.set(key, (game.distribution.get(key) ?? 0) + 1);
-
-    await prisma.playerAnswer.create({
-      data: {
-        gameId,
-        playerId,
-        questionId,
-        answer: (answer ?? null) as Prisma.InputJsonValue,
-        correctness,
-        points,
-        elapsedMs,
-        flagged,
-      },
-    });
-    await prisma.gamePlayer.update({
-      where: { id: playerId },
-      data: {
-        score: player.score,
-        correctCount: player.correctCount,
-        totalTimeMs: player.totalTimeMs,
-      },
-    });
 
     const answered = [...game.players.values()].filter(
       (entry) => entry.answeredQuestionId === questionId,
     ).length;
     this.emit('answers', { gameId, questionId, answered, total: game.players.size });
 
-    // Everyone answered: reveal early.
+    // Everyone answered: reveal early. `reveal` is idempotent, so the last players
+    // arriving together still produce exactly one reveal.
     if (answered >= game.players.size) {
       this.clearTimer(game);
       void this.reveal(gameId).catch(() => undefined);

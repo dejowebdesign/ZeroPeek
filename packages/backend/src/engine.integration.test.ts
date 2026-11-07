@@ -7,7 +7,7 @@
  * invalid answers (duplicate, late, wrong phase) are rejected.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Quiz } from '@zeropeek/shared';
 
@@ -198,6 +198,148 @@ describe.skipIf(!available)('game engine integration', () => {
     );
   });
 
+  it('accepts exactly one of several simultaneous answers to the same question', async () => {
+    // Test A – a double click, parallel sockets or a retry must not be scored
+    // twice. The game is evicted first, so the burst also exercises the cold-load
+    // path: several sockets asking for a game the engine does not hold yet must
+    // end up on one runtime, and the unique index must surface as a conflict
+    // rather than an unexpected error.
+    const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
+    await engine.start(gameId);
+    const question = engine.publicQuestion(await engine.get(gameId));
+    engine.evict(gameId);
+
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 5 }, () => engine.submitAnswer(gameId, playerId, question.id, 0)),
+    );
+    const accepted = outcomes.filter((entry) => entry.status === 'fulfilled');
+    const rejected = outcomes.filter((entry) => entry.status === 'rejected');
+    expect(accepted).toHaveLength(1);
+    expect(rejected).toHaveLength(4);
+    for (const entry of rejected) {
+      expect((entry as PromiseRejectedResult).reason).toMatchObject({ status: 409 });
+    }
+
+    // Exactly one row, and the running totals advanced exactly once.
+    const rows = await prisma.playerAnswer.findMany({ where: { gameId, playerId } });
+    expect(rows).toHaveLength(1);
+    const stored = rows[0]!;
+    const player = await prisma.gamePlayer.findUnique({ where: { id: playerId } });
+    expect(player!.score).toBe(stored.points);
+    expect(player!.correctCount).toBe(1);
+    expect(player!.totalTimeMs).toBe(stored.elapsedMs);
+
+    // The runtime mirrors the database, and the distribution counted one answer.
+    const runtime = await engine.get(gameId);
+    const runtimePlayer = runtime.players.get(playerId)!;
+    expect(runtimePlayer.score).toBe(stored.points);
+    expect(runtimePlayer.correctCount).toBe(1);
+    expect(runtimePlayer.totalTimeMs).toBe(stored.elapsedMs);
+    expect([...runtime.distribution.values()]).toEqual([1]);
+  });
+
+  it('accepts only one of two different simultaneous answers from one player', async () => {
+    // Test B – two different payloads racing for the same question. Exactly one
+    // must win, and the outcome must be consistent with the stored row.
+    const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
+    await engine.start(gameId);
+    const question = engine.publicQuestion(await engine.get(gameId));
+
+    const outcomes = await Promise.allSettled([
+      engine.submitAnswer(gameId, playerId, question.id, 0), // correct
+      engine.submitAnswer(gameId, playerId, question.id, 1), // wrong
+    ]);
+    expect(outcomes.filter((entry) => entry.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((entry) => entry.status === 'rejected')).toHaveLength(1);
+
+    const rows = await prisma.playerAnswer.findMany({ where: { gameId, playerId } });
+    expect(rows).toHaveLength(1);
+    const player = await prisma.gamePlayer.findUnique({ where: { id: playerId } });
+    // The score and the stored verdict agree, whichever payload won the race.
+    expect(player!.score).toBe(rows[0]!.points);
+    expect(player!.correctCount).toBe(rows[0]!.correctness === 1 ? 1 : 0);
+  });
+
+  it('accepts simultaneous answers from different players', async () => {
+    // Test C – the lock is per player and question, so it must not serialise
+    // unrelated players into a failure.
+    const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+    await engine.start(gameId);
+    const question = engine.publicQuestion(await engine.get(gameId));
+
+    const outcomes = await Promise.allSettled(
+      playerIds.map((id) => engine.submitAnswer(gameId, id, question.id, 0)),
+    );
+    expect(outcomes.every((entry) => entry.status === 'fulfilled')).toBe(true);
+    expect(await prisma.playerAnswer.count({ where: { gameId } })).toBe(2);
+  });
+
+  it('leaves no trace when the write fails, and a later retry still works', async () => {
+    // Test D – a failed persist must not leave points or statistics behind, and
+    // the question must still be answerable afterwards.
+    const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
+    await engine.start(gameId);
+    const question = engine.publicQuestion(await engine.get(gameId));
+
+    const originalTransaction = prisma.$transaction;
+    const transaction = vi
+      .spyOn(prisma, '$transaction')
+      .mockRejectedValueOnce(new Error('write failed'));
+    try {
+      await expect(engine.submitAnswer(gameId, playerId, question.id, 0)).rejects.toThrow(
+        /write failed/,
+      );
+    } finally {
+      transaction.mockRestore();
+      // The Prisma client is a Proxy: `mockRestore` clears the property instead of
+      // restoring the original, so it has to be reassigned explicitly.
+      prisma.$transaction = originalTransaction;
+    }
+
+    // Nothing was written and the runtime still thinks the player has not answered.
+    expect(await prisma.playerAnswer.count({ where: { gameId, playerId } })).toBe(0);
+    expect((await prisma.gamePlayer.findUnique({ where: { id: playerId } }))!.score).toBe(0);
+    const runtime = await engine.get(gameId);
+    expect(runtime.players.get(playerId)!.answeredQuestionId).toBeNull();
+    expect(runtime.players.get(playerId)!.score).toBe(0);
+
+    // The retry succeeds, because the phase is still open and no half-state stuck.
+    await expect(engine.submitAnswer(gameId, playerId, question.id, 0)).resolves.toEqual({
+      accepted: true,
+    });
+    expect(await prisma.playerAnswer.count({ where: { gameId, playerId } })).toBe(1);
+  });
+
+  it('reveals once when the last players answer the final question together', async () => {
+    // Test E – the auto-reveal is triggered by the answered count; with the last
+    // players arriving simultaneously it must still fire exactly once, and every
+    // answer must be stored.
+    const { gameId, playerIds } = await freshGame(['Ada', 'Bob', 'Cy']);
+    await engine.start(gameId);
+    const first = engine.publicQuestion(await engine.get(gameId));
+    await engine.submitAnswer(gameId, playerIds[0]!, first.id, 0);
+
+    await engine.reveal(gameId);
+    await engine.board(gameId);
+    await engine.next(gameId);
+    const last = engine.publicQuestion(await engine.get(gameId));
+    expect(last.id).toBe(QUIZ.questions[1]!.id);
+
+    let reveals = 0;
+    engine.on('reveal', () => {
+      reveals += 1;
+    });
+
+    // All three players answer the last question at once, so the "everyone
+    // answered" branch is reached by concurrent submissions.
+    await Promise.allSettled(playerIds.map((id) => engine.submitAnswer(gameId, id, last.id, 1)));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(reveals).toBe(1);
+    expect((await engine.get(gameId)).phase).toBe('reveal');
+    expect(await prisma.playerAnswer.count({ where: { gameId, questionId: last.id } })).toBe(3);
+  });
+
   it('ranks players by score', async () => {
     const row = await createGame(quizId, ownerId);
     const a = await joinGame(row.pin, 'Ada');
@@ -218,5 +360,24 @@ describe.skipIf(!available)('game engine integration', () => {
     const board = engine.leaderboard(await engine.get(row.id));
     expect(board[0]!.nickname).toBe('Ada');
     expect(board[1]!.nickname).toBe('Bob');
+  });
+
+  it('shares one runtime when a cold game is loaded concurrently', async () => {
+    // A game that is not in memory yet can be requested by several sockets at
+    // once. Before the fix each caller built its own runtime, so an answer written
+    // through one copy was invisible to the others and the totals drifted.
+    const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
+    await engine.start(gameId);
+    const question = engine.publicQuestion(await engine.get(gameId));
+    engine.evict(gameId);
+
+    const [first, second] = await Promise.all([engine.get(gameId), engine.get(gameId)]);
+    expect(first).toBe(second);
+
+    await engine.submitAnswer(gameId, playerId, question.id, 0);
+    const runtime = await engine.get(gameId);
+    const stored = await prisma.playerAnswer.findFirst({ where: { gameId, playerId } });
+    expect(runtime.players.get(playerId)!.answeredQuestionId).toBe(question.id);
+    expect(runtime.players.get(playerId)!.score).toBe(stored!.points);
   });
 });
