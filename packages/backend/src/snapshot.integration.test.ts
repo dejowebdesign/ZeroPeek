@@ -205,6 +205,53 @@ describe.skipIf(!available)('game snapshot integration', () => {
     expect(csv).not.toContain('EDITED question');
   });
 
+  it('marks a skipped question in the report, the export and the statistics', async () => {
+    // Phase 6.5.3: a skipped question is neutralised. It is still listed (its
+    // answers were kept), but every report must present it as skipped, never as
+    // a regularly scored question.
+    const quiz = await makeQuiz();
+    const row = await createGame(quiz.id, ownerId);
+    // Two players so answering does not auto-reveal before the host can skip.
+    const ada = await joinGame(row.pin, 'Ada');
+    const bob = await joinGame(row.pin, 'Bob');
+    for (const player of [ada.player, bob.player]) {
+      await engine.addPlayer(row.id, {
+        id: player.id,
+        nickname: player.nickname,
+        avatar: player.avatar,
+        joinedAt: player.joinedAt,
+      });
+    }
+    await engine.start(row.id);
+    const question = engine.publicQuestion(await engine.get(row.id));
+    await engine.submitAnswer(row.id, ada.player.id, question.id, 0);
+    await engine.skip(row.id);
+    await engine.board(row.id);
+    await engine.end(row.id);
+
+    const report = await gameReport(row.id);
+    const skipped = report.questions.find((entry) => entry.questionId === question.id);
+    expect(skipped?.skipped).toBe(true);
+    // The other question was never reached, so it is not marked skipped.
+    expect(report.questions.find((entry) => entry.questionId !== question.id)?.skipped).toBe(false);
+
+    const csv = await exportAnswersCsv(row.id);
+    expect(csv).toContain('skipped');
+    // The skipped question's rows carry the flag, and its points were zeroed.
+    const csvLines = csv.split('\n');
+    const header = csvLines[0]!.split(',');
+    const skippedColumn = header.indexOf('skipped');
+    expect(skippedColumn).toBeGreaterThan(-1);
+    const skippedRow = csvLines.find((line) => line.includes('ORIGINAL question one'));
+    expect(skippedRow?.split(',')[skippedColumn]).toBe('true');
+
+    // The statistics explain the low counts: the question was skipped in one game.
+    const stats = await quizStatistics(quiz.id);
+    const skippedStat = stats.questions.find((entry) => entry.questionId === question.id);
+    expect(skippedStat?.skippedGames).toBe(1);
+    expect(stats.questions.find((entry) => entry.questionId !== question.id)?.skippedGames).toBe(0);
+  });
+
   it('counts statistics against the snapshot questions', async () => {
     const quiz = await makeQuiz();
     const { gameId, playerId } = await startedGame(quiz.id);

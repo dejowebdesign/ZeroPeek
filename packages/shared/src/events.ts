@@ -38,11 +38,19 @@ export interface PublicQuestion {
   openedAt: number;
   index: number;
   total: number;
+  /** Whether the host has paused the running question (Phase 6.5.3). */
+  paused: boolean;
+  /**
+   * The server-side remaining time in ms while `paused`, else null. The client
+   * freezes its countdown at exactly this value, so pause never rewinds the
+   * clock and resume continues from the same point.
+   */
+  remainingMs: number | null;
 }
 
 /** Result of the player's own answer, sent privately after the reveal. */
 export interface OwnResult {
-  outcome: 'correct' | 'partial' | 'wrong' | 'unanswered';
+  outcome: 'correct' | 'partial' | 'wrong' | 'unanswered' | 'skipped';
   points: number;
   score: number;
   rank: number;
@@ -81,6 +89,12 @@ export interface PlayerSync {
   podium: PublicPlayer[] | null;
   /** This player's own final rank and score, only in the `end` phase. */
   placement: { rank: number; score: number } | null;
+  /**
+   * Whether the current question was skipped by the host and is therefore not
+   * scored (Phase 6.5.3). The player is told the question was skipped instead of
+   * being shown a correct/wrong verdict.
+   */
+  skipped: boolean;
 }
 
 /**
@@ -102,28 +116,70 @@ export interface HostState {
   phase: GamePhase;
   /** The open question, or null outside `question`/`reveal`/`board`. */
   question: PublicQuestion | null;
-  /** The revealed question with its solution, only in `reveal`. */
-  reveal: { question: Question; distribution: Record<string, number> } | null;
+  /**
+   * The revealed question, only in `reveal`. A skipped question carries **no**
+   * solution or distribution (Phase 6.5.3); see `HostReveal`.
+   */
+  reveal: HostReveal | null;
   /** The full roster / leaderboard, or null if not applicable. */
   players: PublicPlayer[] | null;
   /** The final ranking, only in `end`. */
   podium: PublicPlayer[] | null;
   /** Answered / total for the open question, or null. */
   answers: { answered: number; total: number } | null;
+  /** Whether the running question is paused (Phase 6.5.3). */
+  paused: boolean;
+  /**
+   * Whether the current question was skipped and will not be scored
+   * (Phase 6.5.3). Only ever true in `reveal`.
+   */
+  skipped: boolean;
 }
 
 /** The host's own connection state, as shown in the control bar. */
 export type HostConnectionStatus = 'connected' | 'reconnecting' | 'offline';
+
+/**
+ * The reveal as shown to a host, in two mutually exclusive shapes (Phase 6.5.3).
+ *
+ * A **skipped** question is neutralised: it is never scored and its solution
+ * must never leave the server. The skipped variant therefore carries only the
+ * question's identity and text, so a leak is impossible **by construction** —
+ * there is no field that could hold the solution, the correct option or the
+ * answer distribution. A regular reveal is unchanged.
+ */
+export type HostReveal =
+  | { skipped: false; question: Question; distribution: Record<string, number> }
+  | { skipped: true; question: { id: string; type: QuestionType; text: string } };
+
+/**
+ * The host's reachability, as shown to **players** (Phase 6.5.3).
+ *
+ * `connected` means a host socket is currently in the game's host room;
+ * `reconnecting` means none is, and the server will announce `connected` again
+ * when one returns. This is deliberately only the host's connection, never the
+ * game phase: a host can be away while the game runs on, and a status change
+ * never moves the phase.
+ */
+export type HostPresence = 'connected' | 'reconnecting';
 
 /** Server → player events (namespace `/`). */
 export interface PlayerServerEvents {
   'game:joined': (payload: { playerId: string; gameId: string; nickname: string }) => void;
   'game:state': (payload: { phase: GamePhase; players: PublicPlayer[] }) => void;
   'game:question': (payload: PublicQuestion) => void;
-  'game:reveal': (payload: { questionId: string; result: OwnResult }) => void;
+  'game:reveal': (payload: { questionId: string; result: OwnResult; skipped?: boolean }) => void;
   'game:board': (payload: { players: PublicPlayer[] }) => void;
   'game:ended': (payload: { rank: number; score: number; podium: PublicPlayer[] }) => void;
   'game:error': (payload: { message: string }) => void;
+  /** The host's connection changed. Never carries any host session data. */
+  'game:host': (payload: { status: HostPresence }) => void;
+  /** This player was removed from the game by the host. */
+  'game:kicked': (payload: { reason: 'kicked' }) => void;
+  /** The running question was paused by the host. */
+  'game:paused': (payload: { questionId: string; remainingMs: number }) => void;
+  /** The running question was resumed with this remaining time. */
+  'game:resumed': (payload: { questionId: string; remainingMs: number }) => void;
 }
 
 /** Player → server events (namespace `/`). */
@@ -147,10 +203,14 @@ export interface HostServerEvents {
   'host:lobby': (payload: { pin: string; players: PublicPlayer[] }) => void;
   'host:question': (payload: PublicQuestion) => void;
   'host:answers': (payload: { questionId: string; answered: number; total: number }) => void;
-  'host:reveal': (payload: { question: Question; distribution: Record<string, number> }) => void;
+  'host:reveal': (payload: HostReveal) => void;
   'host:board': (payload: { players: PublicPlayer[] }) => void;
   'host:ended': (payload: { players: PublicPlayer[] }) => void;
   'host:error': (payload: { message: string }) => void;
+  /** The running question was paused; the timer is frozen (Phase 6.5.3). */
+  'host:paused': (payload: { questionId: string; remainingMs: number }) => void;
+  /** The running question was resumed with this remaining time (Phase 6.5.3). */
+  'host:resumed': (payload: { questionId: string; remainingMs: number }) => void;
 }
 
 /** Host → server events (namespace `/host`). */
@@ -161,6 +221,9 @@ export interface HostClientEvents {
   'host:reveal': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:board': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:end': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
+  'host:pause': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
+  'host:resume': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
+  'host:skip': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:kick': (payload: { gameId: string; playerId: string }, ack: Ack<{ ok: boolean }>) => void;
   'host:join': (payload: { gameId: string }, ack: Ack<HostState>) => void;
 }

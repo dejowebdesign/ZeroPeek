@@ -13,11 +13,18 @@
 import type {
   GamePhase,
   HostConnectionStatus,
+  HostReveal,
   HostState,
   PublicPlayer,
   PublicQuestion,
   Question,
+  QuestionType,
 } from '@zeropeek/shared';
+import { questionDisplay } from '@zeropeek/shared';
+
+import { el } from './dom.js';
+import { questionResult, solutionText } from './questionView.js';
+import { chip } from './ui.js';
 
 /** Which host screen a state maps to. */
 export type HostScreen = 'lobby' | 'question' | 'reveal' | 'board' | 'end';
@@ -74,7 +81,8 @@ export function hostScreen(state: HostState): HostScreen {
 }
 
 /** A control the host may use in the current phase. */
-export type HostActionId = 'start' | 'reveal' | 'board' | 'next' | 'end' | 'home';
+export type HostActionId =
+  'start' | 'pause' | 'resume' | 'skip' | 'reveal' | 'board' | 'next' | 'end' | 'home';
 
 export interface HostAction {
   id: HostActionId;
@@ -86,21 +94,40 @@ export interface HostAction {
  * The actions allowed in a phase, verified against the engine:
  *
  *   lobby    – start (engine.start); no other transition is legal from the lobby
- *   question – reveal (engine.reveal); the timer and the auto-reveal are the
- *              only other ways out, so no "next" and no "end" here
+ *   question – reveal (engine.reveal), pause (engine.pause) and skip
+ *              (engine.skip). While paused the clock is frozen and the engine
+ *              refuses a plain reveal, so only `resume` and `skip` are offered
+ *              — the two ways the engine allows a paused question to move on.
  *   reveal   – board (engine.board)
  *   board    – next (engine.next) and end (engine.end)
  *   end      – none; only returning home, which is not a game action
  *
  * This is display only. Hiding a button is not a security measure: the server
- * re-checks the phase on every command and `engine` refuses an illegal one.
+ * re-checks the phase (and the pause) on every command and `engine` refuses an
+ * illegal one.
  */
-export function hostActions(phase: GamePhase): HostAction[] {
+export function hostActions(phase: GamePhase, paused = false, type?: QuestionType): HostAction[] {
   switch (phase) {
     case 'lobby':
       return [{ id: 'start', label: 'Start game', variant: 'primary' }];
     case 'question':
-      return [{ id: 'reveal', label: 'Reveal', variant: 'primary' }];
+      // A paused question may only resume or be skipped: `engine.reveal` returns
+      // unchanged while paused, so offering Reveal here would be a dead button.
+      if (paused) {
+        return [
+          { id: 'resume', label: 'Resume', variant: 'primary' },
+          { id: 'skip', label: 'Skip question', variant: 'danger' },
+        ];
+      }
+      // A slide has no clock, so `engine.pause` refuses it; no Pause button then.
+      const canPause = type !== 'slide';
+      return [
+        { id: 'reveal', label: 'Reveal', variant: 'primary' },
+        ...(canPause
+          ? [{ id: 'pause' as const, label: 'Pause', variant: 'primary' as const }]
+          : []),
+        { id: 'skip', label: 'Skip question', variant: 'danger' },
+      ];
     case 'reveal':
       return [{ id: 'board', label: 'Leaderboard', variant: 'primary' }];
     case 'board':
@@ -155,9 +182,11 @@ export interface HostEventHandlers {
   lobby: (payload: { pin: string; players: PublicPlayer[] }) => void;
   question: (question: PublicQuestion) => void;
   answers: (payload: { questionId: string; answered: number; total: number }) => void;
-  reveal: (payload: { question: Question; distribution: Record<string, number> }) => void;
+  reveal: (payload: HostReveal) => void;
   board: (payload: { players: PublicPlayer[] }) => void;
   ended: (payload: { players: PublicPlayer[] }) => void;
+  paused: (payload: { questionId: string; remainingMs: number }) => void;
+  resumed: (payload: { questionId: string; remainingMs: number }) => void;
 }
 
 /**
@@ -214,6 +243,8 @@ export function attachHostHandlers(
     ['host:reveal', forward((h) => h.reveal as RawListener)],
     ['host:board', forward((h) => h.board as RawListener)],
     ['host:ended', forward((h) => h.ended as RawListener)],
+    ['host:paused', forward((h) => h.paused as RawListener)],
+    ['host:resumed', forward((h) => h.resumed as RawListener)],
   ];
 
   for (const [event, listener] of listeners) register(event, listener);
@@ -231,4 +262,33 @@ export function detachHostHandlers(socket: ListenerSocket): void {
   if (unregister) for (const [event, listener] of listeners) unregister(event, listener);
   registered.delete(key);
   liveHandlers.delete(key);
+}
+
+/**
+ * The body of the host's reveal screen, built from the `HostReveal` payload.
+ *
+ * This is the single place the two reveal shapes are turned into markup, kept
+ * pure so it can be tested directly. A **skipped** reveal is neutralised: it
+ * shows only the question text and a "Question skipped" marker, and never the
+ * solution or the distribution — the union has no field to carry them, so a leak
+ * is impossible here too (Phase 6.5.3, decision B).
+ */
+export function revealBody(reveal: HostReveal): HTMLElement {
+  if (reveal.skipped) {
+    return el(
+      'div',
+      { class: 'question__result' },
+      el('h2', { class: 'question__prompt' }, reveal.question.text),
+      el('p', { class: 'show__skipped' }, chip('Question skipped', 'muted', true)),
+    );
+  }
+  return questionResult(
+    {
+      text: reveal.question.text,
+      type: reveal.question.type,
+      display: questionDisplay(reveal.question),
+    },
+    reveal.distribution,
+    solutionText(reveal.question),
+  );
 }

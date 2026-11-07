@@ -28,6 +28,7 @@ import {
   scoreAnswer,
   snapshotToQuiz,
   type GamePhase,
+  type HostReveal,
   type HostState,
   type OwnResult,
   type PublicPlayer,
@@ -69,6 +70,17 @@ interface RuntimeGame {
   currentIndex: number;
   /** Server timestamp (ms) the current question opened, or null. */
   openedAt: number | null;
+  /**
+   * Whether the running question is paused (Phase 6.5.3). While paused the
+   * timer is cleared and no automatic transition may fire.
+   */
+  paused: boolean;
+  /** Server timestamp (ms) the current question was paused, or null. */
+  pausedAt: number | null;
+  /** The remaining run time in ms at the moment of the pause, or null. */
+  remainingMs: number | null;
+  /** The question id the host skipped, so it is never scored (Phase 6.5.3). */
+  skippedQuestionId: string | null;
   players: Map<string, RuntimePlayer>;
   /** Answer tally for the current question: questionId -> option key -> count. */
   distribution: Map<string, number>;
@@ -80,14 +92,36 @@ export interface EngineEvents {
   lobby: [{ gameId: string; pin: string; players: PublicPlayer[] }];
   question: [{ gameId: string; question: PublicQuestion }];
   answers: [{ gameId: string; questionId: string; answered: number; total: number }];
-  reveal: [{ gameId: string; question: Question; distribution: Record<string, number> }];
+  reveal: [{ gameId: string; reveal: HostReveal }];
   board: [{ gameId: string; players: PublicPlayer[] }];
   ended: [{ gameId: string; players: PublicPlayer[] }];
+  paused: [{ gameId: string; questionId: string; remainingMs: number }];
+  resumed: [{ gameId: string; questionId: string; remainingMs: number }];
 }
 
 /** How long the reveal and board screens stay before auto-advance (ms). */
 export const REVEAL_MS = 6000;
 export const BOARD_MS = 6000;
+
+/**
+ * The full run time of a question, in ms: the visible limit plus the grace
+ * period in which a late answer is still accepted. Both the timer and the
+ * pause/resume arithmetic use this one value, so a resume can never drift from
+ * what the clock was doing before the pause.
+ */
+function limitMs(question: Question): number {
+  return question.timeLimit * 1000 + ANSWER_GRACE_MS;
+}
+
+/**
+ * The neutralised reveal for a skipped question: only the question's identity and
+ * text, never its solution or the answer distribution (Phase 6.5.3, decision B).
+ * Built as the `HostReveal` skipped variant, which has no field that could hold
+ * the solution, so a leak is impossible by construction.
+ */
+function skippedReveal(question: Question): HostReveal {
+  return { skipped: true, question: { id: question.id, type: question.type, text: question.text } };
+}
 
 /** Whether an error is Prisma's unique-constraint violation (P2002). */
 function isUniqueViolation(error: unknown): boolean {
@@ -219,6 +253,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       phase: 'lobby',
       currentIndex: -1,
       openedAt: null,
+      paused: false,
+      pausedAt: null,
+      remainingMs: null,
+      skippedQuestionId: null,
       players: new Map(),
       distribution: new Map(),
       timer: null,
@@ -261,6 +299,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       phase: row.phase as GamePhase,
       currentIndex: row.currentIndex,
       openedAt: null,
+      paused: false,
+      pausedAt: null,
+      remainingMs: null,
+      skippedQuestionId: null,
       players: new Map(),
       distribution: new Map(),
       timer: null,
@@ -292,9 +334,23 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * Restore the per-question runtime state that lives only in memory, from the
    * rows that survive a restart. A question that is still open when the process
    * dies has no timer left, so this also re-arms it for the remaining time (or
-   * reveals immediately if it has already expired).
+   * reveals immediately if it has already expired). A question the host had
+   * paused is restored **paused**: no timer is armed, so a restart can never make
+   * a paused game run on or auto-end (Phase 6.5.3).
    */
   private async recoverCurrentQuestion(runtime: RuntimeGame): Promise<void> {
+    // The skipped flag outlives a restart: the last of `question`/`reveal`/`skipped`
+    // for this game tells us whether the current question was skipped (a fresh
+    // question logs `question`, which resets it). Recovered before the phase guard
+    // so a restart during `reveal`/`board` still marks the question as skipped.
+    const lastTransition = await prisma.gameEvent.findFirst({
+      where: { gameId: runtime.id, type: { in: ['question', 'reveal', 'skipped'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (lastTransition?.type === 'skipped') {
+      runtime.skippedQuestionId = this.currentQuestion(runtime)?.id ?? null;
+    }
+
     if (runtime.phase !== 'question') return;
     const question = this.currentQuestion(runtime);
     if (!question) return;
@@ -317,8 +373,25 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const openedAt = opened ? opened.createdAt.getTime() : Date.now();
     runtime.openedAt = openedAt;
 
+    // Was the last word on this question a pause (rather than a resume)? If so the
+    // remaining time is frozen in that event and no timer may run.
+    const lastPause = await prisma.gameEvent.findFirst({
+      where: { gameId: runtime.id, type: { in: ['paused', 'resumed'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (lastPause?.type === 'paused') {
+      const data = (lastPause.data ?? {}) as { remainingMs?: number; openedAt?: number };
+      runtime.paused = true;
+      runtime.pausedAt = lastPause.createdAt.getTime();
+      runtime.remainingMs = data.remainingMs ?? 0;
+      // Shift the clock forward by the pause so a later resume keeps the timing
+      // consistent with what the host paused at.
+      if (typeof data.openedAt === 'number') runtime.openedAt = data.openedAt;
+      return;
+    }
+
     if (question.type === 'slide') return;
-    const remainingMs = question.timeLimit * 1000 + ANSWER_GRACE_MS - (Date.now() - openedAt);
+    const remainingMs = limitMs(question) - (Date.now() - openedAt);
     if (remainingMs <= 0) {
       // Deferred, not called inline: the runtime is not registered in `games`
       // until `load` returns, and `reveal` -> `get` would otherwise await the
@@ -351,6 +424,8 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       openedAt: game.openedAt ?? Date.now(),
       index: game.currentIndex,
       total: game.quiz.questions.length,
+      paused: game.paused,
+      remainingMs: game.paused ? (game.remainingMs ?? 0) : null,
     };
   }
 
@@ -367,7 +442,8 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     }
   }
 
-  private emitLobby(game: RuntimeGame): void {
+  /** The lobby roster and PIN, broadcast to hosts and players. */
+  emitLobby(game: RuntimeGame): void {
     this.emit('lobby', {
       gameId: game.id,
       pin: game.pin,
@@ -436,6 +512,12 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const question = game.quiz.questions[nextIndex]!;
     game.distribution = new Map();
     game.openedAt = Date.now();
+    // A fresh question is never paused and never skipped; both belong to the
+    // question they were set on (Phase 6.5.3).
+    game.paused = false;
+    game.pausedAt = null;
+    game.remainingMs = null;
+    game.skippedQuestionId = null;
 
     await setPhase(gameId, 'question', nextIndex);
     await logEvent(gameId, 'question', { index: nextIndex, questionId: question.id });
@@ -453,10 +535,9 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       return 'question';
     }
 
-    const limitMs = question.timeLimit * 1000 + ANSWER_GRACE_MS;
     game.timer = setTimeout(() => {
       void this.reveal(gameId).catch(() => undefined);
-    }, limitMs);
+    }, limitMs(question));
 
     return 'question';
   }
@@ -522,6 +603,9 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     // Re-validated inside the lock: the phase, the open question and the player's
     // own state may all have moved on while this submission waited its turn.
     if (game.phase !== 'question') throw conflict('No question is open.');
+    // A paused question accepts no answers: the clock is frozen, so accepting one
+    // would both break the pause and reopen a window the host closed.
+    if (game.paused) throw conflict('The question is paused.');
     const question = this.currentQuestion(game);
     if (!question || question.id !== questionId) throw conflict('That question is not open.');
     if (!isAnswerable(question.type)) throw conflict('This question cannot be answered.');
@@ -534,7 +618,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
     const openedAt = game.openedAt ?? Date.now();
     const elapsedMs = Date.now() - openedAt;
-    if (elapsedMs > question.timeLimit * 1000 + ANSWER_GRACE_MS) {
+    if (elapsedMs > limitMs(question)) {
       throw conflict('Too late – the question is closed.');
     }
 
@@ -623,6 +707,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       board: null,
       podium: null,
       placement: null,
+      skipped: false,
     };
 
     if (game.phase === 'lobby') {
@@ -654,6 +739,9 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const rank = ranked.findIndex((entry) => entry.id === playerId) + 1;
     const ownRank = rank === 0 ? ranked.length : rank;
     const score = player.score;
+    // A skipped question is never scored, so no verdict is shown for it — the
+    // player sees that it was skipped instead (Phase 6.5.3).
+    const skipped = game.skippedQuestionId === question.id;
 
     const answer: PlayerAnswerState = {
       questionId: question.id,
@@ -661,18 +749,22 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       answer: stored ? (stored.answer ?? null) : null,
       // Only the reveal makes the result meaningful. This mirrors the live
       // `game:reveal` event, which also reports `unanswered` for a player who did
-      // not answer, so a reconnect and a live reveal render identically.
+      // not answer, so a reconnect and a live reveal render identically. A
+      // skipped question has no verdict and reports `skipped` here exactly as the
+      // live event does, so a reconnecting player sees the same screen.
       result:
-        game.phase === 'reveal'
-          ? stored
-            ? {
-                outcome: outcomeOf(stored.correctness),
-                points: stored.points,
-                score,
-                rank: ownRank,
-              }
-            : { outcome: 'unanswered', points: 0, score, rank: ownRank }
-          : null,
+        game.phase !== 'reveal'
+          ? null
+          : skipped
+            ? { outcome: 'skipped', points: 0, score, rank: ownRank }
+            : stored
+              ? {
+                  outcome: outcomeOf(stored.correctness),
+                  points: stored.points,
+                  score,
+                  rank: ownRank,
+                }
+              : { outcome: 'unanswered', points: 0, score, rank: ownRank },
     };
 
     return {
@@ -680,6 +772,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       question: this.publicQuestion(game),
       answer,
       board: game.phase === 'board' ? ranked : null,
+      skipped,
     };
   }
 
@@ -703,6 +796,8 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       players: null,
       podium: null,
       answers: null,
+      paused: false,
+      skipped: false,
     };
 
     if (game.phase === 'lobby') {
@@ -721,21 +816,25 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       (player) => player.answeredQuestionId === question.id,
     ).length;
     const answers = { answered, total: game.players.size };
+    const skipped = game.skippedQuestionId === question.id;
 
     if (game.phase === 'reveal') {
       return {
         ...empty,
         question: this.publicQuestion(game),
-        reveal: { question, distribution: Object.fromEntries(game.distribution) },
+        reveal: skipped
+          ? skippedReveal(question)
+          : { skipped: false, question, distribution: Object.fromEntries(game.distribution) },
         answers,
+        skipped,
       };
     }
 
     if (game.phase === 'board') {
-      return { ...empty, players: this.leaderboard(game) };
+      return { ...empty, players: this.leaderboard(game), skipped };
     }
 
-    return { ...empty, question: this.publicQuestion(game), answers };
+    return { ...empty, question: this.publicQuestion(game), answers, paused: game.paused };
   }
 
   /** The player's own result for the current question. */
@@ -761,25 +860,68 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     return this.withPhaseLock(gameId, () => this.revealInternal(gameId));
   }
 
-  private async revealInternal(gameId: string): Promise<GamePhase> {
+  /**
+   * Show the current question's solution — or, for a **skipped** question,
+   * neutralise it instead (Phase 6.5.3).
+   *
+   * A skipped question is fully neutralised: it is never scored, and points any
+   * player already earned for it are refunded so the question contributes
+   * nothing to anyone's total. The refund is applied in a single transaction
+   * (all answer rows zeroed, all player totals decremented) and is idempotent —
+   * a second skip of the same question finds nothing left to refund. The
+   * answers themselves are **kept** (only their `points` are zeroed), so the
+   * history still shows what each player answered; the `skipped` event records
+   * that the question was neutralised.
+   *
+   * The reveal emitted for a skip carries no solution and no distribution
+   * (`skippedReveal`), so the host and the beamer can only show "question
+   * skipped". A regular reveal is unchanged.
+   *
+   * Idempotent: the auto-reveal when everyone has answered may race a host
+   * click, and a late timer may fire after the host already revealed.
+   */
+  private async revealInternal(
+    gameId: string,
+    options: { skipped?: boolean } = {},
+  ): Promise<GamePhase> {
     const game = await this.get(gameId);
     this.clearTimer(game);
-    // Idempotent: the auto-reveal when everyone has answered may race a host
-    // click, and a late timer may fire after the host already revealed.
+    // A paused question never reveals on its own; only an explicit resume or
+    // skip may leave the pause (Phase 6.5.3).
+    if (game.paused && !options.skipped) return game.phase;
     if (game.phase === 'reveal' || game.phase === 'board' || game.phase === 'end') {
       return game.phase;
     }
     const question = this.currentQuestion(game);
     if (!question) throw conflict('There is no question to reveal.');
+
+    const skipped = Boolean(options.skipped);
+
+    // A skip neutralises the question: refund everything it awarded. Done before
+    // the phase moves, so the emitted reveal already reflects the new totals and
+    // a crash mid-refund cannot leave the game claiming a skipped question was
+    // scored. `questionId` is set first, so a re-entrant skip is a no-op.
+    if (skipped && game.skippedQuestionId !== question.id) {
+      game.skippedQuestionId = question.id;
+      await this.refundQuestion(game, question.id);
+    }
+
+    game.paused = false;
+    game.pausedAt = null;
+    game.remainingMs = null;
     game.phase = 'reveal';
 
     await setPhase(gameId, 'reveal', game.currentIndex);
     await logEvent(gameId, 'reveal', { questionId: question.id });
+    if (skipped) {
+      await logEvent(gameId, 'skipped', { questionId: question.id });
+    }
 
     this.emit('reveal', {
       gameId,
-      question,
-      distribution: Object.fromEntries(game.distribution),
+      reveal: skipped
+        ? skippedReveal(question)
+        : { skipped: false, question, distribution: Object.fromEntries(game.distribution) },
     });
 
     game.timer = setTimeout(() => {
@@ -787,6 +929,148 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     }, REVEAL_MS);
 
     return 'reveal';
+  }
+
+  /**
+   * Undo everything a question awarded, atomically: every answer row for it is
+   * zeroed (points, correctness, flagged — the raw answer and its timing are
+   * kept for the report) and every player who scored on it has their `score`,
+   * `correctCount` and `totalTimeMs` decremented by exactly what that row
+   * granted. Runs in one transaction, so the totals can never disagree with the
+   * rows. Idempotent by construction: after the rows are zeroed a second call
+   * refunds nothing, because each row's contribution is read as 0.
+   */
+  private async refundQuestion(game: RuntimeGame, questionId: string): Promise<void> {
+    const rows = await prisma.playerAnswer.findMany({
+      where: { gameId: game.id, questionId },
+      select: { id: true, playerId: true, points: true, correctness: true, elapsedMs: true },
+    });
+    if (rows.length === 0) return;
+
+    const perPlayer = new Map<string, { points: number; correct: number; timeMs: number }>();
+    for (const row of rows) {
+      const entry = perPlayer.get(row.playerId) ?? { points: 0, correct: 0, timeMs: 0 };
+      entry.points += row.points;
+      entry.correct += row.correctness >= 1 ? 1 : 0;
+      entry.timeMs += row.elapsedMs;
+      perPlayer.set(row.playerId, entry);
+    }
+
+    await prisma.$transaction([
+      prisma.playerAnswer.updateMany({
+        where: { gameId: game.id, questionId },
+        data: { points: 0, correctness: 0, flagged: false },
+      }),
+      ...[...perPlayer.entries()].map(([playerId, refund]) =>
+        prisma.gamePlayer.update({
+          where: { id: playerId },
+          data: {
+            score: { decrement: refund.points },
+            correctCount: { decrement: refund.correct },
+            totalTimeMs: { decrement: refund.timeMs },
+          },
+        }),
+      ),
+    ]);
+
+    // Mirror the refund into the runtime only after the write commits, exactly
+    // like `acceptAnswer`, so memory can never drift from the database.
+    for (const [playerId, refund] of perPlayer) {
+      const player = game.players.get(playerId);
+      if (!player) continue;
+      player.score -= refund.points;
+      player.correctCount -= refund.correct;
+      player.totalTimeMs -= refund.timeMs;
+    }
+  }
+
+  /**
+   * Pause the running question. Only a live question may be paused; the timer is
+   * cleared and the remaining time is frozen server-side, so it can be restored
+   * exactly by `resume` and survives a reconnect (Phase 6.5.3).
+   */
+  async pause(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.pauseInternal(gameId));
+  }
+
+  private async pauseInternal(gameId: string): Promise<GamePhase> {
+    const game = await this.get(gameId);
+    if (game.phase !== 'question') throw conflict('Only a running question can be paused.');
+    if (game.paused) throw conflict('The question is already paused.');
+    const question = this.currentQuestion(game);
+    if (!question) throw conflict('There is no question to pause.');
+    if (question.type === 'slide') throw conflict('A slide cannot be paused.');
+
+    this.clearTimer(game);
+    const remainingMs = Math.max(
+      0,
+      limitMs(question) - (Date.now() - (game.openedAt ?? Date.now())),
+    );
+    game.paused = true;
+    game.pausedAt = Date.now();
+    game.remainingMs = remainingMs;
+
+    // Persisted in the existing event log (no migration): after a restart a
+    // paused game must not silently run on or auto-end (Phase 6.5.3).
+    await logEvent(gameId, 'paused', {
+      questionId: question.id,
+      remainingMs,
+      openedAt: game.openedAt ?? Date.now(),
+    });
+
+    this.emit('paused', { gameId, questionId: question.id, remainingMs });
+    return game.phase;
+  }
+
+  /**
+   * Resume a paused question with exactly the time that was left. The timer is
+   * re-armed once and `openedAt` is shifted forward by the pause duration, so the
+   * clock (and the elapsed-time scoring) continues as if the pause never
+   * happened (Phase 6.5.3).
+   */
+  async resume(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.resumeInternal(gameId));
+  }
+
+  private async resumeInternal(gameId: string): Promise<GamePhase> {
+    const game = await this.get(gameId);
+    if (game.phase !== 'question') throw conflict('Only a running question can be resumed.');
+    if (!game.paused) throw conflict('The question is not paused.');
+    const question = this.currentQuestion(game);
+    if (!question) throw conflict('There is no question to resume.');
+
+    const remainingMs = game.remainingMs ?? limitMs(question);
+    const pausedFor = game.pausedAt === null ? 0 : Date.now() - game.pausedAt;
+    game.openedAt = (game.openedAt ?? Date.now()) + pausedFor;
+    game.paused = false;
+    game.pausedAt = null;
+    game.remainingMs = null;
+
+    game.timer = setTimeout(() => {
+      void this.reveal(gameId).catch(() => undefined);
+    }, remainingMs);
+
+    await logEvent(gameId, 'resumed', { questionId: question.id, remainingMs });
+    this.emit('resumed', { gameId, questionId: question.id, remainingMs });
+    return game.phase;
+  }
+
+  /**
+   * Skip the current question: it is **neutralised** (Phase 6.5.3, decision A).
+   * It is never scored, points any player already earned for it are refunded by
+   * `refundQuestion`, and the reveal emitted carries no solution and no
+   * distribution, so the host and the beamer can only show "question skipped".
+   * Works on a live or a paused question and reuses the reveal path, so it
+   * cannot produce a second question or a duplicate phase change.
+   */
+  async skip(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, () => this.skipInternal(gameId));
+  }
+
+  private async skipInternal(gameId: string): Promise<GamePhase> {
+    const game = await this.get(gameId);
+    if (game.phase !== 'question') throw conflict('Only a running question can be skipped.');
+    return this.revealInternal(gameId, { skipped: true });
   }
 
   /** Show the leaderboard for the current question. */
@@ -798,6 +1082,9 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const game = await this.get(gameId);
     this.clearTimer(game);
     if (game.phase === 'board' || game.phase === 'end') return game.phase;
+    game.paused = false;
+    game.pausedAt = null;
+    game.remainingMs = null;
     game.phase = 'board';
     await setPhase(gameId, 'board', game.currentIndex);
     this.emit('board', { gameId, players: this.leaderboard(game) });
@@ -818,6 +1105,9 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const game = await this.get(gameId);
     this.clearTimer(game);
     if (game.phase === 'end') return 'end';
+    game.paused = false;
+    game.pausedAt = null;
+    game.remainingMs = null;
     game.phase = 'end';
     await setPhase(gameId, 'end', game.currentIndex, { endedAt: new Date() });
     await logEvent(gameId, 'ended', {});

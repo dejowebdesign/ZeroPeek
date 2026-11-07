@@ -11,7 +11,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import type { GamePhase, HostState } from '@zeropeek/shared';
+import type { HostReveal, HostState } from '@zeropeek/shared';
 
 import {
   attachHostHandlers,
@@ -25,6 +25,7 @@ import {
   nextStatus,
   rememberedGame,
   rememberGame,
+  revealBody,
   type HostEventHandlers,
   type ListenerSocket,
 } from './hostView.js';
@@ -39,6 +40,8 @@ function state(overrides: Partial<HostState> = {}): HostState {
     players: [],
     podium: null,
     answers: null,
+    paused: false,
+    skipped: false,
     ...overrides,
   };
 }
@@ -78,7 +81,12 @@ describe('hostScreen', () => {
     expect(hostScreen(state({ phase: 'lobby' }))).toBe('lobby');
     expect(hostScreen(state({ phase: 'question', question: questionView() }))).toBe('question');
     expect(
-      hostScreen(state({ phase: 'reveal', reveal: { question: question(), distribution: {} } })),
+      hostScreen(
+        state({
+          phase: 'reveal',
+          reveal: { skipped: false, question: question(), distribution: {} },
+        }),
+      ),
     ).toBe('reveal');
     expect(hostScreen(state({ phase: 'board' }))).toBe('board');
     expect(hostScreen(state({ phase: 'end' }))).toBe('end');
@@ -112,6 +120,8 @@ describe('hostScreen', () => {
       openedAt: 0,
       index: 0,
       total: 1,
+      paused: false,
+      remainingMs: null,
     };
   }
 });
@@ -119,24 +129,46 @@ describe('hostScreen', () => {
 describe('hostActions', () => {
   it('offers exactly the transitions the engine allows per phase', () => {
     expect(hostActions('lobby').map((a) => a.id)).toEqual(['start']);
-    expect(hostActions('question').map((a) => a.id)).toEqual(['reveal']);
+    // A running question can be revealed, paused and skipped.
+    expect(hostActions('question').map((a) => a.id)).toEqual(['reveal', 'pause', 'skip']);
     expect(hostActions('reveal').map((a) => a.id)).toEqual(['board']);
     expect(hostActions('board').map((a) => a.id)).toEqual(['next', 'end']);
     expect(hostActions('end').map((a) => a.id)).toEqual(['home']);
   });
 
+  it('swaps pause for resume while the question is frozen', () => {
+    // A paused question may only resume or be skipped: the engine refuses a plain
+    // reveal while paused, so no dead Reveal button is offered.
+    const ids = hostActions('question', true).map((a) => a.id);
+    expect(ids).toEqual(['resume', 'skip']);
+    expect(ids).not.toContain('pause');
+    expect(ids).not.toContain('reveal');
+  });
+
+  it('offers no Pause for a slide, which has no clock to freeze', () => {
+    // `engine.pause` refuses a slide, so the control must not be offered.
+    const ids = hostActions('question', false, 'slide').map((a) => a.id);
+    expect(ids).toEqual(['reveal', 'skip']);
+    expect(ids).not.toContain('pause');
+    // A normal question still offers Pause.
+    expect(hostActions('question', false, 'single').map((a) => a.id)).toContain('pause');
+  });
+
   it('offers no game transition after the end', () => {
     const ids = hostActions('end').map((a) => a.id);
-    for (const forbidden of ['start', 'reveal', 'board', 'next', 'end']) {
+    for (const forbidden of ['start', 'reveal', 'board', 'next', 'end', 'skip']) {
       expect(ids).not.toContain(forbidden);
     }
   });
 
-  it('marks only the end action as destructive', () => {
+  it('marks only the destructive actions as such', () => {
     expect(hostActions('board').find((a) => a.id === 'end')?.variant).toBe('danger');
-    for (const phase of ['lobby', 'question', 'reveal'] as GamePhase[]) {
-      expect(hostActions(phase).every((a) => a.variant === 'primary')).toBe(true);
-    }
+    expect(hostActions('question').find((a) => a.id === 'skip')?.variant).toBe('danger');
+    expect(hostActions('lobby').every((a) => a.variant === 'primary')).toBe(true);
+    // Reveal is always primary; pause/resume swap places and stay primary.
+    expect(hostActions('question').find((a) => a.id === 'reveal')?.variant).toBe('primary');
+    expect(hostActions('question').find((a) => a.id === 'pause')?.variant).toBe('primary');
+    expect(hostActions('question', true).find((a) => a.id === 'resume')?.variant).toBe('primary');
   });
 });
 
@@ -281,12 +313,16 @@ describe('attachHostHandlers', () => {
     socket.emit('host:reveal', { question: {}, distribution: {} });
     socket.emit('host:board', { players: [] });
     socket.emit('host:ended', { players: [] });
+    socket.emit('host:paused', { questionId: 'q1', remainingMs: 5000 });
+    socket.emit('host:resumed', { questionId: 'q1', remainingMs: 5000 });
 
     expect(handlers.question).toHaveBeenCalledTimes(1);
     expect(handlers.answers).toHaveBeenCalledTimes(1);
     expect(handlers.reveal).toHaveBeenCalledTimes(1);
     expect(handlers.board).toHaveBeenCalledTimes(1);
     expect(handlers.ended).toHaveBeenCalledTimes(1);
+    expect(handlers.paused).toHaveBeenCalledTimes(1);
+    expect(handlers.resumed).toHaveBeenCalledTimes(1);
   });
 
   it('stops firing after detach, and re-registers cleanly afterwards', () => {
@@ -297,7 +333,7 @@ describe('attachHostHandlers', () => {
     detach();
     socket.emit('host:lobby', { pin: '1', players: [] });
     expect(lobby).not.toHaveBeenCalled();
-    expect(socket.offCalls.count).toBe(6);
+    expect(socket.offCalls.count).toBe(8);
 
     attachHostHandlers(socket, handlersFor({ lobby }));
     socket.emit('host:lobby', { pin: '1', players: [] });
@@ -320,6 +356,44 @@ function handlersFor(overrides: Partial<HostEventHandlers> = {}): HostEventHandl
     reveal: vi.fn(),
     board: vi.fn(),
     ended: vi.fn(),
+    paused: vi.fn(),
+    resumed: vi.fn(),
     ...overrides,
   };
 }
+
+describe('revealBody (Phase 6.5.3, decision B)', () => {
+  it('shows a skipped reveal as neutralised, with no solution or distribution', () => {
+    const reveal: HostReveal = {
+      skipped: true,
+      question: { id: 'q1', type: 'single', text: 'Capital of France?' },
+    };
+    const html = revealBody(reveal).outerHTML;
+    expect(html).toContain('Capital of France?');
+    expect(html).toContain('Question skipped');
+    // The solution must never appear: the union carries no field for it.
+    expect(html).not.toContain('Correct');
+    expect(html).not.toContain('Paris');
+    expect(html).not.toContain('distribution');
+  });
+
+  it('shows a regular reveal with the solution and the distribution', () => {
+    const reveal: HostReveal = {
+      skipped: false,
+      question: {
+        id: 'q1',
+        type: 'single',
+        text: 'Capital of France?',
+        timeLimit: 20,
+        points: 'standard',
+        options: ['Paris', 'Rome'],
+        correctIndex: 0,
+      },
+      distribution: { '0': 3, '1': 1 },
+    };
+    const html = revealBody(reveal).outerHTML;
+    expect(html).toContain('Capital of France?');
+    expect(html).toContain('Correct: Paris');
+    expect(html).not.toContain('Question skipped');
+  });
+});

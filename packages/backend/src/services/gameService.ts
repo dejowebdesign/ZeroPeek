@@ -143,7 +143,7 @@ export async function listPlayers(gameId: string) {
   return prisma.gamePlayer.findMany({ where: { gameId }, orderBy: { joinedAt: 'asc' } });
 }
 
-/** Mark a player's connected flag. */
+/** Mark a player's connected flag. A no-op if the row is gone (e.g. kicked). */
 export async function setPlayerConnected(playerId: string, connected: boolean): Promise<void> {
-  await prisma.gamePlayer.update({ where: { id: playerId }, data: { connected } });
+  await prisma.gamePlayer.updateMany({ where: { id: playerId }, data: { connected } });
 }

@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { io as connect, type Socket } from 'socket.io-client';
 
-import type { HostState, Quiz } from '@zeropeek/shared';
+import type { HostReveal, HostState, Quiz } from '@zeropeek/shared';
 
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
@@ -362,4 +362,167 @@ describe.skipIf(!available)('host state synchronisation', () => {
       ada.socket.disconnect();
     }
   }, 60_000);
+
+  it('J – pause freezes the clock and resume restores it (Phase 6.5.3)', async () => {
+    const { host, gameId, pin } = await createGame();
+    const ada = await joinPlayer(pin, 'Ada');
+
+    await request(host, 'host:start', { gameId });
+    const paused = once<{ questionId: string; remainingMs: number }>(host, 'host:paused');
+    const playerPaused = once<{ questionId: string }>(ada.socket, 'game:paused');
+    await request(host, 'host:pause', { gameId });
+
+    const pauseEvent = await paused;
+    expect(pauseEvent.remainingMs).toBeGreaterThan(0);
+    expect((await playerPaused).questionId).toBe(pauseEvent.questionId);
+
+    // The host state reports the frozen clock, and it survives a reconnect.
+    const reloaded = await hostSocket();
+    const state = await request<HostState>(reloaded, 'host:join', { gameId });
+    expect(state.phase).toBe('question');
+    expect(state.question?.paused).toBe(true);
+    expect(state.question?.remainingMs).toBe(pauseEvent.remainingMs);
+
+    // While paused, the question accepts no answer.
+    await expect(
+      request(ada.socket, 'player:answer', { questionId: state.question!.id, answer: 0 }),
+    ).rejects.toThrow(/paused/i);
+
+    const resumed = once<{ remainingMs: number }>(host, 'host:resumed');
+    await request(host, 'host:resume', { gameId });
+    expect((await resumed).remainingMs).toBeGreaterThan(0);
+
+    const after = await request<HostState>(reloaded, 'host:join', { gameId });
+    expect(after.question?.paused).toBe(false);
+    expect(after.question?.remainingMs).toBeNull();
+
+    host.disconnect();
+    reloaded.disconnect();
+    ada.socket.disconnect();
+  }, 20_000);
+
+  it('K – skip reveals without a solution and is marked not scored', async () => {
+    const { host, gameId, pin } = await createGame();
+    const ada = await joinPlayer(pin, 'Ada');
+    // A second player keeps the question open: with one player, answering would
+    // auto-reveal before the host could skip.
+    await joinPlayer(pin, 'Bob');
+
+    await request(host, 'host:start', { gameId });
+    const question = await request<HostState>(host, 'host:join', { gameId });
+    await request(ada.socket, 'player:answer', { questionId: question.question!.id, answer: 0 });
+
+    const reveal = once<HostReveal>(host, 'host:reveal');
+    const own = once<{ result: { outcome: string } }>(ada.socket, 'game:reveal');
+    await request(host, 'host:skip', { gameId });
+
+    const payload = await reveal;
+    expect(payload.skipped).toBe(true);
+    // The host's reveal carries no solution and no distribution: a skipped
+    // question is neutralised, so the payload has no field that could hold them.
+    expect(payload).not.toHaveProperty('distribution');
+    expect(payload).not.toHaveProperty('correctIndex');
+    // The player is told the question was skipped, never handed a verdict.
+    expect((await own).result.outcome).toBe('skipped');
+
+    // The host state carries the skipped flag and, again, no solution.
+    const state = await request<HostState>(host, 'host:join', { gameId });
+    expect(state.phase).toBe('reveal');
+    expect(state.skipped).toBe(true);
+    expect(state.reveal?.skipped).toBe(true);
+    expect(state.reveal).not.toHaveProperty('distribution');
+
+    host.disconnect();
+    ada.socket.disconnect();
+  }, 20_000);
+
+  it('K2 – a skipped reveal leaks no solution over the wire or in the reconnect state', async () => {
+    const { host, gameId, pin } = await createGame();
+    const ada = await joinPlayer(pin, 'Ada');
+    await joinPlayer(pin, 'Bob');
+    await request(host, 'host:start', { gameId });
+    const open = await request<HostState>(host, 'host:join', { gameId });
+    await request(ada.socket, 'player:answer', { questionId: open.question!.id, answer: 0 });
+
+    const reveal = once<HostReveal>(host, 'host:reveal');
+    const own = once<{ result: { outcome: string } }>(ada.socket, 'game:reveal');
+    await request(host, 'host:skip', { gameId });
+
+    // The live event, serialised: none of the fields that carry a solution may
+    // appear. `correctIndex` is the correct option; `distribution` is how many
+    // players picked each option — together they would give the answer away.
+    const live = JSON.stringify(await reveal);
+    expect(live).not.toContain('correctIndex');
+    expect(live).not.toContain('distribution');
+    expect((await own).result.outcome).toBe('skipped');
+
+    // The reconnect state must be just as clean: a host who reloads mid-skip
+    // sees the same neutralised reveal, not the answer.
+    const state = await request<HostState>(host, 'host:join', { gameId });
+    const sync = JSON.stringify(state);
+    expect(sync).not.toContain('correctIndex');
+    expect(sync).not.toContain('distribution');
+    expect(state.reveal?.skipped).toBe(true);
+
+    host.disconnect();
+    ada.socket.disconnect();
+  }, 20_000);
+
+  it('K3 – a regular reveal still carries the solution and the distribution', async () => {
+    // The neutralisation must not spill over into normal reveals: the host is
+    // trusted staff and needs the solution to present the question.
+    const { host, gameId, pin } = await createGame();
+    const ada = await joinPlayer(pin, 'Ada');
+    await joinPlayer(pin, 'Bob');
+    await request(host, 'host:start', { gameId });
+    const open = await request<HostState>(host, 'host:join', { gameId });
+    await request(ada.socket, 'player:answer', { questionId: open.question!.id, answer: 0 });
+
+    const reveal = once<HostReveal>(host, 'host:reveal');
+    await request(host, 'host:reveal', { gameId });
+
+    const payload = await reveal;
+    expect(payload.skipped).toBe(false);
+    // The regular reveal still hands the host the solution (the correct option)
+    // and the distribution, so the show surface can present them.
+    if (payload.skipped) throw new Error('unreachable');
+    expect(payload.question.correctIndex).toBe(0);
+    expect(payload.distribution).toBeDefined();
+
+    host.disconnect();
+    ada.socket.disconnect();
+  }, 20_000);
+
+  it('L – removes a player from the lobby and tells them', async () => {
+    const { host, gameId, pin } = await createGame();
+    const ada = await joinPlayer(pin, 'Ada');
+    const bob = await joinPlayer(pin, 'Bob');
+
+    const kicked = once<{ reason: string }>(ada.socket, 'game:kicked');
+    await request(host, 'host:kick', { gameId, playerId: ada.playerId });
+    expect((await kicked).reason).toBe('kicked');
+
+    // The player row is gone, so the roster the host sees no longer lists them.
+    const state = await request<HostState>(host, 'host:join', { gameId });
+    expect(state.players?.map((player) => player.nickname)).toEqual(['Bob']);
+    expect(await prisma.gamePlayer.count({ where: { gameId } })).toBe(1);
+
+    // A kick is a lobby-only action.
+    await request(host, 'host:start', { gameId });
+    await expect(request(host, 'host:kick', { gameId, playerId: bob.playerId })).rejects.toThrow(
+      /lobby/i,
+    );
+
+    host.disconnect();
+    ada.socket.disconnect();
+    bob.socket.disconnect();
+  }, 20_000);
+
+  it('L – refuses a kick for a player who is not in the game', async () => {
+    const { host, gameId } = await createGame();
+    await expect(
+      request(host, 'host:kick', { gameId, playerId: '00000000-0000-4000-8000-00000000dead' }),
+    ).rejects.toThrow(/not in this game/i);
+    host.disconnect();
+  }, 20_000);
 });

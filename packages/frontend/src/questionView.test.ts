@@ -57,6 +57,8 @@ function asPublic(question: Question): PublicQuestion {
     openedAt: Date.now(),
     index: 0,
     total: 1,
+    paused: false,
+    remainingMs: null,
   };
 }
 

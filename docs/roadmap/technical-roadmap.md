@@ -305,6 +305,28 @@ und Schwierigkeitsstufen (Selects/Filter).
 
 **Nicht Teil von 6.5.2:** Pause/Fortsetzen und Frage überspringen (6.5.3, eigene Freigabe).
 
+### 6.2 Phase 6.5.3 – Erweiterte Host-Steuerung
+
+**Stand:** umgesetzt (Branch `feat/phase-6-5-3-extended-host-controls`).
+
+| Punkt                      | Inhalt                                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Ziel**                   | Laufende Frage **pausieren/fortsetzen** und **überspringen**; Spieler aus der Lobby entfernen; Spieler sehen, ob der Host erreichbar ist                                                                                                                                                                                                                                             |
+| **Betroffene Komponenten** | `packages/shared/src/events.ts`, `services/engine.ts`, `socket.ts`, `hostView.ts`, `pages/host.ts`, `pages/player.ts`, `playerView.ts`, `styles/tokens.css`                                                                                                                                                                                                                          |
+| **Datenmodelle**           | **keine** – `paused`/`resumed`/`skipped` werden als Zeilen im vorhandenen `GameEvent`-Log abgelegt (keine Migration)                                                                                                                                                                                                                                                                 |
+| **API-Änderungen**         | neue Host-Events `host:pause`/`host:resume`/`host:skip` (ACK je Phase); neue Server-Events `host:paused`/`host:resumed`, `game:paused`/`game:resumed`, `game:kicked`; `PublicQuestion` + `paused`/`remainingMs`; `HostState`/`PlayerSync` + `paused`/`skipped`; `OwnResult.outcome` + `'skipped'`. `host:kick` bleibt unverändert (nur die Lobby-Prüfung und `game:kicked` sind neu) |
+| **Abhängigkeiten**         | 6.5.2                                                                                                                                                                                                                                                                                                                                                                                |
+| **Risiken**                | Phasen-Lock muss erhalten bleiben; Pause darf keinen Auto-Reveal mehr auslösen; Kick nur in der Lobby (kein Umbau einer laufenden Rangliste)                                                                                                                                                                                                                                         |
+| **Teststrategie**          | Integration über echtes Socket.IO: `engine.integration.test.ts` (Block „pause / resume / skip“ + Slides) und `host-sync.integration.test.ts` (J–L, inkl. K2/K3); `snapshot.integration.test.ts` (Skip in Report/CSV/Statistik); Unit für `hostActions`/`revealBody` (`hostView.test.ts`) und die Host-Erreichbarkeit (`playerView.test.ts`)                                          |
+| **Abnahmekriterien**       | Pause friert die Uhr serverseitig und überlebt einen Neustart; Fortsetzen läuft mit der Restzeit weiter; Skip **neutralisiert** die Frage (keine Lösung auf dem Draht, Punkte zurückgenommen, frühere Punkte unberührt); kein weiterer Punktgewinn nach dem Skip; Kick entfernt nur in der Lobby; Slide nicht pausierbar; Steuerung ist phasengerecht eingeschränkt                  |
+| **Aufwand**                | mittel                                                                                                                                                                                                                                                                                                                                                                               |
+
+**Entschieden (chrisB, 2026-11-07):** Ein **Skip neutralisiert** die Frage. Bereits vergebene
+Punkte werden **zurückgenommen**, die Antworten bleiben gespeichert (auf null gesetzt) und die
+korrekte Antwort wird entwertet; frühere Fragen bleiben unberührt. Der **Host erhält bei einem
+Skip keine Lösung** auf dem Draht (`HostReveal`-Variante ohne Lösungsfeld), und ein **Slide
+kann nicht pausiert** werden (keine Uhr). Alle drei Punkte sind damit geschlossen.
+
 ---
 
 ## 7. Phase 6.6 – Spielerprofile
@@ -603,18 +625,18 @@ Freigabe-Gate nach jeder Phase, um Risiko klein zu halten (Briefing §53, Fehler
 (verbindlich), charakterexklusive Gegenstände (verbindlich), Hintergrund Standard Zufall (verbindlich),
 Host/Beamer kombiniert (verbindlich), Audio nur Host (verbindlich).
 
-| #   | Entscheidung                                 | Blockiert      |
-| --- | -------------------------------------------- | -------------- |
-| 1   | Charakter-Assets (Referenzdateien)           | 6.7, 6.9, 6.10 |
-| 2   | Beamer-Grafiken (kombinierte Ansicht bleibt) | 6.10           |
-| 3   | Audio-Assets                                 | 6.11           |
-| 4   | Clock-Sync                                   | 6.9            |
-| 5   | Redis-Adapter oder bewusst eine Instanz      | 6.12, Betrieb  |
-| 6   | Pause/Überspringen                           | 6.5            |
-| 7   | Katalog in `shared` oder DB                  | 6.7, 6.8       |
-| 8   | Endgültige Belohnungsmatrix                  | 6.8            |
-| 9   | Erfolgsnamen/-bedingungen                    | 6.8            |
-| 10  | IP-Speicherung (Q5)                          | 6.6            |
+| #   | Entscheidung                                                                                    | Blockiert      |
+| --- | ----------------------------------------------------------------------------------------------- | -------------- |
+| 1   | Charakter-Assets (Referenzdateien)                                                              | 6.7, 6.9, 6.10 |
+| 2   | Beamer-Grafiken (kombinierte Ansicht bleibt)                                                    | 6.10           |
+| 3   | Audio-Assets                                                                                    | 6.11           |
+| 4   | Clock-Sync                                                                                      | 6.9            |
+| 5   | Redis-Adapter oder bewusst eine Instanz                                                         | 6.12, Betrieb  |
+| 6   | ~~Pause/Überspringen~~ **umgesetzt in 6.5.3**; Skip **neutralisiert** die Frage (Punkte zurück) | 6.5            |
+| 7   | Katalog in `shared` oder DB                                                                     | 6.7, 6.8       |
+| 8   | Endgültige Belohnungsmatrix                                                                     | 6.8            |
+| 9   | Erfolgsnamen/-bedingungen                                                                       | 6.8            |
+| 10  | IP-Speicherung (Q5)                                                                             | 6.6            |
 
 ---
 

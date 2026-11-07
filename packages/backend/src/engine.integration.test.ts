@@ -9,7 +9,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Quiz } from '@zeropeek/shared';
+import type { HostReveal, Quiz } from '@zeropeek/shared';
 
 import { prisma } from './db.js';
 import { engine } from './services/engine.js';
@@ -401,4 +401,389 @@ describe.skipIf(!available)('game engine integration', () => {
     }
     expect(stuck).toBe(0);
   }, 60_000);
+
+  describe('pause / resume / skip (Phase 6.5.3)', () => {
+    it('freezes the clock on pause and rejects answers while paused', async () => {
+      const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
+      await engine.start(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+
+      await engine.pause(gameId);
+      const paused = engine.publicQuestion(await engine.get(gameId));
+      expect(paused.paused).toBe(true);
+      expect(paused.remainingMs).toBeGreaterThan(0);
+      // The frozen clock is persisted, so a restart can restore it.
+      const event = await prisma.gameEvent.findFirst({
+        where: { gameId, type: 'paused' },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(event).not.toBeNull();
+
+      await expect(engine.submitAnswer(gameId, playerId, question.id, 0)).rejects.toThrow(
+        /paused/i,
+      );
+      // Pausing twice is a no-op error, not a second pause.
+      await expect(engine.pause(gameId)).rejects.toThrow(/already paused/i);
+    });
+
+    it('resumes with the remaining time and keeps the question open', async () => {
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      await engine.start(gameId);
+      await engine.pause(gameId);
+      const before = engine.publicQuestion(await engine.get(gameId));
+
+      await engine.resume(gameId);
+      const after = engine.publicQuestion(await engine.get(gameId));
+      expect(after.paused).toBe(false);
+      expect(after.remainingMs).toBeNull();
+      // The clock was shifted forward by the pause, so it did not run on.
+      expect(after.openedAt).toBeGreaterThanOrEqual(before.openedAt);
+      await expect(engine.resume(gameId)).rejects.toThrow(/not paused/i);
+    });
+
+    it('a paused question never auto-reveals on its own', async () => {
+      // A one-player game would normally auto-reveal once the lone player answers,
+      // and the timer would reveal on expiry. Pausing must disable both paths.
+      const { gameId } = await freshGame(['Ada']);
+      await engine.start(gameId);
+      await engine.pause(gameId);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('question');
+      expect(game.paused).toBe(true);
+    });
+
+    it('skip neutralises the question: points already awarded are refunded', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada, bob] = playerIds;
+      await engine.start(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      // Ada answers before the skip; Bob never gets the chance.
+      const before = await engine.submitAnswer(gameId, ada!, question.id, 0);
+      expect(before.accepted).toBe(true);
+      const adaAwarded = (await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score;
+      expect(adaAwarded).toBeGreaterThan(0);
+
+      const events: Array<{ reveal: HostReveal }> = [];
+      engine.on('reveal', (payload) => events.push(payload));
+
+      await engine.skip(gameId);
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('reveal');
+      expect(events.at(-1)?.reveal.skipped).toBe(true);
+      // The skipped reveal carries no solution and no distribution.
+      expect(events.at(-1)?.reveal).not.toHaveProperty('distribution');
+
+      // The skipped question is persisted as such.
+      const skippedEvent = await prisma.gameEvent.findFirst({
+        where: { gameId, type: 'skipped' },
+      });
+      expect(skippedEvent).not.toBeNull();
+
+      // The question is neutralised: the points Ada had earned are refunded, so
+      // the question contributes nothing to anyone's total.
+      const adaAfter = (await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score;
+      const bobAfter = (await prisma.gamePlayer.findUnique({ where: { id: bob! } }))!.score;
+      expect(adaAfter).toBe(0);
+      expect(bobAfter).toBe(0);
+
+      // A late answer after the skip is refused.
+      await expect(engine.submitAnswer(gameId, bob!, question.id, 0)).rejects.toThrow();
+
+      // The answer row is kept (for the report) but zeroed, so it is not shown
+      // as a regularly scored answer.
+      const kept = await prisma.playerAnswer.findFirst({
+        where: { gameId, playerId: ada!, questionId: question.id },
+      });
+      expect(kept).not.toBeNull();
+      expect(kept!.points).toBe(0);
+      expect(kept!.correctness).toBe(0);
+
+      // The next question is fresh again: not paused, not skipped.
+      await engine.board(gameId);
+      await engine.next(gameId);
+      const next = engine.publicQuestion(await engine.get(gameId));
+      expect(next.id).toBe(QUIZ.questions[1]!.id);
+      expect(next.paused).toBe(false);
+    });
+
+    it('skip also works from a paused question', async () => {
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      await engine.start(gameId);
+      await engine.pause(gameId);
+      await engine.skip(gameId);
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    });
+
+    it('reports a skipped question to a reconnecting player, not a verdict', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada] = playerIds;
+      await engine.start(gameId);
+      await engine.skip(gameId);
+
+      // A reconnect during the skipped reveal must render the same screen the
+      // live event did, so the sync carries `skipped` and a `skipped` result.
+      const sync = await engine.playerSync(await engine.get(gameId), ada!);
+      expect(sync.skipped).toBe(true);
+      expect(sync.answer?.result?.outcome).toBe('skipped');
+    });
+
+    it('refuses pause, resume and skip outside a running question', async () => {
+      const { gameId } = await freshGame(['Ada']);
+      await expect(engine.pause(gameId)).rejects.toThrow(/running question/i);
+      await expect(engine.resume(gameId)).rejects.toThrow(/running question/i);
+      await expect(engine.skip(gameId)).rejects.toThrow(/running question/i);
+    });
+
+    it('restores a paused clock and a skipped flag after a cold reload', async () => {
+      // Simulate a process restart: evict the runtime, then re-load from the rows.
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      await engine.start(gameId);
+      await engine.pause(gameId);
+      const before = engine.publicQuestion(await engine.get(gameId));
+      engine.evict(gameId);
+
+      const reloaded = await engine.get(gameId);
+      expect(reloaded.paused).toBe(true);
+      expect(reloaded.phase).toBe('question');
+      expect(engine.publicQuestion(reloaded).paused).toBe(true);
+      expect(engine.publicQuestion(reloaded).remainingMs).toBe(before.remainingMs);
+
+      // A skipped question is remembered as skipped across the same restart.
+      await engine.resume(gameId);
+      await engine.skip(gameId);
+      engine.evict(gameId);
+      const afterSkip = await engine.get(gameId);
+      const question = engine.currentQuestion(afterSkip);
+      expect(question).not.toBeNull();
+      expect(afterSkip.skippedQuestionId).toBe(question!.id);
+    });
+
+    // --- Decision A: a skip neutralises the question -------------------------
+
+    it('skips a question with no answers and refunds nothing', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      await engine.start(gameId);
+      await engine.skip(gameId);
+
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+      for (const id of playerIds) {
+        expect((await prisma.gamePlayer.findUnique({ where: { id } }))!.score).toBe(0);
+      }
+      expect(await prisma.playerAnswer.count({ where: { gameId } })).toBe(0);
+    });
+
+    it('neutralises a question answered correctly: no points survive', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada] = playerIds;
+      await engine.start(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, ada!, question.id, 0); // correct
+      expect((await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score).toBeGreaterThan(
+        0,
+      );
+
+      await engine.skip(gameId);
+      const row = await prisma.gamePlayer.findUnique({ where: { id: ada! } });
+      expect(row!.score).toBe(0);
+      expect(row!.correctCount).toBe(0);
+      // The answer is kept for the report, but zeroed so it is not a scored answer.
+      const answer = await prisma.playerAnswer.findFirst({
+        where: { gameId, playerId: ada!, questionId: question.id },
+      });
+      expect(answer).not.toBeNull();
+      expect(answer!.points).toBe(0);
+      expect(answer!.correctness).toBe(0);
+    });
+
+    it('never subtracts points for a wrong answer on a skipped question', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada] = playerIds;
+      await engine.start(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, ada!, question.id, 1); // wrong option
+
+      await engine.skip(gameId);
+      expect((await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score).toBe(0);
+    });
+
+    it('keeps points earned on earlier questions when a later one is skipped', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada, bob] = playerIds;
+      await engine.start(gameId);
+      // Q1: Ada answers correctly and is revealed normally — these points stand.
+      const first = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, ada!, first.id, 0);
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+      const earned = (await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score;
+      expect(earned).toBeGreaterThan(0);
+
+      // Q2: Bob answers, then the host skips — only Q2 is neutralised.
+      await engine.next(gameId);
+      const second = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, bob!, second.id, 1);
+      await engine.skip(gameId);
+
+      expect((await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score).toBe(earned);
+      expect((await prisma.gamePlayer.findUnique({ where: { id: bob! } }))!.score).toBe(0);
+    });
+
+    it('does not refund twice when a skip is triggered repeatedly', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada] = playerIds;
+      await engine.start(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, ada!, question.id, 0);
+      const earned = (await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score;
+
+      await engine.skip(gameId);
+      // A second skip is refused (the phase already moved on); a concurrent one
+      // is serialised by the phase lock. Either way, no second refund.
+      await expect(engine.skip(gameId)).rejects.toThrow();
+      const row = await prisma.gamePlayer.findUnique({ where: { id: ada! } });
+      expect(row!.score).toBe(0);
+      expect(row!.score).toBe(earned - earned);
+    });
+
+    it('leaves historical answer rows intact apart from the zeroed score', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada] = playerIds;
+      await engine.start(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, ada!, question.id, 0);
+      const before = await prisma.playerAnswer.findFirst({
+        where: { gameId, playerId: ada!, questionId: question.id },
+      });
+
+      await engine.skip(gameId);
+      const after = await prisma.playerAnswer.findFirst({
+        where: { gameId, playerId: ada!, questionId: question.id },
+      });
+      // The row itself survives — the raw answer and its timing are untouched,
+      // so the report can still show what was answered.
+      expect(after).not.toBeNull();
+      expect(after!.id).toBe(before!.id);
+      expect(after!.answer).toEqual(before!.answer);
+      expect(after!.elapsedMs).toBe(before!.elapsedMs);
+    });
+
+    it('continues normally into the next question after a skip', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada] = playerIds;
+      await engine.start(gameId);
+      await engine.skip(gameId);
+      await engine.board(gameId);
+      await engine.next(gameId);
+
+      const second = engine.publicQuestion(await engine.get(gameId));
+      expect(second.id).toBe(QUIZ.questions[1]!.id);
+      expect(second.paused).toBe(false);
+      // The new question is scored as usual: a correct answer earns points.
+      await engine.submitAnswer(gameId, ada!, second.id, 1);
+      expect((await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score).toBeGreaterThan(
+        0,
+      );
+    });
+
+    it('ends correctly when the last question is skipped', async () => {
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      await engine.start(gameId);
+      // Walk to the final question, skipping each one.
+      for (let i = 0; i < QUIZ.questions.length; i += 1) {
+        await engine.skip(gameId);
+        if (i < QUIZ.questions.length - 1) {
+          await engine.board(gameId);
+          await engine.next(gameId);
+        }
+      }
+      await engine.board(gameId);
+      await engine.end(gameId);
+
+      const row = await prisma.game.findUnique({ where: { id: gameId } });
+      expect(row!.phase).toBe('end');
+      expect(row!.endedAt).not.toBeNull();
+    });
+
+    it('stays race-safe when a skip and an end run in the same tick', async () => {
+      let stuck = 0;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+        const [ada] = playerIds;
+        await engine.start(gameId);
+        const question = engine.publicQuestion(await engine.get(gameId));
+        await engine.submitAnswer(gameId, ada!, question.id, 0);
+        const earned = (await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score;
+
+        // Fire a skip and an end together: the phase lock must serialise them so
+        // the game is never left mid-transition with a half-applied refund.
+        await Promise.allSettled([engine.skip(gameId), engine.end(gameId)]);
+
+        const row = await prisma.game.findUnique({ where: { id: gameId } });
+        const player = await prisma.gamePlayer.findUnique({ where: { id: ada! } });
+        if (row!.phase !== 'end' || row!.endedAt === null) stuck += 1;
+        // The refund is all-or-nothing: either the skip won (score 0) or the end
+        // won and the skip was refused (the earned points stand). Never a partial
+        // refund, and never a score the question did not award.
+        if (player!.score !== 0 && player!.score !== earned) stuck += 1;
+        engine.evict(gameId);
+      }
+      expect(stuck).toBe(0);
+    }, 60_000);
+  });
+
+  describe('slides cannot be paused (Phase 6.5.3, decision C)', () => {
+    /** A game whose single question is a text slide (no clock, no answers). */
+    async function slideGame(): Promise<{ gameId: string; playerId: string }> {
+      const quiz = await createQuiz(ownerId, {
+        title: 'Slide deck',
+        questions: [
+          {
+            id: `slide-${Math.random().toString(36).slice(2, 10)}`,
+            type: 'slide',
+            text: 'Welcome',
+            timeLimit: 0,
+            points: 'none',
+            body: 'Welcome to the show',
+          },
+        ],
+      });
+      const row = await createGame(quiz.id, ownerId);
+      const { player } = await joinGame(row.pin, `Slide-${Math.random().toString(36).slice(2, 8)}`);
+      await engine.addPlayer(row.id, {
+        id: player.id,
+        nickname: player.nickname,
+        avatar: player.avatar,
+        joinedAt: player.joinedAt,
+      });
+      await engine.start(row.id);
+      return { gameId: row.id, playerId: player.id };
+    }
+
+    it('refuses to pause and resume a slide', async () => {
+      const { gameId } = await slideGame();
+      const question = engine.publicQuestion(await engine.get(gameId));
+      expect(question.type).toBe('slide');
+
+      // A slide has no clock to freeze, so both are refused by the engine — the
+      // frontend omits the button, but the server is the authority.
+      await expect(engine.pause(gameId)).rejects.toThrow(/slide/i);
+      await expect(engine.resume(gameId)).rejects.toThrow(/running question|not paused/i);
+      // The game is untouched: still on the slide, never paused.
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('question');
+      expect(game.paused).toBe(false);
+    });
+
+    it('still allows a slide to be skipped, revealing no solution', async () => {
+      const { gameId } = await slideGame();
+      const reveal = new Promise<{ reveal: HostReveal }>((resolve) =>
+        engine.once('reveal', resolve),
+      );
+      await engine.skip(gameId);
+      const { reveal: payload } = await reveal;
+      expect(payload.skipped).toBe(true);
+      expect(payload).not.toHaveProperty('distribution');
+    });
+  });
 });

@@ -13,6 +13,8 @@ import type { PlayerSync, PublicPlayer } from '@zeropeek/shared';
 
 import {
   connectionState,
+  hostPresenceStatus,
+  hostStatusChip,
   lobbyRoster,
   profilePlaceholder,
   registerOffer,
@@ -95,6 +97,39 @@ describe('registerOffer', () => {
   });
 });
 
+describe('hostPresenceStatus', () => {
+  it('labels the host as connected when a host socket is present', () => {
+    expect(hostPresenceStatus('connected')).toEqual({ label: 'Host connected', tone: 'ok' });
+  });
+
+  it('labels the host as reconnecting when none is present', () => {
+    expect(hostPresenceStatus('reconnecting')).toEqual({
+      label: 'Host reconnecting…',
+      tone: 'warn',
+    });
+  });
+
+  it('never signals the host state by colour alone (each state has a label)', () => {
+    for (const status of ['connected', 'reconnecting'] as const) {
+      expect(hostPresenceStatus(status).label).toBeTruthy();
+    }
+  });
+});
+
+describe('hostStatusChip', () => {
+  it('renders nothing while the host is reachable or before the first event', () => {
+    expect(hostStatusChip('connected')).toBeNull();
+    expect(hostStatusChip(null)).toBeNull();
+  });
+
+  it('renders a status chip while the host is away', () => {
+    const chip = hostStatusChip('reconnecting');
+    expect(chip).not.toBeNull();
+    expect(chip?.getAttribute('role')).toBe('status');
+    expect(chip?.textContent).toContain('Host reconnecting');
+  });
+});
+
 describe('screenForSync', () => {
   const question = {
     id: 'q1',
@@ -105,6 +140,8 @@ describe('screenForSync', () => {
     openedAt: 0,
     index: 0,
     total: 1,
+    paused: false,
+    remainingMs: null,
   };
 
   function sync(overrides: Partial<PlayerSync> = {}): PlayerSync {
@@ -115,6 +152,7 @@ describe('screenForSync', () => {
       board: null,
       podium: null,
       placement: null,
+      skipped: false,
       ...overrides,
     };
   }
@@ -143,5 +181,22 @@ describe('screenForSync', () => {
 
   it('falls back to the lobby only when the question phase carries no question', () => {
     expect(screenForSync(sync({ phase: 'question', question: null }))).toBe('lobby');
+  });
+
+  it('shows the reveal screen for a skipped question', () => {
+    // The server reports `skipped` and a `skipped` result, so a reconnect during
+    // a skipped reveal lands on the reveal screen, not back on the question.
+    const state = sync({
+      phase: 'reveal',
+      question,
+      skipped: true,
+      answer: {
+        questionId: 'q1',
+        answered: false,
+        answer: null,
+        result: { outcome: 'skipped', points: 0, score: 0, rank: 1 },
+      },
+    });
+    expect(screenForSync(state)).toBe('reveal');
   });
 });

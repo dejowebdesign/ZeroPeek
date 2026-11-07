@@ -72,10 +72,16 @@ export async function gameReport(gameId: string) {
     include: { player: { select: { nickname: true } } },
   });
 
+  // A question the host skipped was neutralised (Phase 6.5.3): its answers were
+  // kept but zeroed, so it must not be reported as a regularly answered or
+  // evaluated question. The append-only `skipped` event is the record of that.
+  const skippedIds = skippedQuestionIds(game.events);
+
   // Per-question statistics: how many answered, how many were correct, mean
   // correctness. Unanswered questions still appear with zero counts.
   const perQuestion = quiz.questions.map((question, index) => {
     const rows = answers.filter((row) => row.questionId === question.id);
+    const skipped = skippedIds.has(question.id);
     const correct = rows.filter((row) => row.correctness >= 1).length;
     const meanCorrectness =
       rows.length === 0 ? 0 : rows.reduce((sum, row) => sum + row.correctness, 0) / rows.length;
@@ -84,6 +90,8 @@ export async function gameReport(gameId: string) {
       questionId: question.id,
       type: question.type,
       text: question.text,
+      /** The host skipped this question; it was not scored (Phase 6.5.3). */
+      skipped,
       answered: rows.length,
       correct,
       meanCorrectness: Number(meanCorrectness.toFixed(4)),
@@ -144,6 +152,24 @@ export async function quizStatistics(quizId: string) {
     ? await prisma.playerAnswer.findMany({ where: { gameId: { in: gameIds } } })
     : [];
 
+  // How many finished games skipped each question (Phase 6.5.3). A skipped
+  // question was neutralised, so its low `answered`/`correct` counts are
+  // explained rather than read as a hard question.
+  const skipEvents = gameIds.length
+    ? await prisma.gameEvent.findMany({
+        where: { gameId: { in: gameIds }, type: 'skipped' },
+        select: { gameId: true, data: true },
+      })
+    : [];
+  const skippedByQuestion = new Map<string, Set<string>>();
+  for (const event of skipEvents) {
+    const questionId = (event.data as { questionId?: string } | null)?.questionId;
+    if (typeof questionId !== 'string') continue;
+    const games = skippedByQuestion.get(questionId) ?? new Set<string>();
+    games.add(event.gameId);
+    skippedByQuestion.set(questionId, games);
+  }
+
   // A question only counts for the games whose snapshot actually contained it.
   // A game without a snapshot (started before Phase 6.4) falls back to the live
   // quiz, so its history is not lost.
@@ -172,6 +198,8 @@ export async function quizStatistics(quizId: string) {
       answered: rows.length,
       correct,
       correctRate: rows.length === 0 ? 0 : Number((correct / rows.length).toFixed(4)),
+      /** How many finished games skipped this question (it was not scored). */
+      skippedGames: skippedByQuestion.get(question.id)?.size ?? 0,
     };
   });
 
@@ -189,13 +217,31 @@ function csvField(value: unknown): string {
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+/**
+ * The ids of the questions a host skipped, read from a game's append-only event
+ * log. A skipped question was neutralised (Phase 6.5.3): its answers were kept
+ * but zeroed, so every report must present it as skipped rather than as a
+ * regularly evaluated question.
+ */
+function skippedQuestionIds(events: { type: string; data: unknown }[]): Set<string> {
+  return new Set(
+    events
+      .filter((event) => event.type === 'skipped')
+      .map((event) => (event.data as { questionId?: string } | null)?.questionId)
+      .filter((id): id is string => typeof id === 'string'),
+  );
+}
+
 function toCsv(rows: unknown[][]): string {
   return rows.map((row) => row.map(csvField).join(',')).join('\n');
 }
 
 /** Every answer of a game as CSV, one row per player and question. */
 export async function exportAnswersCsv(gameId: string): Promise<string> {
-  const game = await prisma.game.findUnique({ where: { id: gameId } });
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    include: { events: true },
+  });
   if (!game) throw notFound('Game not found.');
 
   // Questions come from the snapshot, so the export matches what was asked even
@@ -206,6 +252,10 @@ export async function exportAnswersCsv(gameId: string): Promise<string> {
     where: { gameId },
     include: { player: { select: { nickname: true } } },
   });
+
+  // A skipped question is neutralised (Phase 6.5.3): flag it so the export does
+  // not present it as a regularly scored question.
+  const skippedIds = skippedQuestionIds(game.events);
 
   const header = [
     'pin',
@@ -218,6 +268,7 @@ export async function exportAnswersCsv(gameId: string): Promise<string> {
     'points',
     'elapsed_ms',
     'flagged',
+    'skipped',
   ];
 
   const rows: unknown[][] = [header];
@@ -240,6 +291,7 @@ export async function exportAnswersCsv(gameId: string): Promise<string> {
         row ? row.points : '',
         row ? row.elapsedMs : '',
         row ? row.flagged : '',
+        skippedIds.has(question.id),
       ]);
     }
   }
