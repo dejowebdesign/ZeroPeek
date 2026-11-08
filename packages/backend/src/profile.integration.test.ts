@@ -355,6 +355,89 @@ describe.skipIf(!available)('player profile integration', () => {
     });
   });
 
+  describe('profile lifecycle', () => {
+    it('creates exactly one profile, idempotently, on repeated reads', async () => {
+      const alice = await signIn('alice');
+
+      // No profile row exists before the first read.
+      expect(await prisma.playerProfile.count({ where: { userId: alice.id } })).toBe(0);
+
+      const first = await as(alice, 'GET', '/api/profile');
+      const second = await as(alice, 'GET', '/api/profile');
+      expect(first.statusCode).toBe(200);
+      expect(second.statusCode).toBe(200);
+
+      // Two reads, still exactly one row, and the same id both times.
+      expect(await prisma.playerProfile.count({ where: { userId: alice.id } })).toBe(1);
+      expect(second.json().profile).toEqual(first.json().profile);
+    });
+
+    it('creates the profile lazily for an account that predates it', async () => {
+      // An account created without a profile stands in for one that existed
+      // before Phase 6.6: no backfill migration, the first read materialises it.
+      const user = await createUser({
+        username: 'veteran',
+        password: 'correct-horse-battery',
+        role: 'PLAYER',
+      });
+      expect(await prisma.playerProfile.count({ where: { userId: user.id } })).toBe(0);
+
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { username: 'veteran', password: 'correct-horse-battery' },
+      });
+      const setCookie = login.headers['set-cookie'];
+      const session = {
+        cookie: (Array.isArray(setCookie) ? setCookie[0] : String(setCookie)).split(';')[0]!,
+        csrf: login.json().csrfToken,
+      };
+
+      const read = await as(session, 'GET', '/api/profile');
+      expect(read.statusCode).toBe(200);
+      expect(read.json().user.username).toBe('veteran');
+      expect(await prisma.playerProfile.count({ where: { userId: user.id } })).toBe(1);
+
+      // The account stays fully usable afterwards: it can write its profile.
+      const write = await as(session, 'PUT', '/api/profile', { selectedCharacterId: 'ethan' });
+      expect(write.statusCode).toBe(200);
+      expect(write.json().selectedCharacterId).toBe('ethan');
+    });
+
+    it('never lets one account change another account’s profile', async () => {
+      const alice = await signIn('alice');
+      const bob = await signIn('bob');
+
+      await as(alice, 'PUT', '/api/profile', { selectedCharacterId: 'ethan' });
+      await as(bob, 'PUT', '/api/profile', { selectedCharacterId: 'maya' });
+
+      // Each account sees only its own value …
+      expect((await as(alice, 'GET', '/api/profile')).json().profile.selectedCharacterId).toBe(
+        'ethan',
+      );
+      expect((await as(bob, 'GET', '/api/profile')).json().profile.selectedCharacterId).toBe(
+        'maya',
+      );
+
+      // … and each row in the database holds exactly that value, so Alice's
+      // write could not have touched Bob's row (and vice versa).
+      const aliceRow = await prisma.playerProfile.findUnique({ where: { userId: alice.id } });
+      const bobRow = await prisma.playerProfile.findUnique({ where: { userId: bob.id } });
+      expect(aliceRow?.selectedCharacterId).toBe('ethan');
+      expect(bobRow?.selectedCharacterId).toBe('maya');
+      expect(aliceRow?.id).not.toBe(bobRow?.id);
+    });
+
+    it('gives a guest participant no durable profile', async () => {
+      // A guest seat is a `GamePlayer` with no `userId`. It plays a finished
+      // game, and must leave no `PlayerProfile` and no `User` behind.
+      await finishedGame([{ userId: null, score: 900, correctCount: 1 }]);
+
+      expect(await prisma.playerProfile.count()).toBe(0);
+      expect(await prisma.user.count()).toBe(0);
+    });
+  });
+
   describe('no IP data', () => {
     it('never exposes an IP field in the profile response', async () => {
       const alice = await signIn('alice');
@@ -362,6 +445,21 @@ describe.skipIf(!available)('player profile integration', () => {
       const text = JSON.stringify(body).toLowerCase();
       expect(text).not.toContain('ip');
       expect(text).not.toContain('address');
+    });
+
+    it('stores no IP-like column on the profile table', async () => {
+      // Guards against an IP address (or a hash of one) ever being added to the
+      // durable profile: the table must have no column that could hold one.
+      const columns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'player_profiles'
+      `;
+      const names = columns.map((column) => column.column_name.toLowerCase());
+      expect(names.length).toBeGreaterThan(0);
+      for (const name of names) {
+        expect(name).not.toContain('ip');
+        expect(name).not.toContain('address');
+      }
     });
   });
 });
