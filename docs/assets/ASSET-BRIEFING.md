@@ -74,7 +74,9 @@
 
 ## Block B – Charaktere (Blockwelt-Helden)
 
-> **Diese Dateien fehlen vollständig.** Ohne sie ist Phase 6.7 nicht startbar.
+> **Teilweise geliefert (Phase 6.7).** Für **Ethan** und **Maya** liegen die Original-Grafiken vor
+> und sind übernommen: siehe [`CHARACTER-CATALOGUE.md`](CHARACTER-CATALOGUE.md). Für die übrigen
+> Figuren (`pixel`, `bee`, `dr-obscura`, `o-bot`) fehlen die Dateien weiterhin.
 
 Für jede Figur werden benötigt:
 
@@ -104,7 +106,12 @@ Stil, Proportionen und Farben verbindlich sind.
 
 ## Block C – Avatar-Gegenstände (Layer, charakterexklusiv)
 
-> **Diese Dateien fehlen vollständig.** Benötigt für Phase 6.7/6.8.
+> **Teilweise geliefert (Phase 6.7).** Für **Ethan** und **Maya** liegen je fünf Gegenstände als
+> einzelne WebP-Dateien mit Alpha vor (siehe
+> [`CHARACTER-CATALOGUE.md`](CHARACTER-CATALOGUE.md)). **Offen:** Diese Grafiken sind **nicht** auf
+> eine gemeinsame Zeichenfläche ausgerichtet (`not_defined`/`not_validated`), daher noch **kein**
+> gestapeltes Layer-Rendering. Für die gestapelte Darstellung werden je Figur eine **gemeinsame
+> Zeichenfläche**, ein **gemeinsamer Ankerpunkt** und die **Ebenenreihenfolge** benötigt.
 
 **Verbindlich (Phase 5c):** **Jeder Avatar besitzt seine eigenen Gegenstände.** Es gibt **keinen**
 allgemeinen Gegenstandskatalog. Ein Hut für Ethan ist eine **andere Datei** als ein Hut für Pixel.

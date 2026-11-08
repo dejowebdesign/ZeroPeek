@@ -16,9 +16,13 @@
 import type { TieBreak } from '@zeropeek/shared';
 import {
   DEFAULT_TIE_BREAK,
+  defaultAvatarConfig,
+  findCharacterAssets,
   rankGameSeats,
   summariseSeats,
+  validateAvatarConfig,
   validateProfileUpdate,
+  type AvatarConfig,
   type ProfileGameSeat,
   type ProfileStats,
   type ProfileView,
@@ -26,6 +30,16 @@ import {
 
 import { prisma } from '../db.js';
 import { invalid, notFound } from '../errors.js';
+import { Prisma } from '@prisma/client';
+
+/**
+ * Convert a validated avatar configuration (or `null`) to the value Prisma
+ * stores in the nullable JSONB column. Prisma distinguishes a SQL `NULL`
+ * (`Prisma.DbNull`) from a JSON `null`, so "nothing configured" must be `DbNull`.
+ */
+function toStoredAvatar(config: AvatarConfig | null): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  return config === null ? Prisma.DbNull : (config as unknown as Prisma.InputJsonValue);
+}
 
 /**
  * A profile row is created lazily on the first read. Doing it here — rather than
@@ -71,9 +85,27 @@ export async function getProfile(userId: string): Promise<ProfileView> {
 
   return {
     user: { id: user.id, username: user.username, role: user.role },
-    profile: { selectedCharacterId: profile.selectedCharacterId },
+    profile: {
+      selectedCharacterId: profile.selectedCharacterId,
+      avatarConfig: readAvatarConfig(profile.avatarConfig),
+    },
     stats,
   };
+}
+
+/**
+ * Read the stored avatar configuration, defensively.
+ *
+ * The column is JSONB and the server is its only writer, so in practice it holds
+ * a configuration this module produced. It is still re-validated on read: a value
+ * written by an older build, or edited out of band, is returned only if it is a
+ * complete, self-consistent configuration; otherwise it is reported as `null`
+ * (nothing configured) rather than shown in a half-broken state.
+ */
+function readAvatarConfig(raw: unknown): AvatarConfig | null {
+  if (raw === null || raw === undefined) return null;
+  const { config } = validateAvatarConfig(raw);
+  return config ?? null;
 }
 
 /** Compute the personal statistics from the account's finished games. */
@@ -170,23 +202,73 @@ async function profileStats(userId: string): Promise<ProfileStats> {
  * Only the fields Phase 6.6 owns may change; anything else is rejected by the
  * shared validator. A statistic, an XP value or a `userId` can never be written
  * here. An omitted field leaves the current value untouched.
+ *
+ * **Phase 6.7 interaction:** changing `selectedCharacterId` also resets the
+ * avatar configuration to the new character's **default equipment**. That is the
+ * binding rule (phase brief §6/§9): a character change activates the new
+ * character's defaults and never carries the previous character's items over. A
+ * character without artwork clears the configuration to `null` (nothing to wear
+ * yet); nothing is invented for it.
  */
 export async function updateProfile(
   userId: string,
   body: unknown,
-): Promise<{ selectedCharacterId: string | null }> {
+): Promise<{ selectedCharacterId: string | null; avatarConfig: AvatarConfig | null }> {
   const issues = validateProfileUpdate(body);
   if (issues.length > 0) throw invalid('The profile update is invalid.', issues);
 
   await ensureProfile(userId);
 
   const record = body as { selectedCharacterId?: string | null };
-  const data: { selectedCharacterId?: string | null } = {};
+  const data: {
+    selectedCharacterId?: string | null;
+    avatarConfig?: Prisma.InputJsonValue | typeof Prisma.DbNull;
+  } = {};
   if ('selectedCharacterId' in record) {
     const value = record.selectedCharacterId;
-    data.selectedCharacterId = typeof value === 'string' ? value.trim() : null;
+    const chosen = typeof value === 'string' ? value.trim() : null;
+    data.selectedCharacterId = chosen;
+    // Keep the avatar configuration consistent with the new character. A change
+    // to a character with artwork adopts its default kit; anything else (a
+    // character without artwork, or clearing the choice) stores no configuration.
+    data.avatarConfig =
+      chosen !== null && findCharacterAssets(chosen)
+        ? toStoredAvatar(defaultAvatarConfig(chosen))
+        : Prisma.DbNull;
   }
 
   const updated = await prisma.playerProfile.update({ where: { userId }, data });
-  return { selectedCharacterId: updated.selectedCharacterId };
+  return {
+    selectedCharacterId: updated.selectedCharacterId,
+    avatarConfig: readAvatarConfig(updated.avatarConfig),
+  };
+}
+
+/**
+ * Update the authenticated account's avatar configuration (Phase 6.7).
+ *
+ * The `userId` comes from the session, never the request, so a caller can only
+ * change their own avatar. The configuration is validated against the
+ * character-exclusive catalogue by `validateAvatarConfig` (shared, so it is the
+ * tested rule): an unknown character, an unknown item, a wrong slot or **another
+ * character's item** is rejected with a 422. The server is the only writer.
+ *
+ * A valid configuration also updates `selectedCharacterId`, so the picker and
+ * the avatar editor can never disagree.
+ */
+export async function updateAvatar(userId: string, body: unknown): Promise<AvatarConfig> {
+  const { config, issues } = validateAvatarConfig(body);
+  if (!config) throw invalid('The avatar configuration is invalid.', issues);
+
+  await ensureProfile(userId);
+
+  const updated = await prisma.playerProfile.update({
+    where: { userId },
+    data: {
+      selectedCharacterId: config.characterId,
+      avatarConfig: toStoredAvatar(config),
+    },
+  });
+  // The value was just validated and written, so it reads back verbatim.
+  return readAvatarConfig(updated.avatarConfig) ?? config;
 }
