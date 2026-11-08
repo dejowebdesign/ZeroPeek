@@ -101,6 +101,50 @@ export const EMPTY_PROFILE_STATS: ProfileStats = {
  */
 export const CHARACTER_ID_MAX = 64;
 
+/** How rare a character is. Cosmetic only — it never affects play. */
+export type CharacterRarity = 'common' | 'rare' | 'legendary';
+
+/** One Blockwelt-Helden character a player can choose (Phase 6.6.2). */
+export interface Character {
+  /** Stable key stored in `PlayerProfile.selectedCharacterId`. */
+  id: string;
+  /** Display name. */
+  name: string;
+  /** A short characterisation, shown under the name. */
+  tagline: string;
+  /** Cosmetic rarity, used for the frame and colouring. */
+  rarity: CharacterRarity;
+}
+
+/**
+ * The characters a player may pick from (Phase 6.6.2).
+ *
+ * These are the canonical Blockwelt-Helden figures; their ids are fixed by the
+ * concept (`docs/concept/game-design-concept.md` §2.1/§2.3) and the asset
+ * briefing (`docs/assets/ASSET-BRIEFING.md`, Block B). **No artwork ships yet** —
+ * the character files are still outstanding — so an entry carries a name and a
+ * tagline only. Nothing here draws or invents a figure.
+ *
+ * The picker offers exactly these ids. The server stays permissive on purpose:
+ * `validateProfileUpdate` accepts any bounded string, so a character added here
+ * needs no backend change, and a value stored before this list existed is still
+ * shown to its owner.
+ */
+export const CHARACTER_CATALOGUE: readonly Character[] = [
+  { id: 'ethan', name: 'Ethan', tagline: 'The builder hero', rarity: 'common' },
+  { id: 'maya', name: 'Maya', tagline: 'The builder heroine', rarity: 'common' },
+  { id: 'pixel', name: 'Pixel', tagline: 'The loyal dog', rarity: 'common' },
+  { id: 'bee', name: 'The Bee', tagline: 'The buzzing companion', rarity: 'rare' },
+  { id: 'dr-obscura', name: 'Dr. Obscura', tagline: 'The antagonist', rarity: 'legendary' },
+  { id: 'o-bot', name: 'O-Bot', tagline: 'The minion', rarity: 'legendary' },
+];
+
+/** Look a character up by id, or `undefined` when the id is not in the catalogue. */
+export function findCharacter(id: string | null | undefined): Character | undefined {
+  if (!id) return undefined;
+  return CHARACTER_CATALOGUE.find((character) => character.id === id);
+}
+
 /**
  * Validate the body of `PUT /api/profile`.
  *
