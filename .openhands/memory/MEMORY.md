@@ -666,6 +666,21 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   DB the dev backend uses: running `npm test` deletes the bootstrap admin, so a
   later dev login 401s. **Restart the backend before browser E2E after a test
   run** (bootstrap re-creates the admin).
+- **Real-process-restart tests:** `npx tsx src/server.ts` re-execs, so SIGKILLing
+  only the spawned child leaves the server alive and every "restart" silently
+  talks to the OLD process. Spawn with `detached: true` and
+  `process.kill(-pid, 'SIGKILL')` the whole group, then assert `/api/health` is
+  down before restarting. **`Question.id` is a global primary key** — fixtures
+  with hard-coded ids can only be seeded once per DB (`P2002`). Host-namespace
+  question event is `host:question`, not `game:question`. A host must go
+  `reveal → board → next`; `next` from `reveal` is refused. `PublicPlayer` has
+  no `rank` field — rank is the array position. A `slide` renders as "No answer"
+  (never graded) — correct, not a bug.
+- **Acceptance harness `/var/tmp/zpstab`** (wiped on restart; re-create from the
+  daily log): real backend process + real Chromium player UI, programmatic
+  assertions only. Sections A restart recovery (34), B all 13 types
+  right/wrong/none (72/65/78), B2 time limits (7), C races (25×2), D reconnect
+  (38) → **344/344**.
 
 ## Docker in this sandbox
 - A dockerd is often **already running** (PID file `/var/run/docker.pid`).
