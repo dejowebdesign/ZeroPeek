@@ -245,9 +245,11 @@ describe.skipIf(!available)('realtime end-to-end', () => {
   }, 15_000);
 
   it('links a signed-in player’s seat to the account but leaves a guest unlinked', async () => {
-    // Phase 6.6: a seat carries the account id only when the join arrives with a
-    // valid session cookie. The id is never read from the payload, so a guest
-    // cannot claim an account — this test sends no id and still gets none.
+    // Phase 6.6 / 6.6.3: a seat carries the account id only when the join arrives
+    // with a **player** session cookie (`zp_player_session`). The id is never read
+    // from the payload, so a guest cannot claim an account — this test sends no id
+    // and still gets none. A host session would not link either (see the dedicated
+    // identity-separation suite).
     const host = openSocket('/host', { extraHeaders: { cookie } });
     await once(host, 'connect');
     const { pin } = await request<{ gameId: string; pin: string }>(host, 'host:create', { quizId });
@@ -259,7 +261,7 @@ describe.skipIf(!available)('realtime end-to-end', () => {
     });
     const login = await app.inject({
       method: 'POST',
-      url: '/api/auth/login',
+      url: '/api/player-auth/login',
       payload: { username: 'linkedplayer', password: 'correct-horse-battery' },
     });
     const playerCookie = (

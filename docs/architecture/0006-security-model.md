@@ -26,21 +26,43 @@ in principle with our own implementation.
 - Passwords hashed with **Argon2id**.
 - **Server-side sessions** referenced by an opaque, random session id in an **HttpOnly, SameSite=Lax,
   Secure** cookie. No JWT in the browser (no token exfiltration surface).
+- **Two identity contexts** (Phase 6.6.3). A session row carries a `kind` (`host` or `player`) and a
+  context is only ever accepted by the guard that owns it:
+  - **host** – cookie `zp_session` (`COOKIE_NAME`/`SESSION_COOKIE_NAME`); the staff surfaces and the
+    `/host` socket namespace.
+  - **player** – cookie `zp_player_session` (`PLAYER_COOKIE_NAME`); the player profile and the
+    `player:join` account link.
+
+  The host guard never reads the player cookie and the player guard never reads the host cookie, so a
+  host and a player can be signed in at the same time in one browser without either taking the
+  other's identity. Logging out of one context deletes only that context's session and cookie.
+
+  **The sign-in context follows the verified role.** `POST /api/auth/login` (the general sign-in)
+  issues the session that matches the server-side credential check: a `PLAYER` gets the player
+  context, `ADMIN`/`TRAINER` the host context. The role is never taken from the request, so a client
+  cannot choose its own context. `POST /api/player-auth/login` is the role-bound player endpoint and
+  refuses staff (403).
+
 - Optional **TOTP/e-mail 2FA** (Phase 7).
 
 **CSRF**
 
 - Double-submit token: a per-session CSRF token is returned by the API and required in an
   `X-CSRF-Token` header on state-changing requests. Same-origin requests only.
+- The token is **context-bound**: a host CSRF token is rejected on a player route and a player token
+  on a host route, because each guard compares against its own session's token.
 
 **Authorization**
 
-- Roles (`ADMIN`, `TRAINER`) enforced **server-side** on every route and every socket event. The
-  client never decides permissions.
+- Roles (`ADMIN`, `TRAINER`, `PLAYER`) enforced **server-side** on every route and every socket event.
+  The client never decides permissions. `PLAYER` is authenticated but not staff, so it cannot reach
+  the trainer or admin surfaces.
 
 **Realtime**
 
-- Socket connections are authenticated (session cookie for host; join token for players).
+- Socket connections are authenticated (host session cookie for the `/host` namespace; join token for
+  players on `/`). A guest joins by PIN and nickname only; a `player:join` links the seat to a
+  **player** account solely through `zp_player_session` — a host cookie never links a seat.
 - **Every** incoming socket payload is schema-validated; invalid payloads are rejected with an error
   ACK. Rate limiting on hot paths (join, answer, chat-like events).
 

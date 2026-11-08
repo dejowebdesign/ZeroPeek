@@ -92,9 +92,16 @@ model EmailVerificationToken {
 
 /// Server-side session. The cookie only carries the opaque `id`; everything
 /// else (expiry, CSRF token, user) lives here, so a session can be revoked.
+///
+/// `kind` separates the two identity contexts (Phase 6.6.3): a `host` session
+/// backs the existing `zp_session` cookie and the staff surfaces; a `player`
+/// session backs `zp_player_session` and the player profile. A session is only
+/// ever accepted by the context it was created for, so an ADMIN signed in as a
+/// host is never resolved as a player — even in the same browser.
 model Session {
   id        String   @id
   userId    String   @map("user_id")
+  kind      String   @default("host")
   csrfToken String   @map("csrf_token")
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
@@ -104,6 +111,7 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([kind])
   @@map("sessions")
 }
 

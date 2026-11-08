@@ -51,7 +51,22 @@ async function bootAuth(hash = ''): Promise<void> {
   });
 }
 
+/**
+ * Boot the auth page when the expected outcome is a **redirect**, not a render:
+ * an already signed-in account is sent away before any screen is drawn, so there
+ * is nothing in `#app` to wait for.
+ */
+async function bootAuthExpectingRedirect(): Promise<void> {
+  vi.resetModules();
+  window.location.hash = '';
+  document.body.innerHTML = '<div id="app"></div>';
+  await import('./pages/auth.js');
+}
+
 const APP = () => document.getElementById('app') as HTMLElement;
+
+/** The real jsdom location, captured so a stubbed one can be restored. */
+const realLocation = window.location;
 
 beforeEach(() => {
   localStorage.clear();
@@ -60,6 +75,11 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
+  // A test may replace `window.location` to observe navigation; put the real one
+  // back so the next test starts from a clean page.
+  if (window.location !== realLocation) {
+    Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+  }
   window.location.hash = '';
 });
 
@@ -99,6 +119,71 @@ describe('auth page: sign in', () => {
 
     await vi.waitFor(() => {
       expect(APP().textContent).toContain('confirm your e-mail');
+    });
+  });
+
+  it('sends a signed-in player to their profile, not the lobby (Finding 1)', async () => {
+    // A player is signed in through `zp_player_session`, which `/api/auth/me`
+    // does not read. The page must ask the player endpoint and route to the
+    // profile so the sign-in actually lands the player on their account.
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign, hash: '' },
+    });
+    stubFetch([
+      { match: /\/api\/auth\/me$/, body: { user: null } },
+      {
+        match: /\/api\/player-auth\/me$/,
+        body: { user: { id: 'p1', username: 'maya', role: 'PLAYER' } },
+      },
+    ]);
+    await bootAuthExpectingRedirect();
+
+    expect(assign).toHaveBeenCalledWith('./profile.html');
+  });
+
+  it('sends a signed-in host to the host console (staff path unchanged)', async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign, hash: '' },
+    });
+    stubFetch([
+      {
+        match: /\/api\/auth\/me$/,
+        body: { user: { id: 'h1', username: 'coach', role: 'TRAINER' } },
+      },
+    ]);
+    await bootAuthExpectingRedirect();
+
+    expect(assign).toHaveBeenCalledWith('./host.html');
+  });
+
+  it('routes a player who signs in through the form to their profile (Finding 1)', async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign, hash: '' },
+    });
+    stubFetch([
+      { match: /\/api\/auth\/me$/, body: { user: null } },
+      { match: /\/api\/player-auth\/me$/, status: 401, body: { user: null } },
+      {
+        match: /\/api\/auth\/login$/,
+        body: { user: { id: 'p1', username: 'maya', role: 'PLAYER' }, csrfToken: 't' },
+      },
+    ]);
+    await bootAuth();
+
+    const username = APP().querySelectorAll('input')[0] as HTMLInputElement;
+    const password = APP().querySelectorAll('input')[1] as HTMLInputElement;
+    username.value = 'maya';
+    password.value = 'a-long-enough-password';
+    APP().querySelector('form')?.dispatchEvent(new Event('submit'));
+
+    await vi.waitFor(() => {
+      expect(assign).toHaveBeenCalledWith('./profile.html');
     });
   });
 });

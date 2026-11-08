@@ -727,6 +727,40 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   first. `lobby-sync.integration.test.ts` has a **timing flake**; re-run before
   suspecting a regression.
 
+## Identity contexts (Phase 6.6.3)
+- Two session contexts, not one: **host** = `zp_session` (`COOKIE_NAME`), **player** =
+  `zp_player_session` (`PLAYER_COOKIE_NAME`). `Session.kind` ('host'|'player', default
+  'host') tags each row; a guard only accepts its own kind, so a host cookie never
+  authenticates the player surface (and vice-versa). `requireAuth`/`currentUser` (host)
+  vs `requirePlayerAuth`/`currentPlayer` (player). `GET/PUT /api/profile` use the player
+  guard; player auth lives at `/api/player-auth/{login,logout,me}` (role PLAYER only).
+  `player:join` links a seat via the player cookie ONLY — a host cookie never links a
+  seat. Migration `20261110120000_phase_6_6_3_session_kind` is additive (default 'host').
+- **The sign-in context follows the verified role**: `POST /api/auth/login` (general
+  `auth.html`) issues a **player** session for a `PLAYER` and a **host** session for
+  `ADMIN`/`TRAINER`. Role comes from `verifyCredentials`, never the request.
+  `auth.html` redirects by role (`PLAYER` → `profile.html`, staff → `host.html`) and its
+  boot probes `/api/player-auth/me` too (the player cookie is invisible to `/api/auth/me`).
+  A guard keys on the **cookie name**, so a session id under the wrong cookie name is 401
+  regardless of its `kind`.
+- Acceptance suite `identity-separation.integration.test.ts` (24 tests, T01–T20 + the
+  role-based login cases) proves the separation against real Postgres + real sockets.
+- Verified live (2026-11-04): logout is isolated both ways (host logout → host 401,
+  player 200; and the reverse). CSRF: `POST /api/quizzes` no token → 403, with token →
+  422 (validation) — positive control. **Both logouts are deliberately UNGUARDED** (no
+  CSRF preHandler) and return 200; that predates 6.6.3 and is by design.
+- Backend integration suites run safely against a **throwaway DB**: `prisma migrate
+  deploy` reads `DATABASE_URL` (the live DB), not `TEST_DATABASE_URL`, and there is no
+  `packages/backend/.env`, so exporting BOTH vars wins. `resetDatabase()` truncates
+  whatever `DATABASE_URL`/`TEST_DATABASE_URL` points at — never leave it on the live DB.
+- `browser_set_storage` MERGES cookies (cannot delete HttpOnly ones) and OVERWRITES the
+  real cookie with the value you pass — a stale value silently breaks the browser session
+  even when it looks right. For a genuine fresh session, log in fresh and copy the new
+  value out of the cookie jar.
+- To observe `location.assign` in jsdom: `Object.defineProperty(window,'location',
+  {configurable:true,value:{assign,...}})`; `vi.spyOn(location,'assign')` throws
+  "Cannot redefine property". A redirecting boot renders nothing, so don't wait for a render.
+
 ## Docker in this sandbox
 - A dockerd is often **already running** (PID file `/var/run/docker.pid`).
   `docker info` as the non-root user fails; use **`sudo docker ...`**. Only start

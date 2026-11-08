@@ -1,10 +1,15 @@
 /**
- * Player profile routes (Phase 6.6).
+ * Player profile routes (Phase 6.6, player context Phase 6.6.3).
  *
- * Both routes are for the **signed-in account itself**: the user id comes from
- * the session (`currentUser`), never from the request, so one account can never
- * read or change another's profile. The write is guarded by `requireAuth`, which
- * also enforces the CSRF token on `PUT`.
+ * Both routes are for the **signed-in player account itself**: the user id comes
+ * from the player session (`currentPlayer`), never from the request, so one
+ * account can never read or change another's profile. The write is guarded by
+ * `requirePlayerAuth`, which also enforces the CSRF token on `PUT`.
+ *
+ * Phase 6.6.3: the guard reads only `zp_player_session`. A host session
+ * (`zp_session`) is deliberately **not** accepted here, so an ADMIN signed in as
+ * a host is treated as a signed-out player on this surface — the profile never
+ * shows a host identity.
  *
  * There is deliberately **no** `/api/profile/history`: the quiz history stays
  * admin-only (product decision, Phase 5c). This module exposes only the account's
@@ -14,15 +19,15 @@
 import type { FastifyInstance } from 'fastify';
 
 import type { AppConfig } from '../config.js';
-import { currentUser, requireAuth } from '../sessions.js';
+import { currentPlayer, requirePlayerAuth } from '../sessions.js';
 import { getProfile, updateProfile } from '../services/profileService.js';
 
 export function registerProfileRoutes(app: FastifyInstance, config: AppConfig): void {
-  const guard = { preHandler: requireAuth(config) };
+  const guard = { preHandler: requirePlayerAuth(config) };
 
-  /** The authenticated account's own profile and personal statistics. */
+  /** The authenticated player account's own profile and personal statistics. */
   app.get('/api/profile', guard, async (request) => {
-    const user = currentUser(request);
+    const user = currentPlayer(request);
     return getProfile(user.id);
   });
 
@@ -32,7 +37,7 @@ export function registerProfileRoutes(app: FastifyInstance, config: AppConfig): 
    * write a server-computed value.
    */
   app.put('/api/profile', guard, async (request) => {
-    const user = currentUser(request);
+    const user = currentPlayer(request);
     return updateProfile(user.id, request.body);
   });
 }

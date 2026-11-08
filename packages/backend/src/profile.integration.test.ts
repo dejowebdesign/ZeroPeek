@@ -40,12 +40,13 @@ describe.skipIf(!available)('player profile integration', () => {
     await resetDatabase(prisma);
   });
 
-  /** Create an account and sign it in; returns its cookie and CSRF token. */
+  /** Create an account and sign it in **as a player** (Phase 6.6.3); returns its
+   * player cookie and CSRF token. The player context is the one the profile uses. */
   async function signIn(username: string): Promise<{ cookie: string; csrf: string; id: string }> {
     const user = await createUser({ username, password: 'correct-horse-battery', role: 'PLAYER' });
     const login = await app.inject({
       method: 'POST',
-      url: '/api/auth/login',
+      url: '/api/player-auth/login',
       payload: { username, password: 'correct-horse-battery' },
     });
     expect(login.statusCode).toBe(200);
@@ -133,6 +134,34 @@ describe.skipIf(!available)('player profile integration', () => {
         payload: { selectedCharacterId: 'ethan' },
       });
       expect(response.statusCode).toBe(401);
+    });
+
+    it('refuses a host session on the player profile (Phase 6.6.3)', async () => {
+      // A host (ADMIN or TRAINER) signed in through the staff login must not be
+      // accepted on the player profile: the guard reads only the player cookie.
+      for (const role of ['ADMIN', 'TRAINER'] as const) {
+        const staff = await createUser({
+          username: `staff-${role.toLowerCase()}`,
+          password: 'correct-horse-battery',
+          role,
+        });
+        const login = await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { username: `staff-${role.toLowerCase()}`, password: 'correct-horse-battery' },
+        });
+        expect(login.statusCode).toBe(200);
+        const hostCookie = String(login.headers['set-cookie']).split(';')[0]!;
+
+        const read = await app.inject({
+          method: 'GET',
+          url: '/api/profile',
+          headers: { cookie: hostCookie },
+        });
+        expect(read.statusCode).toBe(401);
+        // No profile is created for the staff account by this attempt.
+        expect(await prisma.playerProfile.count({ where: { userId: staff.id } })).toBe(0);
+      }
     });
 
     it('refuses a write without the CSRF token', async () => {
@@ -384,7 +413,7 @@ describe.skipIf(!available)('player profile integration', () => {
 
       const login = await app.inject({
         method: 'POST',
-        url: '/api/auth/login',
+        url: '/api/player-auth/login',
         payload: { username: 'veteran', password: 'correct-horse-battery' },
       });
       const setCookie = login.headers['set-cookie'];

@@ -1,11 +1,14 @@
 /**
  * Socket.IO layer: two namespaces, `/` for players and `/host` for hosts.
  *
- * The host namespace authenticates from the session cookie (ADR 0006); the
- * player namespace is anonymous but every join returns a per-player token used
- * for reconnect. Every inbound payload is validated, every handler is wrapped
- * so a thrown `AppError` becomes an error ACK rather than a crash, and the
- * engine's state changes are fanned out to the right rooms.
+ * The host namespace authenticates from the **host** session cookie (`zp_session`,
+ * ADR 0006); the player namespace is anonymous but a join may link the seat to a
+ * **player** account when `zp_player_session` is present (Phase 6.6.3). A host
+ * session is never read as a player identity, so a host and a guest can run in
+ * the same browser without either taking the other's identity. Every inbound
+ * payload is validated, every handler is wrapped so a thrown `AppError` becomes
+ * an error ACK rather than a crash, and the engine's state changes are fanned out
+ * to the right rooms.
  */
 
 import type { Server as HttpServer } from 'node:http';
@@ -19,7 +22,7 @@ import { AppError, badRequest, conflict, forbidden, notFound } from './errors.js
 import { prisma } from './db.js';
 import { engine } from './services/engine.js';
 import { rejoinGame, setPlayerConnected } from './services/gameService.js';
-import { resolveSession } from './sessions.js';
+import { resolvePlayerSession, resolveSession } from './sessions.js';
 
 /** Room helpers. Each player also gets a personal room for private results. */
 const playerRoom = (gameId: string): string => `game:${gameId}:players`;
@@ -287,17 +290,19 @@ export function attachSocketIO(
           const nickname = asString(payload?.nickname, 'nickname');
           const avatar = typeof payload?.avatar === 'string' ? payload.avatar : '';
 
-          // A registered player may be signed in on this browser; the seat is
-          // then linked to that account (Phase 6.6) so the profile can count the
-          // round. The id comes from the session cookie only — never from the
-          // payload — so a guest cannot claim someone else's account, and a guest
-          // join simply carries no id. A session lookup that fails is treated as
-          // a guest, so joining never breaks on a stale cookie.
+          // A registered player may be signed in on this browser through the
+          // **player** context; the seat is then linked to that account (Phase
+          // 6.6) so the profile can count the round. Only `zp_player_session` is
+          // read here — a host session (`zp_session`) is deliberately ignored, so
+          // an ADMIN signed in as a host does not become the identity of a guest
+          // join (Phase 6.6.3). The id comes from the player session only, never
+          // from the payload, and a lookup that fails is treated as a guest, so
+          // joining never breaks on a stale cookie.
           const request = {
             cookies: parseCookieHeader(socket.request.headers.cookie),
             method: 'GET',
-          } as unknown as Parameters<typeof resolveSession>[0];
-          const session = await resolveSession(request, config).catch(() => null);
+          } as unknown as Parameters<typeof resolvePlayerSession>[0];
+          const session = await resolvePlayerSession(request, config).catch(() => null);
 
           // The engine owns the join, because it must be serialised against the
           // host's `start` under the same per-game phase lock (bugfix: a join

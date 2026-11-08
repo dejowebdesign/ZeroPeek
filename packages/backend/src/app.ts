@@ -19,6 +19,7 @@ import { AppError } from './errors.js';
 import { createMailer } from './services/mailer.js';
 import { registerAdminRoutes } from './routes/adminRoutes.js';
 import { registerAuthRoutes } from './routes/authRoutes.js';
+import { registerPlayerAuthRoutes } from './routes/playerAuthRoutes.js';
 import { registerProfileRoutes } from './routes/profileRoutes.js';
 import { registerQuizRoutes } from './routes/quizRoutes.js';
 import { registerReportRoutes } from './routes/reportRoutes.js';
@@ -132,6 +133,7 @@ export async function buildApp({ config }: BuildAppOptions): Promise<FastifyInst
   }));
 
   registerAuthRoutes(app, config, createMailer(config));
+  registerPlayerAuthRoutes(app, config);
   registerQuizRoutes(app, config);
   registerReportRoutes(app, config);
   registerAdminRoutes(app, config);

@@ -2,7 +2,7 @@
  * Player profile page tests (Phase 6.6, character picker Phase 6.6.2).
  *
  * These drive the real `pages/profile.ts` module in jsdom: the page boots, calls
- * `/api/auth/me` and `/api/profile`, and renders the profile. Only `fetch` is
+ * `/api/player-auth/me` and `/api/profile`, and renders the profile. Only `fetch` is
  * stubbed (the network boundary); the DOM builder and the UI components are the
  * production code path.
  *
@@ -129,7 +129,7 @@ afterEach(() => {
 describe('profile page', () => {
   it('loads and shows the account’s own statistics', async () => {
     stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       { match: /\/api\/profile$/, body: FILLED_PROFILE },
     ]);
     await bootProfile();
@@ -144,7 +144,7 @@ describe('profile page', () => {
 
   it('shows an honest empty state, never a fake number, for a fresh account', async () => {
     stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       { match: /\/api\/profile$/, body: EMPTY_PROFILE },
     ]);
     await bootProfile();
@@ -155,21 +155,92 @@ describe('profile page', () => {
     expect(text).not.toContain('0%');
   });
 
-  it('invites a signed-out visitor to sign in and does not call the profile API', async () => {
+  it('invites a signed-out player to sign in and does not call the profile API', async () => {
     const calls = stubFetch([
-      { match: /\/api\/auth\/me$/, body: { user: null } },
+      { match: /\/api\/player-auth\/me$/, status: 401, body: { user: null } },
       { match: /\/api\/profile$/, body: EMPTY_PROFILE },
     ]);
     await bootProfile();
 
     const text = APP().textContent ?? '';
+    expect(text).toContain('Player sign-in');
     expect(text).toContain('Sign in');
+    // The player context only: a host session is never consulted here.
+    expect(calls.some((call) => /\/api\/auth\/me$/.test(call.url))).toBe(false);
     expect(calls.some((call) => /\/api\/profile$/.test(call.url))).toBe(false);
+  });
+
+  it('treats a host-only browser (no player session) as a signed-out player', async () => {
+    // Phase 6.6.3: a host session must not surface as a player profile. The page
+    // asks the player endpoint, which answers 401 for a host-only browser.
+    const calls = stubFetch([
+      { match: /\/api\/player-auth\/me$/, status: 401, body: { user: null } },
+    ]);
+    await bootProfile();
+
+    expect(APP().textContent).toContain('Player sign-in');
+    expect(calls.some((call) => /\/api\/profile$/.test(call.url))).toBe(false);
+  });
+
+  it('signs a player in through the player endpoint, then loads the profile', async () => {
+    let signedIn = false;
+    const calls = stubFetch([
+      {
+        match: /\/api\/player-auth\/me$/,
+        body: () => (signedIn ? ME : ({ user: null } as unknown)),
+      },
+      {
+        match: /\/api\/player-auth\/login$/,
+        method: 'POST',
+        body: () => {
+          signedIn = true;
+          return { user: { id: 'p1' }, csrfToken: 'csrf-token' };
+        },
+      },
+      { match: /\/api\/profile$/, body: FILLED_PROFILE },
+    ]);
+    await bootProfile();
+
+    const username = APP().querySelector<HTMLInputElement>('input[autocomplete="username"]')!;
+    const password = APP().querySelector<HTMLInputElement>('input[type="password"]')!;
+    username.value = 'alice';
+    password.value = 'correct-horse-battery';
+    APP()
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(APP().textContent).toContain('Games won');
+    });
+    const login = calls.find((call) => /\/api\/player-auth\/login$/.test(call.url));
+    expect(login?.method).toBe('POST');
+  });
+
+  it('signs the player out through the player endpoint only', async () => {
+    const calls = stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: FILLED_PROFILE },
+      { match: /\/api\/player-auth\/logout$/, method: 'POST', body: { ok: true } },
+    ]);
+    await bootProfile();
+
+    const signOut = Array.from(APP().querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Sign out'),
+    );
+    signOut!.click();
+
+    await vi.waitFor(() => {
+      expect(APP().textContent).toContain('Player sign-in');
+    });
+    const logout = calls.find((call) => /\/api\/player-auth\/logout$/.test(call.url));
+    expect(logout?.method).toBe('POST');
+    // The host context is never touched.
+    expect(calls.some((call) => /\/api\/auth\/logout$/.test(call.url))).toBe(false);
   });
 
   it('shows an error notice when the profile request fails', async () => {
     stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       {
         match: /\/api\/profile$/,
         status: 500,
@@ -185,7 +256,7 @@ describe('profile page', () => {
 
   it('renders inside the player shell with the profile entry active', async () => {
     stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       { match: /\/api\/profile$/, body: FILLED_PROFILE },
     ]);
     await bootProfile();
@@ -199,7 +270,7 @@ describe('profile page', () => {
 describe('character picker (Phase 6.6.2)', () => {
   it('offers exactly the catalogue ids and no invented character', async () => {
     stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       { match: /\/api\/profile$/, body: EMPTY_PROFILE },
     ]);
     await bootProfile();
@@ -215,7 +286,7 @@ describe('character picker (Phase 6.6.2)', () => {
 
   it('checks the stored character and leaves Save disabled until it changes', async () => {
     stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       { match: /\/api\/profile$/, body: FILLED_PROFILE },
     ]);
     await bootProfile();
@@ -229,7 +300,7 @@ describe('character picker (Phase 6.6.2)', () => {
   it('saves the chosen character with the CSRF token and reloads the profile', async () => {
     let stored = 'ethan';
     const calls = stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       {
         match: /\/api\/profile$/,
         method: 'GET',
@@ -269,7 +340,7 @@ describe('character picker (Phase 6.6.2)', () => {
 
   it('shows a save failure in place and does not pretend the choice was stored', async () => {
     const calls = stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       { match: /\/api\/profile$/, method: 'GET', body: FILLED_PROFILE },
       {
         match: /\/api\/profile$/,
@@ -299,7 +370,7 @@ describe('character picker (Phase 6.6.2)', () => {
 
   it('shows an unknown stored id honestly instead of hiding or faking it', async () => {
     stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       {
         match: /\/api\/profile$/,
         body: { ...FILLED_PROFILE, profile: { selectedCharacterId: 'legacy-hero' } },
@@ -315,13 +386,33 @@ describe('character picker (Phase 6.6.2)', () => {
 
   it('shows “no character chosen” for an account that has picked nothing', async () => {
     stubFetch([
-      { match: /\/api\/auth\/me$/, body: ME },
+      { match: /\/api\/player-auth\/me$/, body: ME },
       { match: /\/api\/profile$/, body: EMPTY_PROFILE },
     ]);
     await bootProfile();
 
     expect(APP().textContent).toContain('No character chosen');
     expect(pickerInputs().some((input) => input.checked)).toBe(false);
+  });
+
+  it('shows no error for the valid “nothing chosen yet” state (Finding 2)', async () => {
+    // A brand-new profile has `selectedCharacterId: null`. That is a valid initial
+    // state, not an unknown id — the page must not render `null is not one of the
+    // characters on offer.` The picker is simply offered unselected.
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: EMPTY_PROFILE },
+    ]);
+    await bootProfile();
+
+    const text = APP().textContent ?? '';
+    expect(text).not.toContain('is not one of the characters on offer');
+    expect(text).not.toContain('“null”');
+    // The picker is still offered and nothing is preselected.
+    expect(pickerInputs()).toHaveLength(CHARACTER_CATALOGUE.length);
+    expect(pickerInputs().some((input) => input.checked)).toBe(false);
+    // Save stays disabled until the player actually picks something.
+    expect(saveButton().disabled).toBe(true);
   });
 });
 
@@ -332,7 +423,8 @@ describe('guests and mobile layout', () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const player = readFileSync(join(here, 'pages/player.ts'), 'utf8');
     expect(player).not.toContain('/api/profile');
-    expect(player).not.toContain('/api/auth/me');
+    expect(player).not.toContain('/api/player-auth');
+    expect(player).not.toContain('/api/auth');
   });
 
   it('stacks the picker to one column on a phone and keeps tap-sized options', () => {

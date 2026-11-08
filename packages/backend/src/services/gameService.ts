@@ -85,9 +85,10 @@ export function gameSettings(game: { settings: Prisma.JsonValue }): ScoringSetti
  * accent-insensitively) and games that have already started.
  *
  * `userId` links the seat to a registered account when the join carries a
- * session (Phase 6.6); it stays `null` for a guest. The link is only ever set
- * from the authenticated session — never from a client-supplied id — and it is
- * what lets the profile count the account's own finished games.
+ * **player** session (Phase 6.6.3); it stays `null` for a guest. The link is
+ * only ever set from the player session — never from a client-supplied id, and
+ * never from a host session — and it is what lets the profile count the
+ * account's own finished games.
  */
 export async function joinGame(pin: string, nickname: string, avatar = '', userId?: string) {
   const trimmed = nickname.trim();

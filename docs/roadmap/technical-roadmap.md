@@ -351,6 +351,27 @@ wird geändert. Bestehende `GamePlayer`-Zeilen bleiben ohne `userId` (Gast).
 Historie (alte Fragen/Antworten, Ergebnisse anderer) bleibt **ausschließlich Administratoren**
 vorbehalten (`game-design-concept.md` §4.7). Ein früherer `GET /api/profile/history` entfällt.
 
+### 7.1 Phase 6.6.3 – Trennung von Host- und Spieleridentität
+
+| Punkt                      | Inhalt                                                                                                                                                                                                                                                            |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Host- und Spieleridentität sind **getrennte Kontexte**; ein im Browser angemeldeter Host wird nie zur Spieleridentität (und umgekehrt).                                                                                                                           |
+| **Betroffene Komponenten** | `sessions.ts` (zwei Kontexte), neue `routes/playerAuthRoutes.ts`, `routes/profileRoutes.ts`, `socket.ts`, `pages/profile.ts`, Prisma `Session.kind`                                                                                                               |
+| **Datenmodelle**           | **Erweiterung:** `Session.kind` (`host`/`player`, Default `host`). Rein additiv.                                                                                                                                                                                  |
+| **API-Änderungen**         | **Neu:** `POST /api/player-auth/login`, `POST /api/player-auth/logout`, `GET /api/player-auth/me`. `GET/PUT /api/profile` nutzen jetzt den **Spieler**-Kontext. `POST /api/auth/login` vergibt den Kontext anhand der geprüften Rolle (Spieler ⇒ Spielerkontext). |
+| **Cookies**                | Host: `zp_session` (unverändert). Spieler: `zp_player_session` (neu, `PLAYER_COOKIE_NAME`). Beide HttpOnly, SameSite=Lax, Path `/`.                                                                                                                               |
+| **Abhängigkeiten**         | 6.6.1, 6.6.2 (Spielerprofil)                                                                                                                                                                                                                                      |
+| **Risiken**                | Session-Verwechslung, CSRF über Kontexte hinweg, Bruch des Host-Logins oder der Gastteilnahme                                                                                                                                                                     |
+| **Teststrategie**          | Neue Akzeptanzsuite `identity-separation.integration.test.ts` (T01–T20); Regression über alle Auth-/Profil-/Socket-Suiten                                                                                                                                         |
+| **Abnahmekriterien**       | Host und Spieler funktionieren im selben Browser unabhängig; Gast ohne Konto; kein Host-Cookie verknüpft einen Sitz; Logout wirkt nur im eigenen Kontext; CSRF kontextgebunden                                                                                    |
+| **Aufwand**                | mittel                                                                                                                                                                                                                                                            |
+
+**Migration:** Additiv (`Session.kind` mit Default `host` + Index). Bestehende Sessions bleiben
+gültig und werden als Host-Sessions gelesen.
+
+**Nicht Teil von 6.6.3:** Gastkonto-Übernahme (6.8), Beamer, Game-Engine, Punkteberechnung,
+GameSnapshot, IP-Erkennung.
+
 ---
 
 ## 8. Phase 6.7 – Blockwelt-Helden-Avatar-System
