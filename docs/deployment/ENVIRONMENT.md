@@ -89,12 +89,13 @@ environment editor; in local development copy the example to `.env`.
 
 ## Sessions and cookies
 
-| Variable            | Required | Default                     | Description                                                                                      |
-| ------------------- | -------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
-| `SESSION_SECRET`    | yes      | –                           | Signing secret. `openssl rand -hex 32`. Never reuse or commit.                                   |
-| `SESSION_TTL_HOURS` | no       | `72`                        | Session lifetime in hours.                                                                       |
-| `COOKIE_NAME`       | no       | `zp_session`                | Session cookie name.                                                                             |
-| `COOKIE_SECURE`     | no       | derived from `APP_BASE_URL` | Session cookie `Secure` flag. Empty = derive: an `https://` origin sets it, plain HTTP does not. |
+| Variable             | Required | Default                     | Description                                                                                      |
+| -------------------- | -------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `SESSION_SECRET`     | yes      | –                           | Signing secret. `openssl rand -hex 32`. Never reuse or commit.                                   |
+| `SESSION_TTL_HOURS`  | no       | `72`                        | Session lifetime in hours.                                                                       |
+| `COOKIE_NAME`        | no       | `zp_session`                | Host session cookie name.                                                                        |
+| `PLAYER_COOKIE_NAME` | no       | `zp_player_session`         | Player session cookie name (Phase 6.6.3). Distinct from `COOKIE_NAME`.                           |
+| `COOKIE_SECURE`      | no       | derived from `APP_BASE_URL` | Session cookie `Secure` flag. Empty = derive: an `https://` origin sets it, plain HTTP does not. |
 
 ## Bootstrap administrator
 

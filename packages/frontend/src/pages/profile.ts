@@ -21,7 +21,7 @@
 import type { Character, ProfileStats, ProfileView } from '@zeropeek/shared';
 import { CHARACTER_CATALOGUE, findCharacter } from '@zeropeek/shared';
 
-import { ApiError, get, put, setCsrfToken } from '../api.js';
+import { ApiError, get, post, put, setCsrfToken } from '../api.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import {
@@ -29,6 +29,7 @@ import {
   chip,
   emptyState,
   errorText,
+  field,
   notice,
   setBusy,
   skeleton,
@@ -36,7 +37,7 @@ import {
   toast,
 } from '../ui.js';
 
-interface MeResponse {
+interface PlayerMeResponse {
   user: { id: string; username: string; role: string } | null;
   csrfToken?: string;
 }
@@ -45,8 +46,6 @@ const appElement = document.getElementById('app');
 if (!appElement) throw new Error('ZeroPeek: the #app element is missing.');
 const app: HTMLElement = appElement;
 
-/** Where a signed-out visitor is sent to sign in. */
-const LOGIN_URL = './auth.html';
 /** Where a signed-in player returns to (join a game). */
 const HOME_URL = './';
 
@@ -57,12 +56,15 @@ function accuracyText(stats: ProfileStats): string {
 }
 
 /** The player shell with the profile entry marked active. */
-function shell(children: Node[]): HTMLElement {
+function shell(children: Node[], actions: Node[] = []): HTMLElement {
   return appShell({
     role: 'player',
     active: 'profile',
     title: 'Profile',
-    actions: [el('a', { class: 'btn btn-secondary btn-sm', href: HOME_URL }, 'Back to the game')],
+    actions: [
+      ...actions,
+      el('a', { class: 'btn btn-secondary btn-sm', href: HOME_URL }, 'Back to the game'),
+    ],
     children,
   });
 }
@@ -190,7 +192,9 @@ function characterSection(view: ProfileView): HTMLElement {
   const save = button('Save character', { variant: 'primary', type: 'submit', disabled: true });
   const status = el('p', { class: 'profile__save-status', role: 'status' });
 
-  const inCatalogue = CHARACTER_CATALOGUE.some((character) => character.id === stored);
+  // `null` means "nothing chosen yet" — a valid initial state, not an unknown
+  // id. Only a *stored but unrecognised* id is worth flagging to the player.
+  const storedIsKnown = stored === null || CHARACTER_CATALOGUE.some((c) => c.id === stored);
   const inputs = CHARACTER_CATALOGUE.map((character) => ({
     character,
     input: null as HTMLInputElement | null,
@@ -250,7 +254,7 @@ function characterSection(view: ProfileView): HTMLElement {
       },
     },
     panel,
-    inCatalogue
+    storedIsKnown
       ? null
       : el(
           'p',
@@ -277,11 +281,97 @@ function characterSection(view: ProfileView): HTMLElement {
 function showProfile(view: ProfileView): void {
   render(
     app,
-    shell([
-      el('section', { class: 'profile' }, headline(view), statsSection(view.stats)),
-      characterSection(view),
-    ]),
+    shell(
+      [
+        el('section', { class: 'profile' }, headline(view), statsSection(view.stats)),
+        characterSection(view),
+      ],
+      [signOutButton()],
+    ),
   );
+}
+
+/** A sign-out control for the player context. */
+function signOutButton(): HTMLElement {
+  return button('Sign out', {
+    variant: 'secondary',
+    small: true,
+    onClick: async () => {
+      try {
+        await post('/api/player-auth/logout');
+      } catch {
+        // Signing out is best-effort; the session may already be gone.
+      }
+      setCsrfToken('');
+      renderSignIn();
+    },
+  });
+}
+
+/** The player sign-in form, shown when no player session is present. */
+function renderSignIn(message?: string): void {
+  const username = el('input', { class: 'input', autocomplete: 'username' });
+  const password = el('input', {
+    class: 'input',
+    type: 'password',
+    autocomplete: 'current-password',
+  });
+  const feedback = el('div');
+  const submit = button('Sign in', { variant: 'primary', type: 'submit' });
+
+  const form = el(
+    'form',
+    {
+      class: 'auth__form',
+      onsubmit: async (event: Event) => {
+        event.preventDefault();
+        feedback.replaceChildren();
+        setBusy(submit, true);
+        try {
+          const result = await post<{ user: { id: string }; csrfToken?: string }>(
+            '/api/player-auth/login',
+            { username: username.value.trim(), password: password.value },
+          );
+          if (result.csrfToken) setCsrfToken(result.csrfToken);
+          await load();
+        } catch (error) {
+          feedback.replaceChildren(notice(errorText(error), 'error'));
+        } finally {
+          setBusy(submit, false);
+        }
+      },
+    },
+    field('Username', username),
+    field('Password', password),
+    message ? notice(message, 'info') : null,
+    feedback,
+    el('div', { class: 'auth__actions' }, submit),
+  );
+
+  render(
+    app,
+    statusScreen(
+      el(
+        'div',
+        { class: 'profile__signin' },
+        el('h2', { class: 'profile__section-title' }, 'Player sign-in'),
+        el(
+          'p',
+          { class: 'muted' },
+          'Sign in with your player account to see your profile and choose your character.',
+        ),
+        form,
+        el(
+          'p',
+          { class: 'muted profile__hint' },
+          'Hosting a game? Use the host sign-in on the ',
+          el('a', { href: './auth.html' }, 'sign-in page'),
+          '.',
+        ),
+      ),
+    ),
+  );
+  username.focus();
 }
 
 /** Load and render the profile, or a sign-in / error screen. */
@@ -290,38 +380,34 @@ async function load(): Promise<void> {
     const view = await get<ProfileView>('/api/profile');
     showProfile(view);
   } catch (error) {
-    const message =
-      error instanceof ApiError && error.status === 401
-        ? 'Your session has expired. Please sign in again.'
-        : errorText(error);
-    render(app, statusScreen(notice(message, 'error')));
+    if (error instanceof ApiError && error.status === 401) {
+      renderSignIn();
+      return;
+    }
+    render(app, statusScreen(notice(errorText(error), 'error')));
   }
 }
 
-/** Boot: require a session, then load the profile. */
+/** Boot: require a **player** session, then load the profile. */
 async function boot(): Promise<void> {
   render(app, statusScreen(skeleton('card')));
 
-  let me: MeResponse;
+  let me: PlayerMeResponse;
   try {
-    me = await get<MeResponse>('/api/auth/me');
+    // The player context only. A host session (`zp_session`) is not read here,
+    // so a signed-in host is treated as a signed-out player (Phase 6.6.3).
+    me = await get<PlayerMeResponse>('/api/player-auth/me');
   } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      renderSignIn();
+      return;
+    }
     render(app, statusScreen(notice(errorText(error), 'error')));
     return;
   }
 
   if (!me.user) {
-    render(
-      app,
-      statusScreen(
-        el(
-          'div',
-          { class: 'profile__signin' },
-          el('p', {}, 'Sign in to see your profile.'),
-          el('a', { class: 'btn btn-primary', href: LOGIN_URL }, 'Sign in'),
-        ),
-      ),
-    );
+    renderSignIn();
     return;
   }
 

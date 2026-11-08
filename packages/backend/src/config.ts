@@ -45,6 +45,12 @@ export interface AppConfig {
   logLevel: string;
   cookieSecure: boolean;
   sessionCookieName: string;
+  /**
+   * Cookie for the **player** identity context (Phase 6.6.3). A separate name
+   * from `sessionCookieName`, so a host session and a player session coexist in
+   * one browser without overwriting each other.
+   */
+  playerSessionCookieName: string;
   /** Session lifetime in milliseconds (`SESSION_TTL_HOURS`, default 72h). */
   sessionTtlMs: number;
   /** Redis connection string, used for the Socket.IO adapter. */
@@ -393,6 +399,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       : isNonEmpty(env.SESSION_COOKIE_NAME)
         ? env.SESSION_COOKIE_NAME
         : 'zp_session',
+    // A distinct default; the host cookie name is honoured above, so the two can
+    // never collide even when a deployment renames the host cookie.
+    playerSessionCookieName: isNonEmpty(env.PLAYER_COOKIE_NAME)
+      ? env.PLAYER_COOKIE_NAME
+      : 'zp_player_session',
     sessionTtlMs: readSessionTtlMs(env.SESSION_TTL_HOURS),
     redisUrl,
     sessionSecret,

@@ -8,6 +8,13 @@
  * Phase 6.3 adds the *optional* player registration: `register`, `verify` and
  * `resend`. None of the existing routes changed behaviour, except that login
  * now refuses an unconfirmed player account with a clear code.
+ *
+ * Phase 6.6.3: `POST /api/auth/login` is the one sign-in surface, and it issues
+ * the session that matches the **verified role** — a `PLAYER` gets the player
+ * context (`zp_player_session`), staff keep the host context (`zp_session`). The
+ * role comes from the credential check on the server, never from the request, so
+ * a client cannot choose its own context. The two cookie names stay distinct, so
+ * a host and a player can still be signed in at the same time in one browser.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -16,7 +23,13 @@ import { AppError, badRequest, unauthorized } from '../errors.js';
 import { verifyCredentials } from '../services/userService.js';
 import { registerPlayer, resendVerification, verifyEmail } from '../services/registration.js';
 import type { Mailer } from '../services/mailer.js';
-import { currentUser, endSession, requireAuth, startSession } from '../sessions.js';
+import {
+  currentUser,
+  endSession,
+  requireAuth,
+  startPlayerSession,
+  startSession,
+} from '../sessions.js';
 import { type AppConfig, isMailConfigured } from '../config.js';
 
 interface LoginBody {
@@ -75,8 +88,11 @@ export function registerAuthRoutes(app: FastifyInstance, config: AppConfig, mail
       throw new AppError(403, 'email_unverified', 'Please confirm your e-mail address first.');
     }
 
-    const csrfToken = await startSession(reply, config, result.user.id);
-    request.log.info({ userId: result.user.id }, 'login');
+    const csrfToken =
+      result.user.role === 'PLAYER'
+        ? await startPlayerSession(reply, config, result.user.id)
+        : await startSession(reply, config, result.user.id);
+    request.log.info({ userId: result.user.id, role: result.user.role }, 'login');
     return { user: result.user, csrfToken };
   });
 

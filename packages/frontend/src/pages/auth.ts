@@ -35,7 +35,10 @@ interface SessionUser {
 
 /** Where a signed-in account lands, by role. */
 function homeFor(role: string): string {
-  return role === 'ADMIN' || role === 'TRAINER' ? './host.html' : './';
+  // Staff land on the host console; a player lands on their own profile, which
+  // is the page that reads the player session (Phase 6.6.3). The lobby stays one
+  // click away from the profile, so a player can still join a game.
+  return role === 'ADMIN' || role === 'TRAINER' ? './host.html' : './profile.html';
 }
 
 /** The calm-effects switch, shared by every auth screen. */
@@ -406,7 +409,20 @@ async function boot(): Promise<void> {
       return;
     }
   } catch {
-    // No session: fall through to the sign-in form.
+    // No host session: check the player context before showing the sign-in.
+  }
+
+  // A player is signed in through `zp_player_session`, which `/api/auth/me` does
+  // not read (Phase 6.6.3). Ask the player endpoint too, so an already signed-in
+  // player is sent to their profile instead of being shown the form again.
+  try {
+    const player = await get<{ user: SessionUser | null }>('/api/player-auth/me');
+    if (player.user) {
+      location.assign(homeFor(player.user.role));
+      return;
+    }
+  } catch {
+    // No player session either: fall through to the sign-in form.
   }
 
   if (hash === '#register') showRegister();

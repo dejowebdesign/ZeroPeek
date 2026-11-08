@@ -281,7 +281,8 @@ describe.skipIf(!available)('player registration integration', () => {
 
   describe('role boundary', () => {
     it('does not let a PLAYER reach the quiz or report routes', async () => {
-      // A confirmed player signs in, then tries the trainer surfaces.
+      // A confirmed player signs in through the general sign-in (Phase 6.6.3:
+      // a PLAYER now gets the player context), then tries the trainer surfaces.
       await createUser({
         username: 'gamer',
         password: STRONG,
@@ -298,14 +299,53 @@ describe.skipIf(!available)('player registration integration', () => {
       const cookie = (Array.isArray(setCookie) ? setCookie[0] : String(setCookie)).split(';')[0]!;
       const csrf = login.json().csrfToken;
 
+      // The trainer surfaces read the host context; a player cookie carries no
+      // host session, so access is refused (401 before the role is even read).
       for (const url of ['/api/quizzes', '/api/reports/games']) {
         const response = await app.inject({ method: 'GET', url, headers: { cookie } });
-        expect(response.statusCode, url).toBe(403);
+        expect(response.statusCode, url).toBe(401);
       }
       const write = await app.inject({
         method: 'POST',
         url: '/api/quizzes',
         headers: { cookie, 'x-csrf-token': csrf },
+        payload: { title: 'x' },
+      });
+      expect(write.statusCode).toBe(401);
+    });
+
+    it('still refuses a host session that is not staff on the trainer surfaces', async () => {
+      // Defence in depth: if an authenticated *host* session ever belonged to a
+      // non-staff account, the role gate answers 403. Built here by forging the
+      // session row's kind and presenting it under the host cookie name, so the
+      // route's staff check is exercised directly (rather than the 401 a player
+      // cookie gets).
+      const gamer = await createUser({
+        username: 'gamer2',
+        password: STRONG,
+        role: 'PLAYER',
+        emailVerifiedAt: new Date(),
+      });
+      const playerLogin = await app.inject({
+        method: 'POST',
+        url: '/api/player-auth/login',
+        payload: { username: 'gamer2', password: STRONG },
+      });
+      const sessionId = String(playerLogin.headers['set-cookie']).split('=')[1]!.split(';')[0]!;
+      const csrf = playerLogin.json().csrfToken;
+      await prisma.session.updateMany({ where: { userId: gamer.id }, data: { kind: 'host' } });
+      const hostNamedCookie = `zp_session=${sessionId}`;
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/quizzes',
+        headers: { cookie: hostNamedCookie },
+      });
+      expect(response.statusCode).toBe(403);
+      const write = await app.inject({
+        method: 'POST',
+        url: '/api/quizzes',
+        headers: { cookie: hostNamedCookie, 'x-csrf-token': csrf },
         payload: { title: 'x' },
       });
       expect(write.statusCode).toBe(403);
