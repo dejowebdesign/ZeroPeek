@@ -475,9 +475,20 @@ const app: HTMLElement = appElement;
   // ---------------------------------------------------------------------------
   // Boot: reconnect if a session is stored, otherwise show the join form. The
   // profile is its own page (profile.html, Phase 6.6), so it is not routed here.
+  //
+  // The same rejoin runs on every **socket** reconnect, not only on page load:
+  // an automatic Socket.IO reconnect (a dropped Wi-Fi, a sleeping tab) opens a
+  // brand-new socket that belongs to no room, so without this the player would
+  // silently stop receiving the game (no question, no result) until they
+  // reloaded. `player:rejoin` re-joins the room and returns the real current
+  // state, so the screen is rebuilt from the server rather than a client guess.
   // ---------------------------------------------------------------------------
-  const stored = loadSession();
-  if (stored) {
+  function rejoinStored(): void {
+    const stored = loadSession();
+    if (!stored) {
+      showJoin();
+      return;
+    }
     render(app, shell('lobby', el('section', { class: 'centered' }, spinner('Reconnecting…'))));
     request<PlayerSync>(socket, 'player:rejoin', {
       gameId: stored.gameId,
@@ -489,7 +500,16 @@ const app: HTMLElement = appElement;
         clearSession();
         showJoin('Your previous game has ended. Join again.');
       });
-  } else {
-    showJoin();
   }
+
+  let hasConnected = false;
+  socket.on('connect', () => {
+    // The first connect is handled by the boot below; a later connect is an
+    // automatic reconnect and must re-establish the game membership.
+    if (hasConnected) rejoinStored();
+    hasConnected = true;
+  });
+
+  if (loadSession()) rejoinStored();
+  else showJoin();
 }

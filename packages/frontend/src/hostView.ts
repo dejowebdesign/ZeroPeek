@@ -228,7 +228,13 @@ export function attachHostHandlers(
   liveHandlers.set(key, handlers);
   if (registered.has(key)) return () => detachHostHandlers(socket);
 
-  const register = socket.on as (event: string, listener: RawListener) => unknown;
+  // Bind to the socket: `socket.on` is a prototype method, so calling it
+  // detached (`const register = socket.on`) throws inside the emitter
+  // (`this` is `undefined`). That silently stopped every listener from being
+  // registered, so the host never received any game event. The fake socket used
+  // in the unit tests is an object literal, whose methods do not depend on
+  // `this`, so the bug was invisible there.
+  const register = socket.on.bind(socket) as (event: string, listener: RawListener) => unknown;
   const forward =
     (pick: (handlers: HostEventHandlers) => RawListener): RawListener =>
     (...args: unknown[]): void => {
@@ -258,7 +264,9 @@ export function detachHostHandlers(socket: ListenerSocket): void {
   const key = socket as unknown as object;
   const listeners = registered.get(key);
   if (!listeners) return;
-  const unregister = socket.off as ((event: string, listener: RawListener) => unknown) | undefined;
+  const unregister = socket.off
+    ? (socket.off.bind(socket) as (event: string, listener: RawListener) => unknown)
+    : undefined;
   if (unregister) for (const [event, listener] of listeners) unregister(event, listener);
   registered.delete(key);
   liveHandlers.delete(key);

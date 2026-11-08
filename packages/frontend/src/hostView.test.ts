@@ -345,6 +345,38 @@ describe('attachHostHandlers', () => {
     const socket = fakeSocket();
     expect(() => detachHostHandlers(socket)).not.toThrow();
   });
+
+  it('works with a socket whose on/off are prototype methods (real Socket shape)', () => {
+    // The real `socket.io-client` socket defines `on`/`off` on its prototype, so
+    // calling them detached (`const register = socket.on; register(...)`) throws
+    // "Cannot read properties of undefined". The `fakeSocket` above uses own
+    // properties that ignore `this`, which hid that bug — this class-shaped fake
+    // reproduces the real shape and would fail if the binding is lost again.
+    class PrototypeSocket {
+      listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+      on(event: string, listener: (...args: unknown[]) => void): void {
+        const list = this.listeners.get(event) ?? [];
+        list.push(listener);
+        this.listeners.set(event, list);
+      }
+      off(event: string, listener: (...args: unknown[]) => void): void {
+        this.listeners.set(
+          event,
+          (this.listeners.get(event) ?? []).filter((entry) => entry !== listener),
+        );
+      }
+      fire(event: string, ...args: unknown[]): void {
+        for (const listener of this.listeners.get(event) ?? []) listener(...args);
+      }
+    }
+    const socket = new PrototypeSocket();
+    const lobby = vi.fn();
+    expect(() =>
+      attachHostHandlers(socket as unknown as ListenerSocket, handlersFor({ lobby })),
+    ).not.toThrow();
+    socket.fire('host:lobby', { pin: '1', players: [] });
+    expect(lobby).toHaveBeenCalledTimes(1);
+  });
 });
 
 /** A complete handler set, with every entry a fresh spy unless overridden. */

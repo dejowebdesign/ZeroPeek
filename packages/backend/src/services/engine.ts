@@ -371,6 +371,28 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     // marks the question as skipped.
     runtime.skippedQuestionId = question && forQuestion('skipped').length > 0 ? question.id : null;
 
+    // Restart recovery per phase. A process that dies mid-question, mid-reveal or
+    // mid-board leaves no timer behind, so every phase with an automatic
+    // successor must re-arm it here — otherwise the game is stuck on that screen
+    // forever. The reveal and board timers are re-armed for their **full** window
+    // (not a remainder): the host is back in control and the screen is the live
+    // one, so re-arming for the full window is the deterministic, restart-safe
+    // choice. The question timer is different — it is the real, once-only clock,
+    // so it is re-armed for the *remaining* time and reveals at once if expired.
+    if (runtime.phase === 'reveal') {
+      runtime.timer = setTimeout(() => {
+        void this.board(runtime.id).catch(() => undefined);
+      }, REVEAL_MS);
+      return;
+    }
+
+    if (runtime.phase === 'board') {
+      runtime.timer = setTimeout(() => {
+        void this.next(runtime.id).catch(() => undefined);
+      }, BOARD_MS);
+      return;
+    }
+
     if (runtime.phase !== 'question' || !question) return;
 
     const answers = await prisma.playerAnswer.findMany({
@@ -551,6 +573,24 @@ export class GameEngine extends EventEmitter<EngineEvents> {
   private async nextInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     if (game.phase === 'lobby') throw conflict('Start the game first.');
+    // `next` is only a legal successor of the **board**. Refusing it from
+    // `question`/`reveal` is what makes a stale auto-advance timer — or a second,
+    // rapid host click — a no-op instead of a silent skip of the whole open
+    // question. Without this, a board timer armed before a manual advance could
+    // fire afterwards and jump the game forward by one extra question.
+    if (game.phase !== 'board') {
+      throw conflict('There is no leaderboard to advance from.');
+    }
+    return this.advance(gameId, game);
+  }
+
+  /**
+   * Open the question after the current index and arm its timer (or end the game
+   * when the index runs past the last question). The phase guard lives in
+   * `nextInternal`, so `startInternal` can reuse this to open the first question
+   * from the lobby without pretending to be on a board.
+   */
+  private async advance(gameId: string, game: RuntimeGame): Promise<GamePhase> {
     this.clearTimer(game);
 
     const nextIndex = game.currentIndex + 1;
@@ -612,7 +652,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     game.currentIndex = -1;
     // The snapshot is in place, so it is safe to leave the lobby now.
     game.phase = 'question';
-    return this.nextInternal(gameId);
+    return this.advance(gameId, game);
   }
 
   /**
@@ -1129,7 +1169,11 @@ export class GameEngine extends EventEmitter<EngineEvents> {
   private async boardInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
     this.clearTimer(game);
+    // Idempotent for a game already past the reveal, but never a legal jump from
+    // an open question: a stale board timer that fires while a question is live
+    // must not yank the screen to the leaderboard and lose the question.
     if (game.phase === 'board' || game.phase === 'end') return game.phase;
+    if (game.phase !== 'reveal') throw conflict('There is nothing to rank yet.');
     game.paused = false;
     game.pausedAt = null;
     game.remainingMs = null;
