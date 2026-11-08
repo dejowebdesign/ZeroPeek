@@ -228,10 +228,9 @@ Scope is fixed in `../roadmap/technical-roadmap.md` §3.1 and analysed in
   system already provides, and improve the status and feedback messages. Styling follows the tokens
   above; the lobby keeps the server-authoritative flow through `game:state` unchanged. Where the
   server does not send a datum, it is not invented.
-- **Profile area.** No real profile in this phase — no profile model, no profile API, no database
-  change. The `profile` navigation entry gets a clearly marked placeholder
-  (existing `emptyState` component where it fits) reading
-  **“Dein Spielerprofil kommt mit Phase 6.6.”** It must not look like a working profile.
+- **Profile area.** Phase 6.2.2 left a clearly marked placeholder here. That placeholder is now
+  **replaced** by the real profile page in Phase 6.6 (see §8.4); the `emptyState` wording
+  **“Dein Spielerprofil kommt mit Phase 6.6.”** no longer exists in the code.
 - **Out of scope.** Player registration/login (6.3), a `PLAYER` role, profile model/API, XP/level,
   inventory/avatars, database or Prisma changes, game-flow/timer/answer/scoring changes, socket
   permission changes, host/beamer changes. Guests keep the standard figure with no avatar choice.
@@ -261,6 +260,28 @@ login, the join flow or any server route that already existed.
   under `@supports not (backdrop-filter: …)`, so it is legible without blur.
 - **Registration offer.** `playerView.ts` exports `registerOffer()`, a quiet, optional invitation
   shown after a game; it links to `./auth.html#register`. It never gates joining a game.
+
+### 8.4 Player profile (Phase 6.6, implemented)
+
+Scope is fixed in `../roadmap/technical-roadmap.md` §7 and the behaviour is documented in
+`../reports/phase-6-6-player-profiles.md`. The phase is additive; it changes no existing route,
+no game rule and no token value.
+
+- **New entry point.** `src/profile.html` (Vite input `profile`) renders `src/pages/profile.ts`.
+  It is a **separate** page, so the player/host/editor/admin entry points keep their own URLs.
+  The `profile` navigation entry links to `./profile.html`; the old `./#profile` placeholder
+  route on the player page is removed.
+- **Composition.** The page reuses the existing primitives — `appShell` (player role, `profile`
+  active), `card`, `chip`, `statTile`, `emptyState`, `notice`, `skeleton`. No new colour, blur or
+  radius token is introduced; only layout rules (`.profile*`) were added to the Phase 6.6 block in
+  `tokens.css`, and they sit below everything else.
+- **Data honesty.** Every figure is computed by the server; the client only renders it. With no
+  finished games the page shows an `emptyState` and accuracy shows an em dash — never a
+  fabricated number. There is no quiz-history view here (admin-only, Phase 5c).
+- **Responsive.** The identity header wraps; the statistics grid is three columns on desktop and
+  two on a phone (≤767px), matching the shell's existing breakpoints.
+- **Session.** A signed-out visitor sees a single "Sign in" card; a failed profile request shows
+  an error notice. The page never calls `/api/profile` without a session.
 
 ## 9. Accessibility
 

@@ -230,6 +230,16 @@ describe('design-system components', () => {
     'auth-offer__text',
     'auth-offer__title',
     'auth-offer__hint',
+    // Player profile (Phase 6.6).
+    'profile',
+    'profile__head',
+    'profile__identity',
+    'profile__name',
+    'profile__chips',
+    'profile__section-title',
+    'profile__stats',
+    'profile__hint',
+    'profile__signin',
   ];
 
   for (const name of classes) {
@@ -390,8 +400,15 @@ describe('fallbacks and accessibility', () => {
 });
 
 describe('every surface shares the same stylesheets', () => {
-  it('finds the five entry points', () => {
-    expect(entries).toEqual(['admin.html', 'auth.html', 'editor.html', 'host.html', 'index.html']);
+  it('finds the six entry points', () => {
+    expect(entries).toEqual([
+      'admin.html',
+      'auth.html',
+      'editor.html',
+      'host.html',
+      'index.html',
+      'profile.html',
+    ]);
   });
 
   for (const entry of entries) {

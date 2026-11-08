@@ -83,8 +83,13 @@ export function gameSettings(game: { settings: Prisma.JsonValue }): ScoringSetti
 /**
  * Add a player to a lobby game. Rejects duplicate nicknames (case- and
  * accent-insensitively) and games that have already started.
+ *
+ * `userId` links the seat to a registered account when the join carries a
+ * session (Phase 6.6); it stays `null` for a guest. The link is only ever set
+ * from the authenticated session — never from a client-supplied id — and it is
+ * what lets the profile count the account's own finished games.
  */
-export async function joinGame(pin: string, nickname: string, avatar = '') {
+export async function joinGame(pin: string, nickname: string, avatar = '', userId?: string) {
   const trimmed = nickname.trim();
   if (trimmed.length === 0 || trimmed.length > NICKNAME_MAX) {
     throw badRequest(`The nickname must be 1–${NICKNAME_MAX} characters.`);
@@ -100,7 +105,13 @@ export async function joinGame(pin: string, nickname: string, avatar = '') {
   }
 
   const player = await prisma.gamePlayer.create({
-    data: { gameId: game.id, nickname: trimmed, avatar, token: newPlayerToken() },
+    data: {
+      gameId: game.id,
+      nickname: trimmed,
+      avatar,
+      token: newPlayerToken(),
+      ...(userId ? { userId } : {}),
+    },
   });
   return { game, player };
 }

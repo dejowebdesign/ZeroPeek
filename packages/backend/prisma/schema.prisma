@@ -42,8 +42,35 @@ model User {
   sessions Session[]
   quizzes  Quiz[]
   emailVerificationTokens EmailVerificationToken[]
+  profile  PlayerProfile?
+  gamePlayers GamePlayer[]
 
   @@map("users")
+}
+
+/// A durable player profile (Phase 6.6).
+///
+/// One profile per registered account (`user_id` is unique), created lazily on
+/// the first profile read. It holds only what the account itself owns — the
+/// chosen character id — never a statistic: every number shown in the profile is
+/// computed server-side from the persisted game data on each request, so a
+/// statistic can never drift from the games it summarises.
+///
+/// **No IP address is stored here** (product decision Q5, Phase 6.6): identity is
+/// the account, never the network address. The XP/level/inventory fields belong
+/// to Phase 6.8 and are deliberately absent.
+model PlayerProfile {
+  id                  String   @id @default(uuid())
+  userId              String   @unique @map("user_id")
+  /// The Blockwelt-Helden character the player picked. A plain id; the
+  /// character catalogue and the avatar configuration arrive with Phase 6.7.
+  selectedCharacterId String?  @map("selected_character_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("player_profiles")
 }
 
 /// A single-use e-mail verification token. Only the SHA-256 hash of the token
@@ -196,6 +223,11 @@ model GameSnapshot {
 model GamePlayer {
   id           String   @id @default(uuid())
   gameId       String   @map("game_id")
+  /// The registered account that played this round, or `null` for a guest
+  /// (Phase 6.6). Nullable so every existing guest row stays valid; a guest
+  /// round is never retroactively claimed (Phase 6.8 owns the one authorised
+  /// claim flow). No IP address is involved in this link (Q5).
+  userId       String?  @map("user_id")
   nickname     String
   avatar       String   @default("")
   token        String   @unique
@@ -207,10 +239,12 @@ model GamePlayer {
   connected    Boolean  @default(true)
 
   game    Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user    User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   answers PlayerAnswer[]
 
   @@unique([gameId, nickname])
   @@index([gameId])
+  @@index([userId])
   @@map("game_players")
 }
 

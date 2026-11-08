@@ -636,7 +636,7 @@ Host/Beamer kombiniert (verbindlich), Audio nur Host (verbindlich).
 | 7   | Katalog in `shared` oder DB                                                                     | 6.7, 6.8       |
 | 8   | Endgültige Belohnungsmatrix                                                                     | 6.8            |
 | 9   | Erfolgsnamen/-bedingungen                                                                       | 6.8            |
-| 10  | IP-Speicherung (Q5)                                                                             | 6.6            |
+| 10  | IP-Speicherung (Q5) – **6.6: keine IP gespeichert**; offen, falls Missbrauchsschutz nötig       | 6.6, später    |
 
 ---
 

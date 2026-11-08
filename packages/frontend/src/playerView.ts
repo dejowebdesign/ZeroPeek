@@ -10,7 +10,7 @@
 import type { HostPresence, PlayerSync, PublicPlayer } from '@zeropeek/shared';
 
 import { el } from './dom.js';
-import { chip, emptyState } from './ui.js';
+import { chip } from './ui.js';
 
 /** Which player screen a reconnect state maps to. */
 export type PlayerScreen = 'lobby' | 'question' | 'reveal' | 'board' | 'end';
@@ -97,16 +97,6 @@ export function lobbyRoster(players: PublicPlayer[], meId?: string): HTMLElement
       );
     }),
   );
-}
-
-/**
- * The clearly-marked profile placeholder. A real profile needs an account
- * (Phase 6.3) and the profile model and API (Phase 6.6), so this must read as
- * "not built yet" and never look like a working profile. The wording is the one
- * fixed in `docs/roadmap/technical-roadmap.md` §3.1 and `docs/design/design-system.md` §8.2.
- */
-export function profilePlaceholder(): HTMLElement {
-  return emptyState('Dein Spielerprofil kommt mit Phase 6.6.');
 }
 
 /**

@@ -287,11 +287,23 @@ export function attachSocketIO(
           const nickname = asString(payload?.nickname, 'nickname');
           const avatar = typeof payload?.avatar === 'string' ? payload.avatar : '';
 
+          // A registered player may be signed in on this browser; the seat is
+          // then linked to that account (Phase 6.6) so the profile can count the
+          // round. The id comes from the session cookie only — never from the
+          // payload — so a guest cannot claim someone else's account, and a guest
+          // join simply carries no id. A session lookup that fails is treated as
+          // a guest, so joining never breaks on a stale cookie.
+          const request = {
+            cookies: parseCookieHeader(socket.request.headers.cookie),
+            method: 'GET',
+          } as unknown as Parameters<typeof resolveSession>[0];
+          const session = await resolveSession(request, config).catch(() => null);
+
           // The engine owns the join, because it must be serialised against the
           // host's `start` under the same per-game phase lock (bugfix: a join
           // that raced the start could otherwise leave the host on a stale
           // lobby whose "Start game" the engine then rejects).
-          const { game, player } = await engine.join(pin, nickname, avatar);
+          const { game, player } = await engine.join(pin, nickname, avatar, session?.user.id);
           await socket.join(playerRoom(game.id));
           await socket.join(personalRoom(player.id));
           socket.data.playerId = player.id;

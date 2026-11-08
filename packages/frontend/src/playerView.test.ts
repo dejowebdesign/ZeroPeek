@@ -16,7 +16,6 @@ import {
   hostPresenceStatus,
   hostStatusChip,
   lobbyRoster,
-  profilePlaceholder,
   registerOffer,
   screenForSync,
 } from './playerView.js';
@@ -75,14 +74,6 @@ describe('lobbyRoster', () => {
 
   it('renders no rows for an empty roster', () => {
     expect(lobbyRoster([]).querySelectorAll('.lobby__roster-row')).toHaveLength(0);
-  });
-});
-
-describe('profilePlaceholder', () => {
-  it('reads as not built yet and never as a working profile', () => {
-    const node = profilePlaceholder();
-    expect(node.classList.contains('empty')).toBe(true);
-    expect(node.textContent).toContain('Dein Spielerprofil kommt mit Phase 6.6.');
   });
 });
 

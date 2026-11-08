@@ -16,3 +16,4 @@ export * from './account.js';
 export * from './scoring.js';
 export * from './pin.js';
 export * from './events.js';
+export * from './profile.js';

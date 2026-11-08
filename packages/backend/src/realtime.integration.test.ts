@@ -243,4 +243,47 @@ describe.skipIf(!available)('realtime end-to-end', () => {
     expect(joined.playerId).toBeTruthy();
     expect(joined.token).toBeTruthy();
   }, 15_000);
+
+  it('links a signed-in player’s seat to the account but leaves a guest unlinked', async () => {
+    // Phase 6.6: a seat carries the account id only when the join arrives with a
+    // valid session cookie. The id is never read from the payload, so a guest
+    // cannot claim an account — this test sends no id and still gets none.
+    const host = openSocket('/host', { extraHeaders: { cookie } });
+    await once(host, 'connect');
+    const { pin } = await request<{ gameId: string; pin: string }>(host, 'host:create', { quizId });
+
+    const account = await createUser({
+      username: 'linkedplayer',
+      password: 'correct-horse-battery',
+      role: 'PLAYER',
+    });
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'linkedplayer', password: 'correct-horse-battery' },
+    });
+    const playerCookie = (
+      Array.isArray(login.headers['set-cookie'])
+        ? login.headers['set-cookie'][0]!
+        : String(login.headers['set-cookie'])
+    ).split(';')[0]!;
+
+    const signedIn = openSocket('', { extraHeaders: { cookie: playerCookie } });
+    await once(signedIn, 'connect');
+    const linked = await request<{ playerId: string }>(signedIn, 'player:join', {
+      pin,
+      nickname: 'Linked',
+    });
+    const linkedRow = await prisma.gamePlayer.findUnique({ where: { id: linked.playerId } });
+    expect(linkedRow?.userId).toBe(account.id);
+
+    const guest = openSocket();
+    await once(guest, 'connect');
+    const anon = await request<{ playerId: string }>(guest, 'player:join', {
+      pin,
+      nickname: 'Guest2',
+    });
+    const guestRow = await prisma.gamePlayer.findUnique({ where: { id: anon.playerId } });
+    expect(guestRow?.userId).toBeNull();
+  }, 15_000);
 });

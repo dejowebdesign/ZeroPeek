@@ -47,14 +47,14 @@ export const MOBILE_PRIMARY_LIMIT = 5;
 /**
  * The player navigation. A player has no account yet, so sign-out has no meaning
  * here; the entries that arrive in later phases are shown as "soon" so the
- * structure is visible without pretending the page exists. `Profile` now links to
- * a clearly-marked placeholder on the player page (Phase 6.2.2).
+ * structure is visible without pretending the page exists. `Profile` links to the
+ * real profile page (Phase 6.6), which requires a signed-in account.
  */
 export const PLAYER_NAV: readonly NavItem[] = [
   { id: 'lobby', label: 'Lobby', href: './', icon: '⌂' },
   { id: 'questions', label: 'Questions', icon: '?' },
   { id: 'inventory', label: 'Inventory', icon: '▦' },
-  { id: 'profile', label: 'Profile', href: './#profile', icon: '☺' },
+  { id: 'profile', label: 'Profile', href: './profile.html', icon: '☺' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ];
 
