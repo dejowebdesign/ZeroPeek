@@ -17,3 +17,5 @@ export * from './scoring.js';
 export * from './pin.js';
 export * from './events.js';
 export * from './profile.js';
+export * from './cosmetics.js';
+export * from './characters.js';

@@ -18,12 +18,25 @@
  * tagline, never a drawn or generated figure.
  */
 
-import type { Character, ProfileStats, ProfileView } from '@zeropeek/shared';
-import { CHARACTER_CATALOGUE, findCharacter } from '@zeropeek/shared';
+import type {
+  AvatarConfig,
+  AvatarEquipment,
+  EquipmentSlot,
+  Character,
+  ProfileStats,
+  ProfileView,
+} from '@zeropeek/shared';
+import {
+  CHARACTER_CATALOGUE,
+  defaultAvatarConfig,
+  findCharacter,
+  findCharacterAssets,
+} from '@zeropeek/shared';
 
 import { ApiError, get, post, put, setCsrfToken } from '../api.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
+import { SLOT_LABELS, avatarPreview, availableSlots, slotItems, withSlot } from '../avatar.js';
 import {
   button,
   chip,
@@ -81,10 +94,14 @@ function roleLabel(role: string): string {
   return 'Player';
 }
 
-/** The profile headline: name, role and the current character. */
+/**
+ * The profile headline: name, role, the current character and — once a character
+ * with artwork is chosen — its portrait.
+ */
 function headline(view: ProfileView): HTMLElement {
   const character = findCharacter(view.profile.selectedCharacterId);
   const chosen = view.profile.selectedCharacterId;
+  const assets = findCharacterAssets(chosen);
 
   return el(
     'div',
@@ -97,15 +114,24 @@ function headline(view: ProfileView): HTMLElement {
         'div',
         { class: 'profile__chips' },
         chip(roleLabel(view.user.role), 'cyan', true),
-        // The visual character portrait arrives with the avatar system (Phase
-        // 6.7). Until the artwork exists the chosen character is named, never a
-        // fabricated image. An unknown id (stored before this list existed) is
-        // shown as-is rather than hidden or silently changed.
+        // An unknown id (stored before this list existed) is shown as-is rather
+        // than hidden or silently changed.
         chosen
           ? chip(`Character: ${character ? character.name : chosen}`, 'accent')
           : chip('No character chosen', 'muted'),
       ),
     ),
+    // The portrait appears only when the chosen character has supplied artwork
+    // (Ethan or Maya). A name-only character shows no frame, never a placeholder.
+    assets
+      ? el('img', {
+          class: 'profile__portrait',
+          src: assets.previewPath,
+          alt: `${assets.name} portrait`,
+          loading: 'lazy',
+          decoding: 'async',
+        })
+      : null,
   );
 }
 
@@ -271,7 +297,160 @@ function characterSection(view: ProfileView): HTMLElement {
     el(
       'p',
       { class: 'muted profile__hint' },
-      'Choose the Blockwelt-Helden figure you play as. Character artwork arrives later.',
+      'Choose the Blockwelt-Helden figure you play as. Ethan and Maya have full artwork; the other figures follow once their files are supplied.',
+    ),
+    form,
+  );
+}
+
+/**
+ * One slot of the avatar editor: a radio group of the character's items plus a
+ * "None" option.
+ *
+ * Only the character's **own** items are offered (`slotItems`), so another
+ * character's equipment can never appear here — the "no wrong combination" rule
+ * (phase brief §16). The server validates the same rule on save.
+ */
+function slotControl(
+  characterId: string,
+  slot: EquipmentSlot,
+  current: string | null,
+  onChange: (slot: EquipmentSlot, itemId: string | null) => void,
+): HTMLElement {
+  const items = slotItems(characterId, slot);
+  const options: Array<{ id: string | null; label: string; itemId: string | null }> = [
+    { id: `none`, label: 'None', itemId: null },
+    ...items.map((item) => ({ id: item.id, label: item.name, itemId: item.id })),
+  ];
+
+  const group = el('div', { class: 'avatar__slot-options' });
+  for (const option of options) {
+    const inputId = `slot-${characterId}-${slot}-${option.id}`;
+    const input = el('input', {
+      class: 'profile__radio',
+      type: 'radio',
+      name: `slot-${slot}`,
+      id: inputId,
+      value: option.id,
+      ...(option.itemId === current ? { checked: true } : {}),
+      onchange: () => onChange(slot, option.itemId),
+    });
+    group.append(
+      el(
+        'label',
+        {
+          class: `avatar__slot-option${option.itemId === current ? ' avatar__slot-option--selected' : ''}`,
+          for: inputId,
+        },
+        input,
+        el('span', { class: 'avatar__slot-option-name' }, option.label),
+      ),
+    );
+  }
+
+  return el(
+    'div',
+    { class: 'avatar__slot' },
+    el('h4', { class: 'avatar__slot-title' }, SLOT_LABELS[slot]),
+    group,
+  );
+}
+
+/**
+ * The avatar editor (Phase 6.7).
+ *
+ * It edits the **currently chosen** character's equipment and saves through
+ * `PUT /api/profile/avatar`. A live preview re-renders as slots change. The
+ * editor only appears for a character with supplied artwork; for a name-only
+ * character it says so honestly and offers no controls, so nothing is invented.
+ */
+function avatarSection(view: ProfileView): HTMLElement {
+  const characterId = view.profile.selectedCharacterId;
+  const assets = findCharacterAssets(characterId);
+
+  if (!assets) {
+    return el(
+      'section',
+      { class: 'card' },
+      el('h3', { class: 'profile__section-title' }, 'Your avatar'),
+      emptyState(
+        'No avatar yet',
+        'Choose Ethan or Maya above to configure an avatar. The other characters get an avatar once their artwork is supplied.',
+      ),
+    );
+  }
+
+  // The working configuration: the stored one, or the character's default kit
+  // when none is stored yet. Never carries another character's items over.
+  const stored: AvatarConfig = view.profile.avatarConfig ?? defaultAvatarConfig(assets.id);
+  let working: AvatarConfig = { characterId: assets.id, equipment: { ...stored.equipment } };
+
+  const previewHost = el('div', { class: 'avatar__preview-host' });
+  const renderPreview = (): void => {
+    previewHost.replaceChildren(avatarPreview(working) ?? el('div'));
+  };
+
+  const save = button('Save avatar', { variant: 'primary', type: 'submit', disabled: true });
+  const status = el('p', { class: 'profile__save-status', role: 'status' });
+
+  const dirty = (): boolean =>
+    JSON.stringify(working.equipment) !== JSON.stringify(stored.equipment);
+
+  const refreshSave = (): void => {
+    save.disabled = !dirty();
+    status.textContent = '';
+    status.className = 'profile__save-status';
+  };
+
+  const onChange = (slot: EquipmentSlot, itemId: string | null): void => {
+    working = { characterId: assets.id, equipment: withSlot(working.equipment, slot, itemId) };
+    // Reflect the selection styling and the preview without a full re-render.
+    renderPreview();
+    refreshSave();
+  };
+
+  const slots = availableSlots(assets.id).map((slot) =>
+    slotControl(assets.id, slot, working.equipment[slot], onChange),
+  );
+
+  const form = el(
+    'form',
+    {
+      class: 'avatar__form',
+      novalidate: true,
+      onsubmit: async (event: Event) => {
+        event.preventDefault();
+        if (!dirty()) return;
+        setBusy(save, true);
+        status.textContent = '';
+        status.className = 'profile__save-status';
+        try {
+          await put<AvatarConfig>('/api/profile/avatar', working);
+          toast('Avatar saved.', 'success');
+          // Reload so the stored configuration is what the UI reflects.
+          await load();
+        } catch (error) {
+          status.className = 'profile__save-status profile__save-status--error';
+          status.textContent = errorText(error);
+          setBusy(save, false);
+        }
+      },
+    },
+    previewHost,
+    el('div', { class: 'avatar__slots' }, ...slots),
+    el('div', { class: 'profile__save' }, save, status),
+  );
+
+  renderPreview();
+
+  return el(
+    'section',
+    { class: 'card' },
+    el('h3', { class: 'profile__section-title' }, 'Your avatar'),
+    el(
+      'p',
+      { class: 'muted profile__hint' },
+      `Equip ${assets.name} with the items that belong to this figure. Items are character-exclusive and cannot be worn by another character.`,
     ),
     form,
   );
@@ -285,6 +464,7 @@ function showProfile(view: ProfileView): void {
       [
         el('section', { class: 'profile' }, headline(view), statsSection(view.stats)),
         characterSection(view),
+        avatarSection(view),
       ],
       [signOutButton()],
     ),

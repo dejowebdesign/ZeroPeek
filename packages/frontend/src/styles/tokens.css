@@ -2806,3 +2806,145 @@ body::before {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Phase 6.7 – Blockwelt-Helden avatar.
+
+   Additive: nothing above changes. The avatar preview stacks the character's
+   supplied figure beside a per-slot loadout list; the editor reuses the existing
+   radio-card pattern from the character picker. Colours, radii, blur and tap
+   sizing all come from the existing tokens — no new colour or blur is defined.
+   --------------------------------------------------------------------------- */
+
+.profile__portrait {
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  border-radius: var(--radius-sm);
+  background: var(--glass-card);
+}
+
+.avatar__form {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.avatar__preview {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.avatar__figure-frame {
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--glass-card);
+}
+
+.avatar__figure {
+  max-width: 100%;
+  max-height: 320px;
+  image-rendering: pixelated;
+}
+
+.avatar__loadout {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.avatar__loadout-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: var(--hairline) solid var(--border);
+}
+
+.avatar__loadout-slot {
+  font-size: var(--type-help);
+  color: var(--muted);
+}
+
+.avatar__loadout-value {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.avatar__thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  border-radius: var(--radius-sm);
+  background: var(--glass-card);
+}
+
+.avatar__slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.avatar__slot-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--type-card);
+}
+
+.avatar__slot-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.avatar__slot-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--glass-card);
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.avatar__slot-option:hover {
+  border-color: var(--border-strong);
+}
+
+.avatar__slot-option:has(.profile__radio:focus-visible) {
+  outline: var(--focus-width) solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+.avatar__slot-option--selected {
+  border-color: var(--accent-2);
+  background: var(--surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar__slot-option {
+    transition: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .avatar__preview {
+    grid-template-columns: 1fr;
+  }
+
+  .avatar__slots {
+    grid-template-columns: 1fr;
+  }
+}

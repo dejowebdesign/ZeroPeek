@@ -62,9 +62,16 @@ model User {
 model PlayerProfile {
   id                  String   @id @default(uuid())
   userId              String   @unique @map("user_id")
-  /// The Blockwelt-Helden character the player picked. A plain id; the
-  /// character catalogue and the avatar configuration arrive with Phase 6.7.
+  /// The Blockwelt-Helden character the player picked (Phase 6.6). Kept as the
+  /// canonical, indexed choice; `avatarConfig.characterId` mirrors it so the
+  /// picker and the avatar editor read the same value.
   selectedCharacterId String?  @map("selected_character_id")
+  /// The avatar configuration (Phase 6.7): the chosen character plus the item
+  /// equipped in each of the five slots. A JSONB envelope validated by
+  /// `@zeropeek/shared` (`validateAvatarConfig`); the server is the only writer.
+  /// Null until the player first configures an avatar, so pre-6.7 profiles keep
+  /// working unchanged.
+  avatarConfig        Json?    @map("avatar_config")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 

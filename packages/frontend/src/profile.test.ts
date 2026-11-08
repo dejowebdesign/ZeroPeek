@@ -32,6 +32,8 @@ interface Call {
   url: string;
   method: string;
   headers: Record<string, string>;
+  /** The request payload, when one was sent (Phase 6.7 assertions). */
+  payload?: unknown;
 }
 
 /** Install a fetch stub that records calls and answers from a route table. */
@@ -40,20 +42,24 @@ function stubFetch(
     match: RegExp;
     method?: string;
     status?: number;
-    body: unknown | (() => unknown);
+    body: unknown | ((payload?: unknown) => unknown);
   }>,
 ): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal('fetch', async (url: string, init: RequestInit = {}) => {
     const method = init.method ?? 'GET';
-    calls.push({ url, method, headers: (init.headers as Record<string, string>) ?? {} });
+    const payload = init.body === undefined ? undefined : JSON.parse(String(init.body));
+    calls.push({ url, method, headers: (init.headers as Record<string, string>) ?? {}, payload });
     const route = routes.find(
       (candidate) =>
         candidate.match.test(url) &&
         (candidate.method === undefined || candidate.method === method),
     );
     if (!route) return jsonResponse(404, { error: { code: 'not_found', message: 'nope' } });
-    const body = typeof route.body === 'function' ? (route.body as () => unknown)() : route.body;
+    const body =
+      typeof route.body === 'function'
+        ? (route.body as (payload?: unknown) => unknown)(payload)
+        : route.body;
     return jsonResponse(route.status ?? 200, body);
   });
   return calls;
@@ -63,7 +69,7 @@ const ME = { user: { id: 'p1', username: 'alice', role: 'PLAYER' }, csrfToken: '
 
 const EMPTY_PROFILE = {
   user: { id: 'p1', username: 'alice', role: 'PLAYER' },
-  profile: { selectedCharacterId: null },
+  profile: { selectedCharacterId: null, avatarConfig: null },
   stats: {
     gamesPlayed: 0,
     wins: 0,
@@ -76,7 +82,19 @@ const EMPTY_PROFILE = {
 
 const FILLED_PROFILE = {
   user: { id: 'p1', username: 'alice', role: 'PLAYER' },
-  profile: { selectedCharacterId: 'ethan' },
+  profile: {
+    selectedCharacterId: 'ethan',
+    avatarConfig: {
+      characterId: 'ethan',
+      equipment: {
+        visor: 'ethan_visor',
+        outfit: 'ethan_outfit',
+        backpack: 'ethan_backpack',
+        neckAccessory: 'ethan_compass',
+        wristAccessory: 'ethan_wristband',
+      },
+    },
+  },
   stats: {
     gamesPlayed: 4,
     wins: 2,
@@ -444,5 +462,203 @@ describe('guests and mobile layout', () => {
     expect(tokens).toMatch(
       /@media \(prefers-reduced-motion: reduce\) \{\s*\.profile__option \{\s*transition: none;/,
     );
+  });
+});
+
+describe('avatar editor (Phase 6.7)', () => {
+  /** The avatar section's slot radios for a given slot name. */
+  const slotInputs = (slot: string): HTMLInputElement[] =>
+    Array.from(
+      APP().querySelectorAll<HTMLInputElement>(`.avatar__slot input[name="slot-${slot}"]`),
+    );
+
+  const avatarSave = (): HTMLButtonElement =>
+    APP().querySelector<HTMLButtonElement>('.avatar__form .profile__save button')!;
+
+  const chooseSlot = (slot: string, value: string): void => {
+    const input = slotInputs(slot).find((candidate) => candidate.value === value);
+    if (!input) throw new Error(`no ${slot} option ${value}`);
+    input.checked = true;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  const submitAvatar = (): void => {
+    const form = APP().querySelector('form.avatar__form');
+    if (!form) throw new Error('no avatar form');
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  };
+
+  it('renders the character figure and the equipped loadout for a character with artwork', async () => {
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: FILLED_PROFILE },
+    ]);
+    await bootProfile();
+
+    const figure = APP().querySelector<HTMLImageElement>('.avatar__figure');
+    expect(figure?.getAttribute('src')).toBe('/characters/ethan/ethan_full_preview.webp');
+    // The portrait in the headline uses the same supplied asset.
+    expect(APP().querySelector('.profile__portrait')?.getAttribute('src')).toBe(
+      '/characters/ethan/ethan_full_preview.webp',
+    );
+    // Every slot shows its equipped item by name.
+    const text = APP().textContent ?? '';
+    for (const label of [
+      'Cyber Visor',
+      'Standard Outfit',
+      'Tech Backpack',
+      'Compass Pendant',
+      'Tech Wristband',
+    ]) {
+      expect(text).toContain(label);
+    }
+  });
+
+  it('offers only the chosen character’s own items, never another character’s', async () => {
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: FILLED_PROFILE },
+    ]);
+    await bootProfile();
+
+    // Ethan's editor must not contain a single Maya item value.
+    const values = Array.from(APP().querySelectorAll<HTMLInputElement>('.avatar__slot input'))
+      .map((input) => input.value)
+      .filter((value) => value !== 'none');
+    expect(values.length).toBeGreaterThan(0);
+    for (const value of values) {
+      expect(value.startsWith('ethan_')).toBe(true);
+      expect(value.startsWith('maya_')).toBe(false);
+    }
+  });
+
+  it('shows the default kit and a live preview when nothing is stored yet', async () => {
+    // A profile with a chosen character but no stored avatar configuration.
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      {
+        match: /\/api\/profile$/,
+        body: {
+          ...FILLED_PROFILE,
+          profile: { selectedCharacterId: 'ethan', avatarConfig: null },
+        },
+      },
+    ]);
+    await bootProfile();
+
+    // The defaults are what the picker shows, so Save starts disabled.
+    expect(avatarSave().disabled).toBe(true);
+    const text = APP().textContent ?? '';
+    expect(text).toContain('Cyber Visor');
+  });
+
+  it('saves a changed loadout to the avatar endpoint with the CSRF token, then reloads', async () => {
+    let storedVisor: string | null = 'ethan_visor';
+    const calls = stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      {
+        match: /\/api\/profile$/,
+        method: 'GET',
+        body: () => ({
+          ...FILLED_PROFILE,
+          profile: {
+            selectedCharacterId: 'ethan',
+            avatarConfig: {
+              characterId: 'ethan',
+              equipment: {
+                visor: storedVisor,
+                outfit: 'ethan_outfit',
+                backpack: 'ethan_backpack',
+                neckAccessory: 'ethan_compass',
+                wristAccessory: 'ethan_wristband',
+              },
+            },
+          },
+        }),
+      },
+      {
+        match: /\/api\/profile\/avatar$/,
+        method: 'PUT',
+        body: (payload: unknown) => {
+          storedVisor = (payload as { equipment: { visor: string | null } }).equipment.visor;
+          return { characterId: 'ethan', equipment: {} };
+        },
+      },
+    ]);
+    await bootProfile();
+
+    chooseSlot('visor', 'none');
+    expect(avatarSave().disabled).toBe(false);
+    submitAvatar();
+
+    // The page re-reads the profile after a successful save, so the stored value
+    // is what is shown.
+    await vi.waitFor(() => {
+      const gets = calls.filter(
+        (call) => call.method === 'GET' && /\/api\/profile$/.test(call.url),
+      );
+      expect(gets.length).toBeGreaterThanOrEqual(2);
+    });
+    const put = calls.find((call) => call.method === 'PUT');
+    expect(put?.url).toMatch(/\/api\/profile\/avatar$/);
+    expect(put?.headers['X-CSRF-Token']).toBe('csrf-token');
+    expect(storedVisor).toBeNull();
+  });
+
+  it('shows a save failure in place and keeps the stored value', async () => {
+    const calls = stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, method: 'GET', body: FILLED_PROFILE },
+      {
+        match: /\/api\/profile\/avatar$/,
+        method: 'PUT',
+        status: 422,
+        body: { error: { code: 'invalid', message: 'avatar rejected' } },
+      },
+    ]);
+    await bootProfile();
+
+    chooseSlot('visor', 'none');
+    submitAvatar();
+
+    await vi.waitFor(() => {
+      expect(
+        APP().querySelector('.avatar__form .profile__save-status--error')?.textContent,
+      ).toContain('avatar rejected');
+    });
+    // No reload happened: the page keeps showing what is really stored.
+    const gets = calls.filter((call) => call.method === 'GET' && /\/api\/profile$/.test(call.url));
+    expect(gets).toHaveLength(1);
+    expect(avatarSave().disabled).toBe(false);
+  });
+
+  it('offers no editor, and an honest empty state, for a character without artwork', async () => {
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      {
+        match: /\/api\/profile$/,
+        body: {
+          ...FILLED_PROFILE,
+          profile: { selectedCharacterId: 'pixel', avatarConfig: null },
+        },
+      },
+    ]);
+    await bootProfile();
+
+    const text = APP().textContent ?? '';
+    expect(text).toContain('No avatar yet');
+    expect(APP().querySelector('form.avatar__form')).toBeNull();
+    expect(APP().querySelector('.avatar__figure')).toBeNull();
+  });
+
+  it('offers no editor when no character has been chosen yet', async () => {
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: EMPTY_PROFILE },
+    ]);
+    await bootProfile();
+
+    expect(APP().textContent).toContain('No avatar yet');
+    expect(APP().querySelector('form.avatar__form')).toBeNull();
   });
 });

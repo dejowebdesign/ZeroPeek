@@ -303,7 +303,16 @@ more` are all handled.
 - No new images or sounds. The wireframe is CSS; any real background art comes from the owner's
   asset briefing and is integrated in Phase 6.10.
 - No character, avatar, XP or inventory UI — Phases 6.6–6.8.
-- No change to game logic, the API, the database or any test fixture.
+
+## 10.1 Phase 6.7 addition (avatar surface)
+
+Phase 6.7 adds one **self-contained** block at the end of `tokens.css` (`.profile__portrait`,
+`.avatar__*`). It defines **no** new colour, blur or radius: it composes the existing tokens
+(`--glass-card`, `--radius`, `--tap`, `--surface-2`, `--accent-2`, `--muted`, `--hairline`). The
+figure is a single supplied `<img>`; the loadout is a labelled list of item thumbnails. The preview
+does **not** absolutely position equipment over the figure — the supplied layers are not aligned, so
+no coordinates are invented (see `docs/assets/CHARACTER-CATALOGUE.md` §4). A guard test in
+`design-system.test.ts` locks this in.
 
 ## 11. How to extend it
 

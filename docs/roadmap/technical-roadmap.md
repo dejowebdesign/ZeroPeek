@@ -376,27 +376,39 @@ GameSnapshot, IP-Erkennung.
 
 ## 8. Phase 6.7 – Blockwelt-Helden-Avatar-System
 
-| Punkt                      | Inhalt                                                                                                                                                |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Ziel**                   | Charakterauswahl und modularer Avatar-Editor mit **charakterexklusiven** Gegenständen und sichtbarer Ausrüstung.                                      |
-| **Betroffene Komponenten** | neue `pages/characters.ts`, `pages/avatar.ts`, `shared`-Katalog, Layer-Rendering                                                                      |
-| **Betroffene Dateien**     | `packages/shared/src/characters.ts` (neu), `packages/shared/src/cosmetics.ts` (neu), neue Seiten, `styles/*`                                          |
-| **Datenmodelle**           | `PlayerProfile.selectedCharacterId`, `PlayerProfile.avatarConfig` (JSONB)                                                                             |
-| **API-Änderungen**         | `PUT /api/profile/avatar` (serverseitig validiert gegen den **charakterexklusiven** Katalog)                                                          |
-| **Abhängigkeiten**         | **Charakter-Assets des Projektverantwortlichen** (fehlen), 6.6                                                                                        |
-| **Risiken**                | Fehlende Assets blockieren; falsche Kombinationen; Schärfe auf Mobil; fehlende Layer pro Gegenstand                                                   |
-| **Teststrategie**          | Unit: Katalog je Charakter, Layer-Reihenfolge, Ablehnung fremder Gegenstände; Integration: Avatar-Speicherung validiert; visuell Desktop/Mobil        |
-| **Abnahmekriterien**       | Gegenstände sind **nur dem vorgesehenen Charakter** zugeordnet; sichtbar am Avatar tragbar; Avatarwechsel löscht nichts; scharf auf Desktop und Mobil |
-| **Aufwand**                | hoch                                                                                                                                                  |
+| Punkt                      | Inhalt                                                                                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Charakterauswahl und modularer Avatar-Editor mit **charakterexklusiven** Gegenständen und sichtbarer Ausrüstung.                                                                               |
+| **Betroffene Komponenten** | `shared`-Katalog, `services/profileService.ts`, `routes/profileRoutes.ts`, `pages/profile.ts`, neue `avatar.ts`, `styles/tokens.css`                                                           |
+| **Betroffene Dateien**     | `packages/shared/src/characters.ts` (neu), `packages/shared/src/cosmetics.ts` (neu), `packages/frontend/src/avatar.ts` (neu), `pages/profile.ts`, Migration                                    |
+| **Datenmodelle**           | `PlayerProfile.selectedCharacterId` (Bestand), **neu** `PlayerProfile.avatarConfig` (JSONB, nullable)                                                                                          |
+| **API-Änderungen**         | `PUT /api/profile/avatar` (serverseitig validiert gegen den **charakterexklusiven** Katalog); `GET/PUT /api/profile` liefern `avatarConfig` mit                                                |
+| **Abhängigkeiten**         | **Charakter-Assets des Projektverantwortlichen** (für Ethan/Maya geliefert), 6.6                                                                                                               |
+| **Risiken**                | Fehlende Assets blockieren; falsche Kombinationen; Schärfe auf Mobil; fehlende Layer pro Gegenstand                                                                                            |
+| **Teststrategie**          | Unit: Katalog je Charakter, Ablehnung fremder Gegenstände, Default-Kit; Integration: Avatar-Speicherung serverseitig validiert; Frontend: Editor, nur eigene Gegenstände; Designsystem-Vertrag |
+| **Abnahmekriterien**       | Gegenstände sind **nur dem vorgesehenen Charakter** zugeordnet; serverseitig validiert; Avatarwechsel löscht nichts; keine erfundenen Koordinaten                                              |
+| **Aufwand**                | hoch                                                                                                                                                                                           |
 
-**Blockiert bis Assets vorliegen.** Unabhängige Arbeit (Katalogstruktur, Matrix, Validierung) kann
-vorbereitet werden, die Darstellung nicht.
+**Status: umgesetzt (PR nach Freigabe).** Die Grafikdateien für **Ethan** und **Maya** wurden vom
+Projektverantwortlichen geliefert (ZIP, sieben WebP je Figur) und **unverändert** nach
+`packages/frontend/public/characters/<id>/` kopiert (byte-identisch geprüft, Alpha erhalten). Der
+Avatar-Katalog ist **Code** (`shared`), nicht Datenbank: die Datenbank speichert nur **Besitz/Zustand**
+(`PlayerProfile.avatarConfig`). Die Migration ist **rein additiv** (eine nullable JSONB-Spalte).
+
+**Offen – Layerdarstellung:** Die gelieferten Einzel-Grafiken sind **nicht** auf eine gemeinsame
+Zeichenfläche ausgerichtet (die Metadaten des Verantwortlichen melden `not_defined`/`not_validated`).
+Deshalb wird **keine** Position/Skalierung/Ebenenreihenfolge erfunden: der Katalog markiert jeden
+Gegenstand als `alignment: 'not_aligned'`, und die Vorschau zeigt die **gelieferte** Figur plus die
+ausgerüsteten Gegenstände als eigene Thumbnails. Sobald die ausgerichteten Layer vorliegen, wird nur
+`packages/frontend/src/avatar.ts` erweitert (`layerGeometry` → echte Stapelung).
 
 **Verbindlich (Phase 5c):** **Jeder Avatar besitzt seine eigenen Gegenstände** (kein allgemeiner
-Katalog). Ein Gegenstand ist **charakterexklusiv** und muss **sichtbar** ausrüstbar sein
-(Ausrüstungsslots, Layer, Position, Größe, Ebenenreihenfolge). Die endgültige **Layerarchitektur**
-wird anhand der gelieferten Originalassets festgelegt; Empfehlung **PNG-Layer-Stapelung**
-(`game-design-concept.md` §3.2/§3.3). Keine Neugestaltung der Figuren.
+Katalog). Ein Gegenstand ist **charakterexklusiv** und wird auf einem anderen Avatar **gar nicht
+angeboten**. Keine Neugestaltung der Figuren.
+
+**Weitere Figuren:** `pixel`, `bee`, `dr-obscura`, `o-bot` bleiben im Katalog der Charakterauswahl,
+haben aber **noch keine Assets** und werden als `awaiting_assets` gemeldet; für sie wird **kein**
+Avatar gezeichnet und **kein** Ersatzbild erzeugt.
 
 ---
 
