@@ -682,6 +682,29 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   right/wrong/none (72/65/78), B2 time limits (7), C races (25×2), D reconnect
   (38) → **344/344**.
 
+## Player profiles (Phase 6.6 / 6.6.1) — ALREADY IMPLEMENTED on main
+- **PR #33 already shipped the full Phase 6.6 profile backend** (commit `6aebe1f`), so a
+  later "Phase 6.6.1" request for the same thing needs **no new production code**. Before
+  implementing any phase, diff the request against real `main`: `grep '^model '
+  packages/backend/prisma/schema.prisma`, `ls packages/backend/prisma/migrations/`,
+  `ls packages/backend/src/{routes,services}`, and the `*.integration.test.ts` names.
+- Present: `model PlayerProfile` (userId `@unique`, `selectedCharacterId String?`,
+  createdAt/updatedAt, FK `onDelete: Cascade`); additive migration
+  `20261109120000_phase_6_6_player_profiles` (new `player_profiles` + nullable
+  `game_players.user_id`, `ON DELETE SET NULL`); `routes/profileRoutes.ts`
+  (`GET`/`PUT /api/profile`, `requireAuth` + CSRF on PUT, `userId` only from session);
+  `services/profileService.ts` (`ensureProfile` = lazy + idempotent; stats computed
+  server-side each request); `shared/profile.ts` (`validateProfileUpdate` rejects any
+  field but `selectedCharacterId`); `profile.integration.test.ts`.
+- Deliberately absent (later phases): XP/level/inventory (6.8), `avatarConfig` (6.7),
+  any player-visible quiz history, **any IP column or hash** (product decision Q5).
+- Test DB is isolated and non-productive: `zeropeek_stabtest` on `localhost:55432`
+  (container `zp-stabtest-pg`, `zpstab`/`zpstab`). Migration checks:
+  `npx prisma migrate status` and
+  `npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "$DATABASE_URL" --exit-code`
+  → "No difference detected". Full chain: create a scratch DB in the container,
+  `prisma migrate deploy` against it, diff, drop it.
+
 ## Docker in this sandbox
 - A dockerd is often **already running** (PID file `/var/run/docker.pid`).
   `docker info` as the non-root user fails; use **`sudo docker ...`**. Only start
