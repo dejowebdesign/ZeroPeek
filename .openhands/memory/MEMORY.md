@@ -705,6 +705,28 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   → "No difference detected". Full chain: create a scratch DB in the container,
   `prisma migrate deploy` against it, diff, drop it.
 
+## Phase 6.6.2 – profile UI / character picker
+- The profile **page** already existed from Phase 6.6 (`profile.html`,
+  `pages/profile.ts`, stats + empty state). 6.6.2 only added the **character
+  picker** on top of it. Before "implementing a UI phase", check the page
+  already exists — several phases are partly pre-built.
+- `CHARACTER_CATALOGUE` + `findCharacter` live in `packages/shared/src/profile.ts`
+  (canonical ids `ethan, maya, pixel, bee, dr-obscura, o-bot`; name/tagline/rarity
+  only). **No character artwork exists in the repo** — never invent avatars.
+- The server stays **permissive** on `selectedCharacterId` (any bounded string), so
+  adding a character is a shared/frontend change and needs **no backend change**.
+  The page shows an unknown stored id honestly (never hides or overwrites it).
+- `packages/frontend/src/design-system.test.ts` is a **contract test**: any new class
+  a component emits must be added to its list **and** defined in `tokens.css`, or it
+  fails. Responsive/CSS behaviour is tested by `readFileSync` on `tokens.css`
+  (regex on media queries, `--tap`, reduced-motion) — no browser, no screenshots.
+- `gh` CLI auth may be absent in a fresh sandbox; fall back to
+  `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/...`.
+- Backend DB suites **silently skip** without `DATABASE_URL`/`TEST_DATABASE_URL`
+  (79 passed / 169 skipped) — the run looks green but is incomplete. Export the URL
+  first. `lobby-sync.integration.test.ts` has a **timing flake**; re-run before
+  suspecting a regression.
+
 ## Docker in this sandbox
 - A dockerd is often **already running** (PID file `/var/run/docker.pid`).
   `docker info` as the non-root user fails; use **`sudo docker ...`**. Only start

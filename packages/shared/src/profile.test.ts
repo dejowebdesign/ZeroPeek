@@ -10,9 +10,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CHARACTER_CATALOGUE,
   CHARACTER_ID_MAX,
   DEFAULT_TIE_BREAK,
   EMPTY_PROFILE_STATS,
+  findCharacter,
   rankGameSeats,
   summariseSeats,
   validateProfileUpdate,
@@ -141,5 +143,39 @@ describe('validateProfileUpdate', () => {
     expect(
       validateProfileUpdate({ selectedCharacterId: 'x'.repeat(CHARACTER_ID_MAX + 1) }),
     ).toHaveLength(1);
+  });
+});
+
+describe('character catalogue (Phase 6.6.2)', () => {
+  it('lists the canonical Blockwelt-Helden ids and nothing invented', () => {
+    expect(CHARACTER_CATALOGUE.map((character) => character.id)).toEqual([
+      'ethan',
+      'maya',
+      'pixel',
+      'bee',
+      'dr-obscura',
+      'o-bot',
+    ]);
+  });
+
+  it('gives every character a name and a tagline to show without artwork', () => {
+    for (const character of CHARACTER_CATALOGUE) {
+      expect(character.name.length).toBeGreaterThan(0);
+      expect(character.tagline.length).toBeGreaterThan(0);
+      expect(['common', 'rare', 'legendary']).toContain(character.rarity);
+    }
+  });
+
+  it('keeps every id within the length the server accepts', () => {
+    for (const character of CHARACTER_CATALOGUE) {
+      expect(character.id.length).toBeLessThanOrEqual(CHARACTER_ID_MAX);
+      expect(validateProfileUpdate({ selectedCharacterId: character.id })).toEqual([]);
+    }
+  });
+
+  it('finds a character by id and reports an unknown one as undefined', () => {
+    expect(findCharacter('ethan')?.name).toBe('Ethan');
+    expect(findCharacter('nobody')).toBeUndefined();
+    expect(findCharacter(null)).toBeUndefined();
   });
 });

@@ -240,6 +240,20 @@ describe('design-system components', () => {
     'profile__stats',
     'profile__hint',
     'profile__signin',
+    // Player profile – character picker (Phase 6.6.2).
+    'profile__form',
+    'profile__picker',
+    'profile__radio',
+    'profile__option',
+    'profile__option--selected',
+    'profile__option--rare',
+    'profile__option--legendary',
+    'profile__option-body',
+    'profile__option-name',
+    'profile__option-tagline',
+    'profile__save',
+    'profile__save-status',
+    'profile__save-status--error',
   ];
 
   for (const name of classes) {

@@ -2688,3 +2688,121 @@ body::before {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Phase 6.6.2 – character picker.
+
+   Additive: nothing above changes. The picker is a radio group of glass cards,
+   so it is keyboard- and screen-reader-operable and needs no script for its
+   focus or selection behaviour. Colours, radii and blur all come from the
+   existing tokens; only the layout and the selected/focus states are new.
+   --------------------------------------------------------------------------- */
+
+.profile__form {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.profile__picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-3);
+}
+
+/* The radio itself is visually hidden but stays focusable and announced; the
+   label is the visible control, and `:focus-visible` on the input draws the ring
+   on the card so keyboard use is never invisible. */
+.profile__radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.profile__option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap);
+  padding: var(--space-4);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--glass-card);
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.profile__option:hover {
+  border-color: var(--border-strong);
+}
+
+.profile__option:has(.profile__radio:focus-visible) {
+  outline: var(--focus-width) solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+.profile__option--selected {
+  border-color: var(--accent-2);
+  background: var(--surface-2);
+}
+
+/* Rarity is a cosmetic frame accent only (concept §2.3); it never implies a
+   gameplay advantage. Legendary picks up the existing rarity token. */
+.profile__option--rare {
+  border-left: 3px solid var(--rarity-rare);
+}
+
+.profile__option--legendary {
+  border-left: 3px solid var(--rarity-legendary);
+}
+
+.profile__option-body {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.profile__option-name {
+  font-weight: var(--weight-card);
+}
+
+.profile__option-tagline {
+  font-size: var(--type-help);
+}
+
+.profile__save {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.profile__save-status {
+  margin: 0;
+  font-size: var(--type-help);
+}
+
+.profile__save-status--error {
+  color: var(--bad);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile__option {
+    transition: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .profile__picker {
+    grid-template-columns: 1fr;
+  }
+}
