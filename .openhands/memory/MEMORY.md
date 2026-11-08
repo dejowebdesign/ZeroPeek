@@ -644,6 +644,29 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   then set `branch.<name>.remote` back to `origin` — otherwise the token leaks into `.git/config`.
 - `create_pr` tool works directly (owner/repo `dejowebdesign/ZeroPeek`).
 
+## Gameplay engine: timings and known traps
+- **`REVEAL_MS = 6000`, `BOARD_MS = 6000`** (exported from
+  `packages/backend/src/services/engine.ts`). The engine **auto-advances**:
+  `reveal → board` after 6 s, `board → next question` after another 6 s, with no
+  host click. Any E2E/browser test must not assume a `Reveal`/`Next question`
+  button is on screen — drive it tolerantly or wait for the auto-advance. A host
+  `next` is only legal from `board`; `board` only from `reveal` (guards added in
+  `fix/complete-gameplay-reliability`) so a stale timer cannot skip a question.
+- **With a single player the question auto-reveals the instant they answer**,
+  so the host `Reveal` button never appears. Use **two** players for any host
+  flow test.
+- **`attachHostHandlers` must bind `socket.on`/`socket.off` to the socket**
+  (`socket.on.bind(socket)`). `socket.on` is a prototype method; extracting it
+  detached (`const register = socket.on`) throws inside the emitter because
+  `this` is `undefined`, which **silently registers no listeners at all** and
+  kills the whole host page. Unit tests missed it because the fake socket is an
+  object literal whose methods ignore `this` — the regression test therefore uses
+  a class with real prototype methods.
+- Backend integration suites call `resetDatabase()` on `zeropeek_test`, the same
+  DB the dev backend uses: running `npm test` deletes the bootstrap admin, so a
+  later dev login 401s. **Restart the backend before browser E2E after a test
+  run** (bootstrap re-creates the admin).
+
 ## Docker in this sandbox
 - A dockerd is often **already running** (PID file `/var/run/docker.pid`).
   `docker info` as the non-root user fails; use **`sudo docker ...`**. Only start

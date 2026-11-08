@@ -106,6 +106,14 @@ let bannerNode: HTMLElement | null = null;
 /** The open question and its answer count, so pause/resume can re-render in place. */
 let currentQuestion: PublicQuestion | null = null;
 let currentAnswers: { answered: number; total: number } | null = null;
+/**
+ * When the last live room event was drawn. A resync snapshot taken before this
+ * instant is stale (see `resync`), so it must not be rendered over the newer
+ * event.
+ */
+let lastLiveEventAt = 0;
+/** Guards against a slow resync overwriting a newer one. */
+let resyncToken = 0;
 
 /** Stop the countdown timer, if running. */
 function stopTimer(): void {
@@ -211,10 +219,16 @@ function ensureSocket(): HostSocket {
     socket = host;
 
     attachHostHandlers(host, {
-      lobby: (payload) =>
-        renderHostState({ kind: 'lobby', pin: payload.pin, players: payload.players }),
-      question: (question) => renderHostState({ kind: 'question', question }),
+      lobby: (payload) => {
+        lastLiveEventAt = Date.now();
+        renderHostState({ kind: 'lobby', pin: payload.pin, players: payload.players });
+      },
+      question: (question) => {
+        lastLiveEventAt = Date.now();
+        renderHostState({ kind: 'question', question });
+      },
       answers: (payload) => {
+        lastLiveEventAt = Date.now();
         // Keep the held count in step with the DOM, so a pause/resume re-render
         // (which redraws from `currentAnswers`) shows the current number rather
         // than the one from when the question opened.
@@ -223,13 +237,23 @@ function ensureSocket(): HostSocket {
           answerCountNode.textContent = `${payload.answered} / ${payload.total} answers`;
         }
       },
-      reveal: (payload) => renderHostState({ kind: 'reveal', reveal: payload }),
-      board: (payload) => renderHostState({ kind: 'board', players: payload.players }),
-      ended: (payload) => renderHostState({ kind: 'end', players: payload.players }),
+      reveal: (payload) => {
+        lastLiveEventAt = Date.now();
+        renderHostState({ kind: 'reveal', reveal: payload });
+      },
+      board: (payload) => {
+        lastLiveEventAt = Date.now();
+        renderHostState({ kind: 'board', players: payload.players });
+      },
+      ended: (payload) => {
+        lastLiveEventAt = Date.now();
+        renderHostState({ kind: 'end', players: payload.players });
+      },
       // A pause/resume only changes the clock and the controls, so the question
       // screen is re-rendered in place from the state already held, rather than
       // waiting for a fresh `host:question`.
       paused: (payload) => {
+        lastLiveEventAt = Date.now();
         if (currentQuestion && currentQuestion.id === payload.questionId) {
           renderHostState({
             kind: 'question',
@@ -243,6 +267,7 @@ function ensureSocket(): HostSocket {
         }
       },
       resumed: (payload) => {
+        lastLiveEventAt = Date.now();
         if (currentQuestion && currentQuestion.id === payload.questionId) {
           const resumedAt = Date.now();
           renderHostState({
@@ -264,10 +289,17 @@ function ensureSocket(): HostSocket {
     host.on('connect', () => {
       const wasConnected = hasConnected;
       hasConnected = true;
-      setConnection('connected');
-      // A reconnect (not the first connect) must re-ask the server, so the host
-      // never keeps acting on a phase that moved on while the socket was away.
-      if (wasConnected) void resync();
+      // A reconnect must re-ask the server and must NOT be "connected" for
+      // control purposes until that snapshot is on screen. Marking the
+      // connection live only after the resync lands keeps the controls disabled
+      // for the whole reconnection, so a click during it cannot be sent against a
+      // phase the server may already have left.
+      if (wasConnected) {
+        setConnection('reconnecting');
+        void resync().finally(() => setConnection('connected'));
+      } else {
+        setConnection('connected');
+      }
     });
     host.on('disconnect', () => setConnection(nextStatus(connection, 'disconnect')));
     host.on('connect_error', () => setConnection(nextStatus(connection, 'connect_error')));
@@ -291,8 +323,18 @@ function setConnection(status: HostConnectionStatus): void {
 /** Re-request the authoritative state after a reconnect. */
 async function resync(): Promise<void> {
   if (!activeGame) return;
+  const token = ++resyncToken;
+  const requestedAt = Date.now();
   try {
     const state = await request<HostState>(ensureSocket(), 'host:join', { gameId: activeGame.id });
+    // Drop a superseded resync: a newer one already started, or a live room
+    // event arrived *after* this snapshot was requested — so the snapshot is
+    // older than what is already on screen. The ACK of a command and the room
+    // broadcast of the same transition travel on the same socket, and either may
+    // arrive first; rendering a snapshot taken before a newer event would show a
+    // phase the server has already left.
+    if (token !== resyncToken) return;
+    if (lastLiveEventAt > requestedAt) return;
     activeGame = { id: state.gameId, pin: state.pin };
     renderHostState({ kind: 'sync', state });
   } catch (error) {
