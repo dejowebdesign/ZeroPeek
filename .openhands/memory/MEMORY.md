@@ -772,3 +772,16 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   `/admin.html` work but `/admin/` does not.
 - Pre-existing untracked workspace files (NOT from the repo): `.openhands/`,
   `nopeek-audit.md`. `.openhands/memory/MEMORY.md` is tracked in git.
+
+## Phase 6.7 avatar system (stacked PR, awaiting approval)
+- Avatar catalogue is **code in `shared`** (`characters.ts`, `cosmetics.ts`), NOT DB. DB stores only
+  state: `PlayerProfile.avatarConfig` JSONB (nullable, additive migration). Character-exclusive items;
+  `validateAvatarConfig` rejects foreign items (422). Slots: backpack, outfit, neckAccessory, visor,
+  wristAccessory.
+- **Do not stack avatar layers.** Supplied Ethan/Maya equipment WebP are NOT aligned to a shared canvas
+  (owner metadata `not_defined`/`not_validated`; per-file dims differ). Preview = supplied figure +
+  per-slot thumbnails. Only `packages/frontend/src/avatar.ts` changes when aligned layers arrive.
+- Frontend asset test asserts every catalogue `assetPath` exists under `public/` and is a real WebP
+  (RIFF/WEBP signature) — renaming an asset fails the build.
+- Branch stacked on 6.6.3; PR must wait for 6.6.3 merge. Untracked ZIP in repo root is the owner's
+  source package — never commit it.

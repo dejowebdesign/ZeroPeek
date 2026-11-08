@@ -181,14 +181,20 @@ Daraus folgen die Optionen:
 | CSS-Komposition (`mask`, `clip-path`)  | Zu wenig Kontrolle über Pixel-Art-Kanten; CSP-unkritisch, aber optisch unsicher.                                                                                                               |
 | Inline-SVG-Layer                       | Gut für Icons, aber die Figuren sind Rasterkunst (PNG) – SVG wäre eine Neugestaltung (verboten).                                                                                               |
 
-**Empfehlung:** **PNG-Layer-Stapelung** mit fester Zeichenfläche und festen Ankerpunkten je Figur.
-Begründung: bestandskonform (CSP, keine neuen Abhängigkeiten), scharf auf Desktop und Smartphone,
-einzeln austauschbar, einzeln cachebar. Die Layer werden als `<img>` absolut übereinander positioniert
-(Container mit `position: relative`), Skalierung über CSS-Variablen – **keine** Inline-Styles.
+**Entschieden (Phase 6.7, verifiziert):** **Einzelbild pro Figur + Thumbnails je Gegenstand.**
+Begründung: Die gelieferten Original-Grafiken sind **nicht** auf eine gemeinsame Zeichenfläche
+ausgerichtet (Metadaten des Verantwortlichen: `not_defined`/`not_validated`). Ein gestapeltes
+Layer-Verfahren würde erfundene Koordinaten voraussetzen und die Figuren falsch zusammensetzen –
+genau der in Briefing §53 (Fehlerquelle 6) verbotene Fall. Deshalb zeigt die Vorschau die
+**gelieferte** Figur (`*_full_preview.webp`) und listet die ausgerüsteten Gegenstände als eigene,
+beschriftete Thumbnails. Sobald der Verantwortliche die **ausgerichteten Layer** (gemeinsame
+Zeichenfläche, Ankerpunkt, Skalierung, `zIndex`) liefert, wird **nur**
+`packages/frontend/src/avatar.ts` erweitert; der Katalog erhält dann `layerGeometry` und
+`alignment: 'aligned'`. Die dafür reservierten Felder sind in `shared/cosmetics.ts` bereits
+deklariert, aber **nicht** befüllt.
 
-**Offene Frage:** Ob PNG-Layer oder ein späteres Canvas-Rendering gewählt wird, soll anhand von
-**echten** Charakterdateien entschieden werden. Ohne Assets bleibt das eine Empfehlung, keine
-Festlegung.
+**CSP-Konform:** Umsetzung ausschließlich über `<img src>` aus `public/` (`img-src 'self'`),
+`textContent` für Text und CSS-Klassen – kein Inline-CSS, keine Markup-Strings.
 
 ### 3.4 Vorgeschlagene Layer-Reihenfolge (z–E)
 
@@ -207,6 +213,11 @@ Festlegung.
 
 **Regel:** Die Reihenfolge ist Teil der Asset-Spezifikation (jedes Layer hat einen `zIndex`). Sie
 wird im Asset-Briefing dokumentiert, damit die Layer passend exportiert werden können.
+
+**Umsetzung (Phase 6.7):** Die Reihenfolge ist als `EQUIPMENT_SLOTS` in `shared/cosmetics.ts`
+deklariert (backpack → outfit → neckAccessory → visor → wristAccessory) und für den späteren
+Renderer vorbereitet. **Heute ungenutzt:** Da die gelieferten Grafiken nicht ausgerichtet sind, wird
+die Reihenfolge **nicht** angewandt – es wird kein Layer gestapelt (siehe §3.3).
 
 ### 3.5 Darstellung und Schärfe
 

@@ -19,6 +19,8 @@ verändert, keine Migration erstellt und kein Implementierungsbranch angelegt.
 | 7   | [`../reports/phase-5b-revision-and-first-works.md`](../reports/phase-5b-revision-and-first-works.md) | 5b    | Konzeptüberarbeitung, Designsystem/Performance, begrenzte erste Arbeiten                 |
 | 8   | [`../reports/phase-5c-product-decisions.md`](../reports/phase-5c-product-decisions.md)               | 5c    | Verbindliche Produktentscheidungen (XP, Level, Registrierung, Avatare, Snapshot)         |
 | 9   | [`../analysis/phase-6-2-2-player-lobby-profile.md`](../analysis/phase-6-2-2-player-lobby-profile.md) | 6.2.2 | Analyse der Spieler-Lobby und des Profil-Platzhalters (Umfang, Grenzen, Befunde B-2…B-7) |
+| 10  | [`../assets/CHARACTER-CATALOGUE.md`](../assets/CHARACTER-CATALOGUE.md)                               | 6.7   | Charakter- und Gegenstandskatalog: gelieferte Assets, Slots, Layer-Status                |
+| 11  | [`../reports/phase-6-7-character-avatar-system.md`](../reports/phase-6-7-character-avatar-system.md) | 6.7   | Bericht zum Blockwelt-Helden-Avatar-System                                               |
 
 ## Grundsätze dieser Dokumente
 

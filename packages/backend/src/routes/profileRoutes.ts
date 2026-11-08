@@ -20,7 +20,7 @@ import type { FastifyInstance } from 'fastify';
 
 import type { AppConfig } from '../config.js';
 import { currentPlayer, requirePlayerAuth } from '../sessions.js';
-import { getProfile, updateProfile } from '../services/profileService.js';
+import { getProfile, updateAvatar, updateProfile } from '../services/profileService.js';
 
 export function registerProfileRoutes(app: FastifyInstance, config: AppConfig): void {
   const guard = { preHandler: requirePlayerAuth(config) };
@@ -39,5 +39,15 @@ export function registerProfileRoutes(app: FastifyInstance, config: AppConfig): 
   app.put('/api/profile', guard, async (request) => {
     const user = currentPlayer(request);
     return updateProfile(user.id, request.body);
+  });
+
+  /**
+   * Save the avatar configuration (Phase 6.7): the chosen character plus the
+   * item equipped in each slot. Validated server-side against the
+   * character-exclusive catalogue, so another character's item is rejected.
+   */
+  app.put('/api/profile/avatar', guard, async (request) => {
+    const user = currentPlayer(request);
+    return updateAvatar(user.id, request.body);
   });
 }

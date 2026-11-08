@@ -494,3 +494,39 @@ describe('auth surface and starfield (Phase 6.3)', () => {
     expect(mobile).toContain('flex-direction: column');
   });
 });
+
+describe('avatar editor surface (Phase 6.7)', () => {
+  it('draws the avatar figure and thumbnails from existing tokens, never a new colour', () => {
+    const frame = tokens.slice(tokens.indexOf('.avatar__figure-frame {'));
+    expect(frame).toContain('var(--glass-card)');
+    expect(frame).toContain('var(--radius)');
+    const thumb = tokens.slice(tokens.indexOf('.avatar__thumb {'));
+    expect(thumb).toContain('image-rendering: pixelated');
+  });
+
+  it('lays the preview out as a figure beside a loadout that stacks on a phone', () => {
+    const preview = tokens.slice(tokens.indexOf('.avatar__preview {'));
+    expect(preview).toContain('grid-template-columns: minmax(0, 220px) minmax(0, 1fr)');
+    expect(tokens).toMatch(
+      /@media \(max-width: 767px\) \{\s*\.avatar__preview \{\s*grid-template-columns: 1fr;/,
+    );
+  });
+
+  it('keeps the slot options tap-sized and drops motion when asked', () => {
+    const option = tokens.slice(tokens.indexOf('.avatar__slot-option {'));
+    expect(option).toContain('min-height: var(--tap)');
+    expect(tokens).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{\s*\.avatar__slot-option \{\s*transition: none;/,
+    );
+  });
+
+  it('does not fabricate a layer stack: the figure is a single supplied image', () => {
+    // The phase ships no aligned layer geometry, so the preview must not attempt
+    // absolute positioning of equipment over the figure.
+    const preview = tokens.slice(
+      tokens.indexOf('.avatar__preview {'),
+      tokens.indexOf('.avatar__slots {'),
+    );
+    expect(preview).not.toContain('position: absolute');
+  });
+});

@@ -14,6 +14,7 @@
  */
 
 import { rankPlayers, type TieBreak } from './scoring.js';
+import type { AvatarConfig } from './characters.js';
 import type { ValidationIssue } from './validation.js';
 
 /**
@@ -73,11 +74,16 @@ export interface ProfileView {
   };
   profile: {
     /**
-     * The chosen Blockwelt-Helden character, or `null`. The character catalogue
-     * and the avatar configuration arrive with Phase 6.7; until then this is a
-     * plain, optional id.
+     * The chosen Blockwelt-Helden character, or `null`. The avatar configuration
+     * (Phase 6.7) mirrors this value in `avatarConfig.characterId`.
      */
     selectedCharacterId: string | null;
+    /**
+     * The stored avatar configuration (Phase 6.7), or `null` when the player has
+     * not configured one yet. `null` is a valid state: the picker still works and
+     * the avatar editor offers the character's default equipment.
+     */
+    avatarConfig: AvatarConfig | null;
   };
   stats: ProfileStats;
 }
