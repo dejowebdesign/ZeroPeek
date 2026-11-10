@@ -2948,3 +2948,132 @@ body::before {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Phase 6.8 – progression, inventory and achievements.
+
+   Additive: nothing above changes. The XP bar reuses the shared `.progress`
+   component; only the achievement list and its rows are new. All colours,
+   radii and blur come from the existing tokens.
+   --------------------------------------------------------------------------- */
+
+.achievements {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.achievement {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.achievement--earned {
+  border-color: var(--accent-2);
+}
+
+.achievement__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.achievement__name {
+  font-weight: 600;
+}
+
+.achievement__hint {
+  margin: 0;
+  font-size: var(--type-help);
+}
+
+.inventory__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inventory__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.inventory__item--locked {
+  opacity: 0.72;
+}
+
+.inventory__thumb {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.inventory__thumb img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.inventory__thumb-empty {
+  font-size: 1.4rem;
+  opacity: 0.5;
+}
+
+.inventory__meta {
+  display: grid;
+  gap: var(--space-1);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inventory__name {
+  font-weight: 600;
+}
+
+.inventory__slot {
+  font-size: var(--type-help);
+}
+
+.inventory__state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.inventory__hint {
+  font-size: var(--type-help);
+}
+
+.inventory__action {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 767px) {
+  .inventory__item {
+    flex-wrap: wrap;
+  }
+
+  .inventory__action {
+    width: 100%;
+  }
+}

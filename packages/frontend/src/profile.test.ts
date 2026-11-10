@@ -50,11 +50,12 @@ function stubFetch(
     const method = init.method ?? 'GET';
     const payload = init.body === undefined ? undefined : JSON.parse(String(init.body));
     calls.push({ url, method, headers: (init.headers as Record<string, string>) ?? {}, payload });
-    const route = routes.find(
-      (candidate) =>
-        candidate.match.test(url) &&
-        (candidate.method === undefined || candidate.method === method),
-    );
+    const route =
+      routes.find(
+        (candidate) =>
+          candidate.match.test(url) &&
+          (candidate.method === undefined || candidate.method === method),
+      ) ?? DEFAULT_ROUTES.find((candidate) => candidate.match.test(url));
     if (!route) return jsonResponse(404, { error: { code: 'not_found', message: 'nope' } });
     const body =
       typeof route.body === 'function'
@@ -64,6 +65,34 @@ function stubFetch(
   });
   return calls;
 }
+
+/**
+ * Routes the profile page reads on every boot besides the profile itself
+ * (Phase 6.8). A test overrides one by adding its own matching route; otherwise
+ * these neutral, empty defaults apply, so a test that only cares about the
+ * profile or the picker need not restate them.
+ */
+const DEFAULT_ROUTES: Array<{ match: RegExp; status?: number; body: unknown }> = [
+  {
+    match: /\/api\/progress$/,
+    body: {
+      xp: 0,
+      level: 1,
+      progress: {
+        level: 1,
+        xpIntoLevel: 0,
+        xpForThisLevel: 10_000,
+        xpToNextLevel: 10_000,
+        nextLevel: 2,
+        ratio: 0,
+      },
+      nextRewardLevel: null,
+      achievementsUnlocked: 0,
+      itemsOwned: 0,
+    },
+  },
+  { match: /\/api\/achievements$/, body: { achievements: [] } },
+];
 
 const ME = { user: { id: 'p1', username: 'alice', role: 'PLAYER' }, csrfToken: 'csrf-token' };
 
@@ -660,5 +689,183 @@ describe('avatar editor (Phase 6.7)', () => {
 
     expect(APP().textContent).toContain('No avatar yet');
     expect(APP().querySelector('form.avatar__form')).toBeNull();
+  });
+});
+
+/**
+ * Phase 6.8 — the progression card and the achievements list.
+ *
+ * The page reads `/api/progress` and `/api/achievements`; both are stubbed. The
+ * card must show the server's numbers (never a client-computed level) and an
+ * honest message while the reward matrix is unapproved.
+ */
+describe('profile progression (Phase 6.8)', () => {
+  it('shows the level, XP and progress toward the next level', async () => {
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: EMPTY_PROFILE },
+      {
+        match: /\/api\/progress$/,
+        body: {
+          xp: 12_500,
+          level: 2,
+          progress: {
+            level: 2,
+            xpIntoLevel: 2_500,
+            xpForThisLevel: 10_000,
+            xpToNextLevel: 7_500,
+            nextLevel: 3,
+            ratio: 0.25,
+          },
+          nextRewardLevel: null,
+          achievementsUnlocked: 1,
+          itemsOwned: 5,
+        },
+      },
+      { match: /\/api\/achievements$/, body: { achievements: [] } },
+    ]);
+    await bootProfile();
+
+    const text = APP().textContent ?? '';
+    expect(text).toContain('Progress');
+    expect(text).toContain('12500');
+    // While the reward matrix is unapproved, the card says so plainly.
+    expect(text).toContain('no item is granted yet');
+  });
+
+  it('lists achievements with progress and an unlocked state', async () => {
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: EMPTY_PROFILE },
+      {
+        match: /\/api\/achievements$/,
+        body: {
+          achievements: [
+            {
+              achievement: {
+                id: 'first-game',
+                name: 'First round',
+                description: 'Finish your first game.',
+                condition: { kind: 'games-played', threshold: 1 },
+                rewardItemId: null,
+              },
+              earned: true,
+              unlockedAt: '2026-01-01T00:00:00.000Z',
+              current: 1,
+              threshold: 1,
+              ratio: 1,
+            },
+            {
+              achievement: {
+                id: 'games-10',
+                name: 'Regular',
+                description: 'Finish 10 games.',
+                condition: { kind: 'games-played', threshold: 10 },
+                rewardItemId: null,
+              },
+              earned: false,
+              unlockedAt: null,
+              current: 4,
+              threshold: 10,
+              ratio: 0.4,
+            },
+          ],
+        },
+      },
+    ]);
+    await bootProfile();
+
+    const text = APP().textContent ?? '';
+    expect(text).toContain('First round');
+    expect(text).toContain('Unlocked');
+    expect(text).toContain('Regular');
+    expect(text).toContain('4 / 10');
+  });
+});
+
+/**
+ * Phase 6.8.2 — the guest-round claim card.
+ *
+ * The card appears only when a claim proof is stored locally. It must ask the
+ * server before offering the button, redeem once and then clear the stored proof.
+ */
+describe('profile guest-round claim (Phase 6.8.2)', () => {
+  const CLAIM = { gameId: 'g1', playerId: 'seat1', token: 'tok', receivedAt: 0 };
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('offers the claim when the server says it is still redeemable', async () => {
+    window.localStorage.setItem('zeropeek.guestClaim', JSON.stringify(CLAIM));
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: EMPTY_PROFILE },
+      { match: /\/api\/guest-claim\/status$/, method: 'POST', body: { claimable: true } },
+    ]);
+    await bootProfile();
+
+    expect(APP().textContent).toContain('A finished round is waiting');
+    // The button appears once the server's status answer arrives.
+    await vi.waitFor(() => {
+      if (!(APP().textContent ?? '').includes('Claim this round')) throw new Error('no button');
+    });
+  });
+
+  it('does not offer the claim when the server says it is not redeemable', async () => {
+    window.localStorage.setItem('zeropeek.guestClaim', JSON.stringify(CLAIM));
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: EMPTY_PROFILE },
+      { match: /\/api\/guest-claim\/status$/, method: 'POST', body: { claimable: false } },
+    ]);
+    await bootProfile();
+
+    await vi.waitFor(() => {
+      if ((APP().textContent ?? '').includes('A finished round is waiting')) {
+        throw new Error('still shown');
+      }
+    });
+    // A non-redeemable claim is forgotten so it is never offered again.
+    expect(window.localStorage.getItem('zeropeek.guestClaim')).toBeNull();
+  });
+
+  it('redeems the claim with the CSRF token and then clears it', async () => {
+    window.localStorage.setItem('zeropeek.guestClaim', JSON.stringify(CLAIM));
+    const calls = stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: EMPTY_PROFILE },
+      { match: /\/api\/guest-claim\/status$/, method: 'POST', body: { claimable: true } },
+      { match: /\/api\/guest-claim$/, method: 'POST', body: { claimed: true, grantedXp: 4_200 } },
+    ]);
+    await bootProfile();
+
+    let claimButton: HTMLButtonElement | undefined;
+    await vi.waitFor(() => {
+      claimButton = Array.from(APP().querySelectorAll('button')).find(
+        (node) => node.textContent === 'Claim this round',
+      );
+      if (!claimButton) throw new Error('no button');
+    });
+    claimButton!.click();
+
+    await vi.waitFor(() => {
+      if (window.localStorage.getItem('zeropeek.guestClaim') !== null)
+        throw new Error('not cleared');
+    });
+    const redeem = calls.find((call) => /\/api\/guest-claim$/.test(call.url));
+    expect(redeem?.headers['X-CSRF-Token']).toBe('csrf-token');
+    expect(redeem?.payload).toMatchObject({ gameId: 'g1', playerId: 'seat1', token: 'tok' });
+  });
+
+  it('shows no claim card when nothing is stored', async () => {
+    window.localStorage.clear();
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: EMPTY_PROFILE },
+    ]);
+    await bootProfile();
+
+    expect(APP().textContent).not.toContain('A finished round is waiting');
   });
 });

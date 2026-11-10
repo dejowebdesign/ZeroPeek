@@ -171,6 +171,14 @@ export interface PlayerServerEvents {
   'game:reveal': (payload: { questionId: string; result: OwnResult; skipped?: boolean }) => void;
   'game:board': (payload: { players: PublicPlayer[] }) => void;
   'game:ended': (payload: { rank: number; score: number; podium: PublicPlayer[] }) => void;
+  /**
+   * A finished round this **guest** may keep (Phase 6.8.2). Sent only to the
+   * guest's own socket, after the round ends. The client stores the proof locally
+   * and may redeem it once after registering; a registered player never receives
+   * it. The token is opaque and never leaves the browser except back to the
+   * server on redeem.
+   */
+  'game:claimable': (payload: { gameId: string; playerId: string; token: string }) => void;
   'game:error': (payload: { message: string }) => void;
   /** The host's connection changed. Never carries any host session data. */
   'game:host': (payload: { status: HostPresence }) => void;

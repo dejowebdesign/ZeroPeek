@@ -20,6 +20,7 @@ export default defineConfig({
         admin: resolve(__dirname, 'src/admin.html'),
         auth: resolve(__dirname, 'src/auth.html'),
         profile: resolve(__dirname, 'src/profile.html'),
+        inventory: resolve(__dirname, 'src/inventory.html'),
       },
     },
   },

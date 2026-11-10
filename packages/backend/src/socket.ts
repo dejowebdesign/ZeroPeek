@@ -24,6 +24,7 @@ import { engine } from './services/engine.js';
 import { rejoinGame, setPlayerConnected } from './services/gameService.js';
 import { resolvePlayerSession, resolveSession } from './sessions.js';
 import { grantProgressForGame } from './services/progressionService.js';
+import { issueGuestClaims } from './services/claimService.js';
 
 /** Room helpers. Each player also gets a personal room for private results. */
 const playerRoom = (gameId: string): string => `game:${gameId}:players`;
@@ -409,10 +410,12 @@ export function attachSocketIO(
     hosts.to(hostRoom(gameId)).emit('host:ended', { players: list });
     void sendPlayerEnd(io, gameId, list).catch(() => undefined);
     // Phase 6.8: grant the registered players their XP, level-ups and rewards
-    // for this finished game. Fire-and-forget (like the fan-out above) so a slow
-    // grant never delays the socket event; the grant is idempotent, so a retried
-    // `end` or a duplicate event pays nothing a second time.
+    // for this finished game, then offer each guest a single-use claim proof so
+    // they can keep the round if they register. Both are fire-and-forget (like
+    // the fan-out above); the grant is idempotent, so a retried `end` or a
+    // duplicate event pays nothing a second time.
     void grantProgressForGame(gameId).catch(() => undefined);
+    void offerGuestClaims(io, gameId).catch(() => undefined);
   });
 
   return {
@@ -481,4 +484,19 @@ async function sendPlayerEnd(io: Server, gameId: string, podium: PublicPlayer[])
       podium: podium.slice(0, 3),
     });
   });
+}
+
+/**
+ * Offer each guest of a finished round a single-use claim proof (Phase 6.8.2).
+ *
+ * The raw token is delivered only to the guest's own personal room, so no other
+ * participant ever sees it. The client stores it locally and may redeem it once
+ * after registering; a registered player receives nothing here (they were already
+ * granted at `end`).
+ */
+async function offerGuestClaims(io: Server, gameId: string): Promise<void> {
+  const tokens = await issueGuestClaims(gameId);
+  for (const [playerId, token] of tokens) {
+    io.to(personalRoom(playerId)).emit('game:claimable', { gameId, playerId, token });
+  }
 }

@@ -19,12 +19,16 @@
  */
 
 import type {
+  AchievementView,
+  AchievementsView,
   AvatarConfig,
   AvatarEquipment,
   EquipmentSlot,
   Character,
+  InventoryView,
   ProfileStats,
   ProfileView,
+  ProgressView,
 } from '@zeropeek/shared';
 import {
   CHARACTER_CATALOGUE,
@@ -44,11 +48,13 @@ import {
   errorText,
   field,
   notice,
+  progress,
   setBusy,
   skeleton,
   statTile,
   toast,
 } from '../ui.js';
+import { clearClaim, loadClaim } from '../claim.js';
 
 interface PlayerMeResponse {
   user: { id: string; username: string; role: string } | null;
@@ -456,15 +462,180 @@ function avatarSection(view: ProfileView): HTMLElement {
   );
 }
 
+/** A `ratio` (0..1) as a whole-number percentage. */
+function percent(ratio: number): string {
+  return `${Math.round(ratio * 100)}%`;
+}
+
+/**
+ * The XP/level card (Phase 6.8).
+ *
+ * All values come from the server (`GET /api/progress`); the page never computes
+ * an XP total or a level itself. The progress bar shows the XP inside the current
+ * level against the climb to the next one, so the numbers and the bar agree.
+ */
+function progressSection(view: ProgressView): HTMLElement {
+  const { progress: bar } = view;
+  return el(
+    'section',
+    { class: 'card' },
+    el('h3', { class: 'profile__section-title' }, 'Progress'),
+    el(
+      'div',
+      { class: 'profile__stats' },
+      statTile(String(view.level), 'Level'),
+      statTile(String(view.xp), 'Experience'),
+      statTile(String(view.achievementsUnlocked), 'Achievements'),
+      statTile(String(view.itemsOwned), 'Items'),
+    ),
+    progress(bar.xpIntoLevel, bar.xpIntoLevel + bar.xpToNextLevel, {
+      label: `Level ${view.level}`,
+      caption: `${bar.xpIntoLevel} / ${bar.xpIntoLevel + bar.xpToNextLevel} XP to level ${view.level + 1}`,
+    }),
+    el(
+      'p',
+      { class: 'muted profile__hint' },
+      view.nextRewardLevel === null
+        ? 'Rewards for levelling up are still being finalised, so no item is granted yet.'
+        : `Next reward at level ${view.nextRewardLevel}.`,
+    ),
+  );
+}
+
+/** One achievement row: name, description and progress toward the threshold. */
+function achievementRow(view: AchievementView): HTMLElement {
+  const { achievement } = view;
+  return el(
+    'li',
+    { class: `achievement${view.earned ? ' achievement--earned' : ''}` },
+    el(
+      'div',
+      { class: 'achievement__head' },
+      el('span', { class: 'achievement__name' }, achievement.name),
+      view.earned
+        ? chip('Unlocked', 'ok', true)
+        : chip(`${view.current} / ${view.threshold}`, 'muted'),
+    ),
+    el('p', { class: 'muted achievement__hint' }, achievement.description),
+    view.earned
+      ? null
+      : progress(view.current, view.threshold, { label: 'Progress', caption: percent(view.ratio) }),
+  );
+}
+
+/** The achievements card (Phase 6.8). */
+function achievementsSection(view: AchievementsView): HTMLElement {
+  if (view.achievements.length === 0) {
+    return el(
+      'section',
+      { class: 'card' },
+      el('h3', { class: 'profile__section-title' }, 'Achievements'),
+      emptyState('No achievements yet', 'Achievements will appear here once they are defined.'),
+    );
+  }
+  return el(
+    'section',
+    { class: 'card' },
+    el('h3', { class: 'profile__section-title' }, 'Achievements'),
+    el(
+      'ul',
+      { class: 'achievements' },
+      ...view.achievements.map((achievement) => achievementRow(achievement)),
+    ),
+  );
+}
+
+/**
+ * The guest-round claim offer (Phase 6.8.2).
+ *
+ * Shown only when a locally stored claim exists. The card asks the server whether
+ * the claim is still redeemable (`POST /api/guest-claim/status`) before offering
+ * the button, so the guest is never invited to do something that will fail. On a
+ * successful redeem the stored claim is cleared; the round's points, XP and
+ * statistics are now on the account.
+ */
+function claimSection(onClaimed: () => void): HTMLElement | null {
+  const claim = loadClaim();
+  if (!claim) return null;
+
+  const feedback = el('div');
+  const container = el(
+    'section',
+    { class: 'card' },
+    el('h3', { class: 'profile__section-title' }, 'A finished round is waiting'),
+    el(
+      'p',
+      { class: 'muted' },
+      'You played this round as a guest. Claim it to add its points, XP and statistics to your account.',
+    ),
+    feedback,
+  );
+
+  void post<{ claimable: boolean }>('/api/guest-claim/status', {
+    gameId: claim.gameId,
+    playerId: claim.playerId,
+    token: claim.token,
+  })
+    .then((status) => {
+      if (!status.claimable) {
+        clearClaim();
+        container.remove();
+        return;
+      }
+      const redeem = button('Claim this round', {
+        variant: 'primary',
+        onClick: async () => {
+          setBusy(redeem, true);
+          feedback.replaceChildren();
+          try {
+            const result = await post<{ grantedXp: number }>('/api/guest-claim', {
+              gameId: claim.gameId,
+              playerId: claim.playerId,
+              token: claim.token,
+            });
+            clearClaim();
+            toast(
+              result.grantedXp > 0
+                ? `Round claimed — ${result.grantedXp} XP added.`
+                : 'Round claimed.',
+              'success',
+            );
+            onClaimed();
+          } catch (error) {
+            feedback.replaceChildren(notice(errorText(error), 'error'));
+          } finally {
+            setBusy(redeem, false);
+          }
+        },
+      });
+      container.append(el('div', { class: 'profile__save' }, redeem));
+    })
+    .catch(() => {
+      // A failed status check is not worth an error screen; the claim can be
+      // retried on the next visit.
+      container.remove();
+    });
+
+  return container;
+}
+
 /** Render the full profile. */
-function showProfile(view: ProfileView): void {
+function showProfile(
+  view: ProfileView,
+  progress: ProgressView,
+  achievements: AchievementsView,
+): void {
+  const claim = claimSection(() => void load());
   render(
     app,
     shell(
       [
         el('section', { class: 'profile' }, headline(view), statsSection(view.stats)),
+        progressSection(progress),
+        ...(claim ? [claim] : []),
         characterSection(view),
         avatarSection(view),
+        achievementsSection(achievements),
       ],
       [signOutButton()],
     ),
@@ -557,8 +728,14 @@ function renderSignIn(message?: string): void {
 /** Load and render the profile, or a sign-in / error screen. */
 async function load(): Promise<void> {
   try {
+    // The profile, progression and achievements are separate reads; the profile
+    // is the gate, and the other two are shown only once it succeeds.
     const view = await get<ProfileView>('/api/profile');
-    showProfile(view);
+    const [progress, achievements] = await Promise.all([
+      get<ProgressView>('/api/progress'),
+      get<AchievementsView>('/api/achievements'),
+    ]);
+    showProfile(view, progress, achievements);
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       renderSignIn();

@@ -22,6 +22,7 @@ import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { questionInput, questionPrompt } from '../questionView.js';
 import { hostStatusChip, lobbyRoster, registerOffer, screenForSync } from '../playerView.js';
 import { button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
+import { saveClaim } from '../claim.js';
 
 const STORAGE_KEY = 'zeropeek.player';
 
@@ -439,6 +440,11 @@ const app: HTMLElement = appElement;
   socket.on('game:reveal', (payload) => showResult(payload.questionId, payload.result));
   socket.on('game:board', (payload) => showBoard(payload.players));
   socket.on('game:ended', (payload) => showEnd(payload));
+  // A guest who just finished a round is offered a proof to keep it. It is stored
+  // locally; the profile page redeems it once after registering (Phase 6.8.2).
+  socket.on('game:claimable', (payload) => {
+    saveClaim({ ...payload, receivedAt: Date.now() });
+  });
 
   // The host's reachability: update the banner state and re-render the current
   // screen so the chip appears or disappears without a full navigation.

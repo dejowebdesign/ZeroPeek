@@ -53,7 +53,7 @@ export const MOBILE_PRIMARY_LIMIT = 5;
 export const PLAYER_NAV: readonly NavItem[] = [
   { id: 'lobby', label: 'Lobby', href: './', icon: '⌂' },
   { id: 'questions', label: 'Questions', icon: '?' },
-  { id: 'inventory', label: 'Inventory', icon: '▦' },
+  { id: 'inventory', label: 'Inventory', href: './inventory.html', icon: '▦' },
   { id: 'profile', label: 'Profile', href: './profile.html', icon: '☺' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ];

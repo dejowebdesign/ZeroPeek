@@ -254,6 +254,24 @@ describe('design-system components', () => {
     'profile__save',
     'profile__save-status',
     'profile__save-status--error',
+    // Inventory, progression and achievements (Phase 6.8).
+    'inventory__list',
+    'inventory__item',
+    'inventory__item--locked',
+    'inventory__thumb',
+    'inventory__thumb-empty',
+    'inventory__meta',
+    'inventory__name',
+    'inventory__slot',
+    'inventory__state',
+    'inventory__hint',
+    'inventory__action',
+    'achievements',
+    'achievement',
+    'achievement--earned',
+    'achievement__head',
+    'achievement__name',
+    'achievement__hint',
   ];
 
   for (const name of classes) {
@@ -414,13 +432,14 @@ describe('fallbacks and accessibility', () => {
 });
 
 describe('every surface shares the same stylesheets', () => {
-  it('finds the six entry points', () => {
+  it('finds the seven entry points', () => {
     expect(entries).toEqual([
       'admin.html',
       'auth.html',
       'editor.html',
       'host.html',
       'index.html',
+      'inventory.html',
       'profile.html',
     ]);
   });

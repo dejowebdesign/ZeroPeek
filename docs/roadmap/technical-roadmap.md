@@ -417,10 +417,10 @@ Avatar gezeichnet und **kein** Ersatzbild erzeugt.
 | Punkt                      | Inhalt                                                                                                                                                                                                                           |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Ziel**                   | Inventar, XP/Level, Erfolge, Freischaltungen und **Gastkonto-Übernahme** – alles serverseitig und manipulationssicher.                                                                                                           |
-| **Betroffene Komponenten** | neue `pages/inventory.ts`, `services/progressService.ts`, Motor-Anbindung am Spielende, Übernahme-Endpunkt                                                                                                                       |
-| **Betroffene Dateien**     | `schema.prisma`, neue Services/Routen, `services/engine.ts` (nur Haken am `end`), `shared`-Levelfunktion                                                                                                                         |
+| **Betroffene Komponenten** | neue `pages/inventory.ts` (Inventar + Erfolge), `services/progressionService.ts`, `services/claimService.ts`, Socket-Haken am `ended`, Claim-Endpunkte (siehe Bericht Phase 6.8)                                                 |
+| **Betroffene Dateien**     | `schema.prisma`, neue Services/Routen, `socket.ts` (nur Haken am `ended`), `shared`-Levelkurve/Erfolge, `pages/profile.ts` (XP/Level/Erfolge + Übernahmeangebot)                                                                 |
 | **Datenmodelle**           | **Neu:** `PlayerInventory`, `PlayerAchievement`, `XpLedger`, `Game.guestClaim`; **Erweiterung:** `GamePlayer.userId?`                                                                                                            |
-| **API-Änderungen**         | **Neu:** `GET /api/inventory`, `POST /api/inventory/equip`, `GET /api/achievements`, `POST /api/auth/claim-guest-round`                                                                                                          |
+| **API-Änderungen**         | **Neu:** `GET /api/progress`, `GET /api/inventory`, `POST /api/inventory/equip`, `GET /api/achievements`, `POST /api/guest-claim/status`, `POST /api/guest-claim` (alle nur mit Spielersitzung)                                  |
 | **Abhängigkeiten**         | 6.6, 6.7; Levelkurve + XP-Ledger; Anti-Manipulations-Entscheidungen                                                                                                                                                              |
 | **Risiken**                | Doppelte XP-Vergabe, doppeltes Einlösen, manipulierte Bedingungen, **doppelte/fremde Gastübernahme**, Gleichstand                                                                                                                |
 | **Teststrategie**          | Integration: XP genau einmal je Spiel; Erfolg genau einmal; `@@unique` verhindert Doppelbesitz; **Übernahme nur einmal und nur für den Berechtigten**; mehrere Levelaufstiege aus einer Gutschrift; Gleichstand → gleicher Bonus |
@@ -429,6 +429,20 @@ Avatar gezeichnet und **kein** Ersatzbild erzeugt.
 
 **Bestandsschutz:** Die Punktevergabe im Spiel bleibt unverändert. XP ist ein **zusätzlicher**
 Vorgang beim Spielende, in einer Transaktion.
+
+**Umsetzungsstand (Bericht `docs/reports/phase-6-8-player-progression.md`):**
+
+- **6.8.1** – Registrierung/parallele Sitzungen (Frontend-Fix, Commit `8ad5d8e`).
+- **6.8.3** – Levelkurve (`shared`), `XpLedger`, `PlayerInventory`, `PlayerAchievement`, `Game.guestClaim`,
+  Migration `20261111130000_phase_6_8_player_progression` (rein additiv), `progressionService`,
+  `GET /api/progress|inventory|achievements`, `POST /api/inventory/equip`, Haken am `ended`.
+- **6.8.2** – Gastkonto-Übernahme: `claimService`, `POST /api/guest-claim/status|guest-claim`,
+  `game:claimable`-Socket-Ereignis (nur an den Gast selbst).
+- **Frontend** – `pages/profile.ts` (XP/Level/Erfolge + Übernahmeangebot), neue `pages/inventory.ts`
+  (+ `inventory.html`, Navigationseintrag „Inventory" verlinkt), `claim.ts` (lokaler Nachweis).
+- **Offen (Produktentscheidung):** endgültige **Belohnungsmatrix** und **Erfolgsnamen/-bedingungen**;
+  bis dahin ist die Matrix leer und jeder gesperrte Gegenstand meldet „Bedingung noch nicht definiert"
+  (kein erfundenes Asset, kein erfundener Text).
 
 ### 9.1 Verbindliche XP-Regeln (Phase 5c)
 

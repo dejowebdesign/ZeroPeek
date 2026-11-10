@@ -477,7 +477,11 @@ export async function getProgressView(userId: string): Promise<ProgressView> {
 /** The default item ids of a character (already owned on selection). */
 function defaultItemIds(characterId: string | null): Set<string> {
   if (!characterId) return new Set();
-  return new Set(cosmeticsForCharacter(characterId).map((item) => item.id));
+  return new Set(
+    cosmeticsForCharacter(characterId)
+      .filter((item) => item.unlockStatus === 'available')
+      .map((item) => item.id),
+  );
 }
 
 /** The equipped item ids of an avatar configuration. */
