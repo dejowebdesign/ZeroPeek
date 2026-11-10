@@ -39,26 +39,35 @@ model User {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  sessions Session[]
-  quizzes  Quiz[]
+  sessions                Session[]
+  quizzes                 Quiz[]
   emailVerificationTokens EmailVerificationToken[]
-  profile  PlayerProfile?
-  gamePlayers GamePlayer[]
+  profile                 PlayerProfile?
+  gamePlayers             GamePlayer[]
+  xpLedger                XpLedger[]
+  inventory               PlayerInventory[]
+  achievements            PlayerAchievement[]
 
   @@map("users")
 }
 
-/// A durable player profile (Phase 6.6).
+/// A durable player profile (Phase 6.6, progression Phase 6.8).
 ///
 /// One profile per registered account (`user_id` is unique), created lazily on
 /// the first profile read. It holds only what the account itself owns — the
-/// chosen character id — never a statistic: every number shown in the profile is
-/// computed server-side from the persisted game data on each request, so a
-/// statistic can never drift from the games it summarises.
+/// chosen character id and, since Phase 6.8, the materialised XP/level and the
+/// score tallies — never a *derived* statistic such as accuracy: every number
+/// shown in the profile that can drift is computed server-side from the
+/// persisted game data on each request.
+///
+/// `xp` and `level` are the **materialisation** of the append-only `XpLedger`
+/// (which stays the truth): they exist so a profile read does not have to sum the
+/// whole ledger. They are only ever written by the progression service, inside
+/// the same transaction that appends the ledger row, so the two can never
+/// disagree. The client has no write path to either.
 ///
 /// **No IP address is stored here** (product decision Q5, Phase 6.6): identity is
-/// the account, never the network address. The XP/level/inventory fields belong
-/// to Phase 6.8 and are deliberately absent.
+/// the account, never the network address.
 model PlayerProfile {
   id                  String   @id @default(uuid())
   userId              String   @unique @map("user_id")
@@ -72,12 +81,90 @@ model PlayerProfile {
   /// Null until the player first configures an avatar, so pre-6.7 profiles keep
   /// working unchanged.
   avatarConfig        Json?    @map("avatar_config")
+  /// Materialised total XP (Phase 6.8). The `XpLedger` is the truth; this is a
+  /// cached sum so profile reads are cheap. Server-only.
+  xp                  Int      @default(0)
+  /// Materialised level derived from `xp` via the shared level curve. Stored so
+  /// the level-up detection and reward grants have a stable "before" value; the
+  /// curve in `@zeropeek/shared` remains the single source of the calculation.
+  level               Int      @default(1)
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("player_profiles")
+}
+
+/// Append-only XP protocol (Phase 6.8).
+///
+/// Every XP grant writes exactly one row here, inside the same transaction that
+/// updates `PlayerProfile.xp`/`level`. The `@@unique([userId, gameId, reason])`
+/// is the idempotency lock: re-processing the same finished game (a retried
+/// `end`, a double event) collides and grants nothing a second time. `gameId` is
+/// a plain string, not a foreign key, so a game deletion can never cascade away
+/// the record of what a player earned.
+model XpLedger {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  /// XP delta of this grant (always positive; grants are additive).
+  amount      Int
+  /// Why the XP was granted: `game` (the round's points) or `placement` (the
+  /// podium bonus). Part of the idempotency key.
+  reason      String
+  /// The game the XP came from; part of the idempotency key. `null` for a grant
+  /// that is not tied to a game (none today; reserved).
+  gameId      String?  @map("game_id")
+  /// The level before and after this grant, so a history view can show a
+  /// level-up without recomputing the curve.
+  levelBefore Int      @map("level_before")
+  levelAfter  Int      @map("level_after")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId, reason])
+  @@index([userId, createdAt])
+  @@map("xp_ledger")
+}
+
+/// A cosmetic item a player owns (Phase 6.8).
+///
+/// The catalogue itself is code in `@zeropeek/shared`; this table stores only
+/// **ownership**. `@@unique([userId, itemId])` makes a double grant impossible.
+/// `itemId` is a catalogue id (a plain string), so a catalogue change needs no
+/// migration.
+model PlayerInventory {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  itemId     String   @map("item_id")
+  /// How the item was obtained: `default` (the character's own kit), `level`
+  /// (a level-up reward), `achievement` or `grant`.
+  source     String   @default("grant")
+  acquiredAt DateTime @default(now()) @map("acquired_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+  @@index([userId])
+  @@map("player_inventory")
+}
+
+/// An achievement a player has unlocked (Phase 6.8).
+///
+/// Like the inventory, the catalogue is code; this table stores only unlocks.
+/// `@@unique([userId, achievementId])` makes a double unlock impossible.
+model PlayerAchievement {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  achievementId String   @map("achievement_id")
+  unlockedAt    DateTime @default(now()) @map("unlocked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@map("player_achievements")
 }
 
 /// A single-use e-mail verification token. Only the SHA-256 hash of the token
@@ -137,7 +224,7 @@ model Quiz {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  owner     User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  owner     User?          @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   questions Question[]
   games     Game[]
   snapshots GameSnapshot[]
@@ -188,6 +275,15 @@ model Game {
   settings     Json      @default("{}")
   startedAt    DateTime? @map("started_at")
   endedAt      DateTime? @map("ended_at")
+  /// A short-lived, single-use guest-round claim record (Phase 6.8).
+  ///
+  /// When a finished round is eligible to be claimed by a guest who then
+  /// registers, this JSONB holds `{ tokenHash, playerId, expiresAt, usedAt }`.
+  /// Only the SHA-256 hash of the claim token is stored, the claim is bound to
+  /// one guest seat (`playerId`) and one game, expires quickly and can be used
+  /// **once** (`usedAt`), so no one can claim another player's round or claim
+  /// twice. The server is the only writer; a client never sends XP or points.
+  guestClaim   Json?     @map("guest_claim")
   createdAt    DateTime  @default(now()) @map("created_at")
 
   quiz     Quiz?         @relation(fields: [quizId], references: [id], onDelete: SetNull)
@@ -213,18 +309,18 @@ model Game {
 /// types and order – plus the quiz metadata. `quizId` is provenance only and
 /// may point at a deleted quiz.
 model GameSnapshot {
-  id        String   @id @default(uuid())
-  gameId    String   @unique @map("game_id")
-  quizId    String?  @map("quiz_id")
+  id            String   @id @default(uuid())
+  gameId        String   @unique @map("game_id")
+  quizId        String?  @map("quiz_id")
   /// The snapshot schema version, so a future shape change is detectable.
-  version   Int      @default(1)
+  version       Int      @default(1)
   /// Denormalised from the payload so the game list and the report header can be
   /// rendered without parsing every snapshot's JSON. The payload stays the
   /// authoritative record; these two only mirror it for cheap reads.
   title         String
   questionCount Int      @map("question_count")
-  payload   Json
-  createdAt DateTime @default(now()) @map("created_at")
+  payload       Json
+  createdAt     DateTime @default(now()) @map("created_at")
 
   game Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
   quiz Quiz? @relation(fields: [quizId], references: [id], onDelete: SetNull)

@@ -47,6 +47,11 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.quiz.deleteMany();
   await prisma.emailVerificationToken.deleteMany();
   await prisma.session.deleteMany();
+  // Phase 6.8 progression rows reference the user (cascade); delete them before
+  // the user so the order is explicit and independent of the cascade rules.
+  await prisma.xpLedger.deleteMany();
+  await prisma.playerInventory.deleteMany();
+  await prisma.playerAchievement.deleteMany();
   await prisma.playerProfile.deleteMany();
   await prisma.user.deleteMany();
 }

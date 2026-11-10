@@ -23,6 +23,7 @@ import { prisma } from './db.js';
 import { engine } from './services/engine.js';
 import { rejoinGame, setPlayerConnected } from './services/gameService.js';
 import { resolvePlayerSession, resolveSession } from './sessions.js';
+import { grantProgressForGame } from './services/progressionService.js';
 
 /** Room helpers. Each player also gets a personal room for private results. */
 const playerRoom = (gameId: string): string => `game:${gameId}:players`;
@@ -407,6 +408,11 @@ export function attachSocketIO(
   engine.on('ended', ({ gameId, players: list }) => {
     hosts.to(hostRoom(gameId)).emit('host:ended', { players: list });
     void sendPlayerEnd(io, gameId, list).catch(() => undefined);
+    // Phase 6.8: grant the registered players their XP, level-ups and rewards
+    // for this finished game. Fire-and-forget (like the fan-out above) so a slow
+    // grant never delays the socket event; the grant is idempotent, so a retried
+    // `end` or a duplicate event pays nothing a second time.
+    void grantProgressForGame(gameId).catch(() => undefined);
   });
 
   return {
