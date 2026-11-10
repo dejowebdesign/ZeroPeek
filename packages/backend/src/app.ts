@@ -21,6 +21,8 @@ import { registerAdminRoutes } from './routes/adminRoutes.js';
 import { registerAuthRoutes } from './routes/authRoutes.js';
 import { registerPlayerAuthRoutes } from './routes/playerAuthRoutes.js';
 import { registerProfileRoutes } from './routes/profileRoutes.js';
+import { registerProgressRoutes } from './routes/progressRoutes.js';
+import { registerClaimRoutes } from './routes/claimRoutes.js';
 import { registerQuizRoutes } from './routes/quizRoutes.js';
 import { registerReportRoutes } from './routes/reportRoutes.js';
 import type { AppConfig } from './config.js';
@@ -138,6 +140,8 @@ export async function buildApp({ config }: BuildAppOptions): Promise<FastifyInst
   registerReportRoutes(app, config);
   registerAdminRoutes(app, config);
   registerProfileRoutes(app, config);
+  registerProgressRoutes(app, config);
+  registerClaimRoutes(app, config);
 
   return app;
 }

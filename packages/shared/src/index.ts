@@ -18,4 +18,7 @@ export * from './pin.js';
 export * from './events.js';
 export * from './profile.js';
 export * from './cosmetics.js';
+export * from './progression.js';
+export * from './achievements.js';
+export * from './levelRewards.js';
 export * from './characters.js';

@@ -188,6 +188,99 @@ describe('auth page: sign in', () => {
   });
 });
 
+describe('auth page: explicit intent beats the signed-in redirect (Phase 6.8.1)', () => {
+  /**
+   * Boot the auth page with a stubbed `location` and a given hash, when the
+   * expected outcome is a **render** (the page must not redirect). Returns the
+   * `assign` spy so a test can prove no navigation happened.
+   */
+  async function bootWithHash(hash: string): Promise<ReturnType<typeof vi.fn>> {
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign, hash },
+    });
+    vi.resetModules();
+    document.body.innerHTML = '<div id="app"></div>';
+    await import('./pages/auth.js');
+    await vi.waitFor(() => {
+      if (!document.querySelector('#app')?.textContent?.trim()) throw new Error('not rendered');
+    });
+    return assign;
+  }
+
+  it('shows the registration form on #register while a host is signed in', async () => {
+    // The reported bug: a signed-in host on the same browser was redirected to
+    // the host console, so the registration link never showed the form.
+    stubFetch([
+      {
+        match: /\/api\/auth\/me$/,
+        body: { user: { id: 'h1', username: 'coach', role: 'TRAINER' } },
+      },
+      { match: /\/api\/player-auth\/me$/, body: { user: null } },
+    ]);
+    const assign = await bootWithHash('#register');
+
+    expect(APP().textContent).toContain('Create your account');
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('shows the sign-in form on #signin while a host is signed in', async () => {
+    stubFetch([
+      {
+        match: /\/api\/auth\/me$/,
+        body: { user: { id: 'h1', username: 'coach', role: 'TRAINER' } },
+      },
+      { match: /\/api\/player-auth\/me$/, body: { user: null } },
+    ]);
+    const assign = await bootWithHash('#signin');
+
+    expect(APP().textContent).toContain('Sign in');
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('still redirects a signed-in host when no explicit hash is given', async () => {
+    // The convenience redirect for the plain page must be preserved.
+    stubFetch([
+      {
+        match: /\/api\/auth\/me$/,
+        body: { user: { id: 'h1', username: 'coach', role: 'TRAINER' } },
+      },
+    ]);
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign, hash: '' },
+    });
+    await bootAuthExpectingRedirect();
+
+    expect(assign).toHaveBeenCalledWith('./host.html');
+  });
+
+  it('lets a guest register while a host is signed in (POST reaches the server)', async () => {
+    const calls = stubFetch([
+      {
+        match: /\/api\/auth\/me$/,
+        body: { user: { id: 'h1', username: 'coach', role: 'TRAINER' } },
+      },
+      { match: /\/api\/player-auth\/me$/, body: { user: null } },
+      { match: /\/api\/auth\/register$/, body: { ok: true, verificationSent: true } },
+    ]);
+    await bootWithHash('#register');
+
+    const [username, email, password] = Array.from(APP().querySelectorAll('input'));
+    (username as HTMLInputElement).value = 'Maya';
+    (email as HTMLInputElement).value = 'maya@example.com';
+    (password as HTMLInputElement).value = 'a-long-enough-password';
+    APP().querySelector('form')?.dispatchEvent(new Event('submit'));
+
+    await vi.waitFor(() => {
+      expect(APP().textContent).toContain('Check your inbox');
+    });
+    expect(calls.some((call) => call.url.includes('/api/auth/register'))).toBe(true);
+  });
+});
+
 describe('auth page: register', () => {
   it('renders the registration form on #register', async () => {
     stubFetch([{ match: /\/api\/auth\/me$/, body: { user: null } }]);

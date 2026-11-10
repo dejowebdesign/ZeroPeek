@@ -46,14 +46,14 @@ function toStoredAvatar(config: AvatarConfig | null): Prisma.InputJsonValue | ty
  * in a registration hook — means an account that existed before Phase 6.6 gets
  * its profile the first time it is opened, with no backfill migration.
  */
-async function ensureProfile(userId: string) {
+export async function ensureProfile(userId: string) {
   const existing = await prisma.playerProfile.findUnique({ where: { userId } });
   if (existing) return existing;
   return prisma.playerProfile.create({ data: { userId } });
 }
 
 /** The scoring tie-breakers a game was played with, or the shared default. */
-function gameTieBreak(settings: unknown): TieBreak[] {
+export function gameTieBreak(settings: unknown): TieBreak[] {
   if (settings && typeof settings === 'object' && 'tieBreak' in settings) {
     const value = (settings as { tieBreak?: unknown }).tieBreak;
     if (Array.isArray(value) && value.length > 0) return value as TieBreak[];
@@ -81,7 +81,7 @@ export async function getProfile(userId: string): Promise<ProfileView> {
   if (!user) throw notFound('User not found.');
 
   const profile = await ensureProfile(userId);
-  const stats = await profileStats(userId);
+  const stats = await computeProfileStats(userId);
 
   return {
     user: { id: user.id, username: user.username, role: user.role },
@@ -108,8 +108,14 @@ function readAvatarConfig(raw: unknown): AvatarConfig | null {
   return config ?? null;
 }
 
-/** Compute the personal statistics from the account's finished games. */
-async function profileStats(userId: string): Promise<ProfileStats> {
+/**
+ * Compute the personal statistics from the account's finished games.
+ *
+ * Exported (Phase 6.8) so the progression service evaluates achievements against
+ * **exactly** the same tallies the profile shows, rather than a second query that
+ * could drift.
+ */
+export async function computeProfileStats(userId: string): Promise<ProfileStats> {
   const mySeats = await prisma.gamePlayer.findMany({
     where: { userId, game: { phase: 'end' } },
     select: { id: true, gameId: true },

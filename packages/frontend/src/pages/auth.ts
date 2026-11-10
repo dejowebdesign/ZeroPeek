@@ -258,6 +258,14 @@ function showRegister(): void {
           { class: 'auth__subtitle muted' },
           'Optional. Keep your progress, avatar and history across games.',
         ),
+        // Phase 6.8.1: a player account is a separate identity from a host
+        // sign-in, so this always holds and reassures a host registering a
+        // player account in the same browser.
+        el(
+          'p',
+          { class: 'auth__note' },
+          'This player account is separate from any host sign-in in this browser. Both can be active at the same time.',
+        ),
         form,
         el(
           'div',
@@ -391,8 +399,15 @@ function renderRoot(node: Node): void {
 // ---------------------------------------------------------------------------
 
 /**
- * If a session already exists, go straight to the right home; otherwise honour
- * a `#verify=` link, else show the sign in.
+ * Boot: honour an explicit intent first, then a signed-in session, else show
+ * the sign in.
+ *
+ * **Explicit intent beats the convenience redirect (Phase 6.8.1).** A `#verify=`
+ * link, `#register` or `#signin` is a deliberate request, so it is served even
+ * when a host is already signed in — otherwise the registration link on the
+ * player surface would bounce a signed-in host to the host console and the form
+ * could never be reached in the same browser. A plain page load (no hash) keeps
+ * the old behaviour: a signed-in account is sent to its home.
  */
 async function boot(): Promise<void> {
   const hash = location.hash;
@@ -402,30 +417,38 @@ async function boot(): Promise<void> {
     return;
   }
 
-  try {
-    const me = await get<{ user: SessionUser | null }>('/api/auth/me');
-    if (me.user) {
-      location.assign(homeFor(me.user.role));
-      return;
+  // An explicit request for a specific screen is served regardless of any
+  // existing session. `#register`/`#signin` are the two the UI links to.
+  const wantsRegister = hash === '#register';
+  const wantsSignIn = hash === '#signin';
+
+  if (!wantsRegister && !wantsSignIn) {
+    try {
+      const me = await get<{ user: SessionUser | null }>('/api/auth/me');
+      if (me.user) {
+        location.assign(homeFor(me.user.role));
+        return;
+      }
+    } catch {
+      // No host session: check the player context before showing the sign-in.
     }
-  } catch {
-    // No host session: check the player context before showing the sign-in.
+
+    // A player is signed in through `zp_player_session`, which `/api/auth/me`
+    // does not read (Phase 6.6.3). Ask the player endpoint too, so an already
+    // signed-in player is sent to their profile instead of being shown the form
+    // again.
+    try {
+      const player = await get<{ user: SessionUser | null }>('/api/player-auth/me');
+      if (player.user) {
+        location.assign(homeFor(player.user.role));
+        return;
+      }
+    } catch {
+      // No player session either: fall through to the sign-in form.
+    }
   }
 
-  // A player is signed in through `zp_player_session`, which `/api/auth/me` does
-  // not read (Phase 6.6.3). Ask the player endpoint too, so an already signed-in
-  // player is sent to their profile instead of being shown the form again.
-  try {
-    const player = await get<{ user: SessionUser | null }>('/api/player-auth/me');
-    if (player.user) {
-      location.assign(homeFor(player.user.role));
-      return;
-    }
-  } catch {
-    // No player session either: fall through to the sign-in form.
-  }
-
-  if (hash === '#register') showRegister();
+  if (wantsRegister) showRegister();
   else showSignIn();
 }
 
