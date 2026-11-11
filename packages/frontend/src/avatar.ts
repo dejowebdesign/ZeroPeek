@@ -85,6 +85,49 @@ export function itemThumb(itemId: string | null): HTMLElement | null {
   });
 }
 
+/**
+ * A compact avatar badge for a player in a list — lobby roster, leaderboard,
+ * beamer podium and the player's own round header (Phase 6.8.3).
+ *
+ * `avatarId` is the character id the **server** resolved for the seat
+ * (`PublicPlayer.avatar`), never a client guess. When it names a character with
+ * supplied artwork (Ethan/Maya) the real base figure is drawn from
+ * `public/characters/`; otherwise a clean initial badge of the nickname is
+ * shown. There is deliberately **no** invented image path and **no** empty
+ * frame: an unknown or missing id always falls back to the letter badge, so a
+ * guest or a character awaiting artwork still gets a tidy, legible mark.
+ *
+ * The badge is decorative: the nickname sits next to it, so it is hidden from
+ * assistive technology to avoid repeating the name.
+ */
+export function playerAvatar(
+  nickname: string,
+  avatarId?: string | null,
+  options: { size?: 'sm' | 'md' | 'lg' } = {},
+): HTMLElement {
+  const assets = findCharacterAssets(avatarId);
+  const size = options.size ?? 'md';
+  const frame = el('span', {
+    class: `player-avatar player-avatar--${size}${assets ? ' player-avatar--art' : ''}`,
+    'aria-hidden': 'true',
+  });
+  if (assets) {
+    frame.append(
+      el('img', {
+        class: 'player-avatar__img',
+        src: assets.basePath,
+        alt: '',
+        loading: 'lazy',
+        decoding: 'async',
+      }),
+    );
+  } else {
+    const initial = nickname.trim().charAt(0).toUpperCase() || '?';
+    frame.append(el('span', { class: 'player-avatar__initial' }, initial));
+  }
+  return frame;
+}
+
 /** One "slot: item" row for the loadout list. */
 function loadoutRow(slot: EquipmentSlot, itemId: string | null): HTMLElement {
   const item = findCosmetic(itemId);

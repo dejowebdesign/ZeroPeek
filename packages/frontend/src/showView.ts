@@ -8,6 +8,7 @@
 
 import type { PublicPlayer, PublicQuestion } from '@zeropeek/shared';
 
+import { playerAvatar } from './avatar.js';
 import { el } from './dom.js';
 
 /**
@@ -23,25 +24,33 @@ export function questionDisplayOptions(question: PublicQuestion): string[] {
   );
 }
 
-/** One beamer leaderboard row: rank, name, score. */
+/** One beamer leaderboard row: rank, avatar, name, score. */
 export function leaderboardRow(player: PublicPlayer, index: number): HTMLElement {
   return el(
     'li',
     { class: 'leaderboard__row' },
     el('span', { class: 'leaderboard__rank' }, String(index + 1)),
-    el('span', { class: 'leaderboard__name' }, player.nickname),
+    el(
+      'span',
+      { class: 'leaderboard__who' },
+      playerAvatar(player.nickname, player.avatar, { size: 'md' }),
+      el('span', { class: 'leaderboard__name' }, player.nickname),
+    ),
     el('span', { class: 'leaderboard__score' }, String(player.score)),
   );
 }
 
 /**
  * A podium place. `rank` is 1-based and drives the modifier class, so the
- * styling for gold, silver and bronze stays in the stylesheet.
+ * styling for gold, silver and bronze stays in the stylesheet. The winner's
+ * avatar is shown large, so the champion is recognisable from across the room
+ * (Phase 6.8.3).
  */
 export function podiumPlace(player: PublicPlayer, rank: number): HTMLElement {
   return el(
     'li',
     { class: `podium__place podium__place--${rank}` },
+    playerAvatar(player.nickname, player.avatar, { size: 'lg' }),
     el('span', { class: 'podium__rank' }, String(rank)),
     el('span', { class: 'podium__name' }, player.nickname),
     el('span', { class: 'podium__score' }, String(player.score)),

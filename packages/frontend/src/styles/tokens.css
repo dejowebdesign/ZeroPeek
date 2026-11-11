@@ -919,9 +919,104 @@ body::before {
   font-variant-numeric: tabular-nums;
 }
 
+/* The name cell: avatar + name, so a row carries the character, not just text. */
+.leaderboard__who {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 .leaderboard__score {
   font-weight: 750;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- player avatar badge (Phase 6.8.3) ---------- */
+
+/*
+ * The compact avatar shown beside a player's name in the lobby roster, the
+ * leaderboard, the podium and the player's own round header. It draws the real
+ * Blockwelt-Helden figure when the seat carries a character with artwork, and a
+ * letter badge otherwise — never an empty frame or an invented image path.
+ */
+.player-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--glass-raised);
+  border: var(--hairline) solid var(--border-strong);
+}
+
+.player-avatar--sm {
+  width: 2rem;
+  height: 2rem;
+}
+
+.player-avatar--md {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.player-avatar--lg {
+  width: clamp(4rem, 6vw, 6rem);
+  height: clamp(4rem, 6vw, 6rem);
+  border-radius: var(--radius);
+}
+
+.player-avatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.player-avatar__initial {
+  font-weight: var(--weight-number);
+  color: var(--accent-2);
+  font-size: 1.1em;
+}
+
+/* The player's own figure above the waiting-room and end cards. */
+.lobby__me {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-3);
+}
+
+/* The player's own header row on the question card. */
+.question__who {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.question__who-name {
+  font-weight: var(--weight-card);
+  overflow-wrap: anywhere;
+}
+
+/* The "progress saved" block on the end screen for a signed-in player. */
+.end-saved {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.end-saved__hint {
+  margin: 0;
+}
+
+.end-saved__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: center;
 }
 
 /* ---------- lobby ---------- */
@@ -1774,9 +1869,22 @@ body::before {
   overflow-wrap: anywhere;
 }
 
+/* The beamer shows the avatar larger, so a character is recognisable from afar. */
+.leaderboard--show .leaderboard__who .player-avatar--sm,
+.leaderboard--show .leaderboard__who .player-avatar--md {
+  width: clamp(2.6rem, 3vw, 4rem);
+  height: clamp(2.6rem, 3vw, 4rem);
+}
+
 .leaderboard--show .leaderboard__score {
   font-size: var(--type-show-score);
   font-weight: var(--weight-score);
+}
+
+/* The podium figure sits above the rank, so the champion is unmistakable. */
+.podium__place .player-avatar--lg {
+  width: clamp(3.5rem, 4.5vw + 1vh, 7rem);
+  height: clamp(3.5rem, 4.5vw + 1vh, 7rem);
 }
 
 /* Final results: a three-step podium, first place tallest and gold. */

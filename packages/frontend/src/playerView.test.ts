@@ -13,8 +13,10 @@ import type { PlayerSync, PublicPlayer } from '@zeropeek/shared';
 
 import {
   connectionState,
+  endProgressActions,
   hostPresenceStatus,
   hostStatusChip,
+  joinIdentityHint,
   lobbyRoster,
   registerOffer,
   screenForSync,
@@ -74,6 +76,47 @@ describe('lobbyRoster', () => {
 
   it('renders no rows for an empty roster', () => {
     expect(lobbyRoster([]).querySelectorAll('.lobby__roster-row')).toHaveLength(0);
+  });
+
+  it('shows each player’s avatar, from the character the server seated them with', () => {
+    const roster = lobbyRoster([
+      player({ id: 'a', nickname: 'Ada', avatar: 'ethan' }),
+      player({ id: 'b', nickname: 'Bob', avatar: '' }),
+    ]);
+    const rows = roster.querySelectorAll('.lobby__roster-row');
+    // A character with artwork draws the real figure.
+    expect(rows[0]?.querySelector('.player-avatar--art')).not.toBeNull();
+    expect(rows[0]?.querySelector('.player-avatar__img')).not.toBeNull();
+    // A guest (no avatar) falls back to a letter badge, never an empty frame.
+    expect(rows[1]?.querySelector('.player-avatar--art')).toBeNull();
+    expect(rows[1]?.querySelector('.player-avatar__initial')?.textContent).toBe('B');
+  });
+});
+
+describe('joinIdentityHint', () => {
+  it('tells a signed-in player their account name will be used', () => {
+    const node = joinIdentityHint('alice');
+    expect(node.textContent).toContain('alice');
+    expect(node.textContent).toContain('avatar');
+  });
+});
+
+describe('endProgressActions', () => {
+  it('offers a signed-in player a saved confirmation and no registration', () => {
+    const node = endProgressActions(true);
+    expect(node.textContent).toContain('saved to your account');
+    // The bug this fixes: a signed-in player must never be offered registration.
+    expect(node.textContent).not.toContain('Create a free account');
+    expect(node.querySelector('a[href="./auth.html#register"]')).toBeNull();
+    // It points at the player's own progress surfaces instead.
+    expect(node.querySelector('a[href="./profile.html"]')).not.toBeNull();
+  });
+
+  it('keeps the optional registration offer for a guest', () => {
+    const node = endProgressActions(false);
+    expect(node.classList.contains('auth-offer')).toBe(true);
+    expect(node.querySelector('a')?.getAttribute('href')).toBe('./auth.html#register');
+    expect(node.textContent).toContain('optional');
   });
 });
 

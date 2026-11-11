@@ -9,7 +9,9 @@
 import type { Prisma } from '@prisma/client';
 
 import {
+  CHARACTER_ID_MAX,
   DEFAULT_SCORING_SETTINGS,
+  findCharacterAssets,
   generatePin,
   isValidPin,
   normalizePin,
@@ -80,6 +82,21 @@ export function gameSettings(game: { settings: Prisma.JsonValue }): ScoringSetti
   return DEFAULT_SCORING_SETTINGS;
 }
 
+/** The seat fields the join flow needs back. */
+type JoinedSeat = {
+  id: string;
+  gameId: string;
+  nickname: string;
+  avatar: string;
+  token: string;
+  joinedAt: Date;
+};
+
+/** Whether an already-joined seat belongs to this account. */
+function seatBelongsTo(seat: { userId: string | null }, userId?: string): boolean {
+  return userId !== undefined && seat.userId === userId;
+}
+
 /**
  * Add a player to a lobby game. Rejects duplicate nicknames (case- and
  * accent-insensitively) and games that have already started.
@@ -89,8 +106,20 @@ export function gameSettings(game: { settings: Prisma.JsonValue }): ScoringSetti
  * only ever set from the player session — never from a client-supplied id, and
  * never from a host session — and it is what lets the profile count the
  * account's own finished games.
+ *
+ * **One seat per account (Phase 6.8.3).** A signed-in player who joins again —
+ * a reload, a second tab, a double click — is given their **existing** seat back
+ * instead of a second one, so a single account can never appear twice in a
+ * lobby (and can never be paid the round twice). The seat is refreshed to the
+ * account's current name and avatar. A guest, having no account, keeps the
+ * previous behaviour and always gets a fresh seat.
  */
-export async function joinGame(pin: string, nickname: string, avatar = '', userId?: string) {
+export async function joinGame(
+  pin: string,
+  nickname: string,
+  avatar = '',
+  userId?: string,
+): Promise<{ game: Awaited<ReturnType<typeof findGameByPin>>; player: JoinedSeat }> {
   const trimmed = nickname.trim();
   if (trimmed.length === 0 || trimmed.length > NICKNAME_MAX) {
     throw badRequest(`The nickname must be 1–${NICKNAME_MAX} characters.`);
@@ -100,6 +129,27 @@ export async function joinGame(pin: string, nickname: string, avatar = '', userI
   if (game.phase !== 'lobby') throw conflict('This game has already started.');
 
   const existing = await prisma.gamePlayer.findMany({ where: { gameId: game.id } });
+
+  // A signed-in player who is already seated in this lobby rejoins that seat.
+  if (userId) {
+    const mine = existing.find((seat) => seatBelongsTo(seat, userId));
+    if (mine) {
+      const player = await prisma.gamePlayer.update({
+        where: { id: mine.id },
+        data: { nickname: trimmed, avatar },
+        select: {
+          id: true,
+          gameId: true,
+          nickname: true,
+          avatar: true,
+          token: true,
+          joinedAt: true,
+        },
+      });
+      return { game, player };
+    }
+  }
+
   const wanted = normalizeText(trimmed);
   if (existing.some((player) => normalizeText(player.nickname) === wanted)) {
     throw conflict('That nickname is already taken in this game.', 'nickname_taken');
@@ -113,8 +163,35 @@ export async function joinGame(pin: string, nickname: string, avatar = '', userI
       token: newPlayerToken(),
       ...(userId ? { userId } : {}),
     },
+    select: { id: true, gameId: true, nickname: true, avatar: true, token: true, joinedAt: true },
   });
   return { game, player };
+}
+
+/**
+ * The avatar id to seat a player with: the account's chosen character, but only
+ * when that character has supplied artwork.
+ *
+ * A character without artwork (`pixel`, `bee`, …) resolves to `''`, so the
+ * surfaces fall back to a clean initial badge rather than pointing at a file
+ * that does not exist (phase brief §2: no invented image paths, no empty
+ * placeholders). A guest passes no account and therefore always gets `''`.
+ */
+export async function resolveSeatAvatar(userId: string | undefined): Promise<string> {
+  if (!userId) return '';
+  const profile = await prisma.playerProfile.findUnique({
+    where: { userId },
+    select: { selectedCharacterId: true },
+  });
+  const characterId = profile?.selectedCharacterId ?? null;
+  return characterId && findCharacterAssets(characterId) ? characterId : '';
+}
+
+/** Sanitise a client-supplied guest avatar: a bounded string, never a path. */
+export function sanitizeGuestAvatar(avatar: unknown): string {
+  if (typeof avatar !== 'string') return '';
+  const trimmed = avatar.trim();
+  return trimmed.length > CHARACTER_ID_MAX ? '' : trimmed;
 }
 
 /** Reclaim an existing player slot after a reconnect. */

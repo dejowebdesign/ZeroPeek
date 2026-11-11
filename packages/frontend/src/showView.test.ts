@@ -68,6 +68,16 @@ describe('leaderboardRow', () => {
     expect(node.querySelector('.leaderboard__name')?.textContent).toBe('Maya');
     expect(node.querySelector('.leaderboard__score')?.textContent).toBe('1234');
   });
+
+  it('carries the player’s avatar in the name cell (Phase 6.8.3)', () => {
+    const withArt = leaderboardRow({ ...player, avatar: 'maya' }, 0);
+    expect(withArt.querySelector('.leaderboard__who .player-avatar--art')).not.toBeNull();
+    expect(withArt.querySelector('.player-avatar__img')).not.toBeNull();
+    // A guest seat with no avatar shows a letter badge, never an empty frame.
+    const guest = leaderboardRow(player, 0);
+    expect(guest.querySelector('.player-avatar--art')).toBeNull();
+    expect(guest.querySelector('.player-avatar__initial')?.textContent).toBe('M');
+  });
 });
 
 describe('podiumPlace', () => {
@@ -77,5 +87,14 @@ describe('podiumPlace', () => {
     expect(node.querySelector('.podium__rank')?.textContent).toBe('1');
     expect(node.querySelector('.podium__name')?.textContent).toBe('Maya');
     expect(node.querySelector('.podium__score')?.textContent).toBe('1234');
+  });
+
+  it('shows the winner’s avatar large (Phase 6.8.3)', () => {
+    const node = podiumPlace({ ...player, avatar: 'ethan' }, 1);
+    const badge = node.querySelector('.player-avatar');
+    expect(badge?.classList.contains('player-avatar--lg')).toBe(true);
+    expect(node.querySelector('.player-avatar__img')?.getAttribute('src')).toBe(
+      '/characters/ethan/ethan_base_current.webp',
+    );
   });
 });

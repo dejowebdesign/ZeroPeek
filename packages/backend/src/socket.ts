@@ -21,7 +21,12 @@ import type { AppConfig } from './config.js';
 import { AppError, badRequest, conflict, forbidden, notFound } from './errors.js';
 import { prisma } from './db.js';
 import { engine } from './services/engine.js';
-import { rejoinGame, setPlayerConnected } from './services/gameService.js';
+import {
+  rejoinGame,
+  resolveSeatAvatar,
+  sanitizeGuestAvatar,
+  setPlayerConnected,
+} from './services/gameService.js';
 import { resolvePlayerSession, resolveSession } from './sessions.js';
 import { grantProgressForGame } from './services/progressionService.js';
 import { issueGuestClaims } from './services/claimService.js';
@@ -289,8 +294,6 @@ export function attachSocketIO(
       (payload: { pin?: string; nickname?: string; avatar?: string }, ack) => {
         guard(ack, async () => {
           const pin = asString(payload?.pin, 'pin');
-          const nickname = asString(payload?.nickname, 'nickname');
-          const avatar = typeof payload?.avatar === 'string' ? payload.avatar : '';
 
           // A registered player may be signed in on this browser through the
           // **player** context; the seat is then linked to that account (Phase
@@ -305,12 +308,29 @@ export function attachSocketIO(
             method: 'GET',
           } as unknown as Parameters<typeof resolvePlayerSession>[0];
           const session = await resolvePlayerSession(request, config).catch(() => null);
+          const account = session?.user;
+
+          // A signed-in player joins under their account: the name is always the
+          // account's username (so they never re-enter it) and the avatar is
+          // their chosen character, resolved from the profile — never from the
+          // payload. A guest keeps the typed nickname and an empty avatar.
+          //
+          // An explicit `nickname` from a signed-in player is deliberately
+          // ignored, not just optional: the player surface hides the name field
+          // for a signed-in account, so honouring a stray value would let the
+          // in-game name diverge from the account for no visible reason. If a
+          // per-round display name is wanted later, that is a product decision
+          // for chrisB, not a silent default.
+          const nickname = account ? account.username : asString(payload?.nickname, 'nickname');
+          const avatar = account
+            ? await resolveSeatAvatar(account.id)
+            : sanitizeGuestAvatar(payload?.avatar);
 
           // The engine owns the join, because it must be serialised against the
           // host's `start` under the same per-game phase lock (bugfix: a join
           // that raced the start could otherwise leave the host on a stale
           // lobby whose "Start game" the engine then rejects).
-          const { game, player } = await engine.join(pin, nickname, avatar, session?.user.id);
+          const { game, player } = await engine.join(pin, nickname, avatar, account?.id);
           await socket.join(playerRoom(game.id));
           await socket.join(personalRoom(player.id));
           socket.data.playerId = player.id;
@@ -318,7 +338,15 @@ export function attachSocketIO(
           // Tell this player whether the host is reachable, so the status is
           // correct from the first screen rather than after the next change.
           socket.emit('game:host', { status: presenceFor(game.id) });
-          return { playerId: player.id, gameId: game.id, token: player.token };
+          // Echo the identity the server actually seated (never what the client
+          // typed), so the client shows the account name and avatar it joined as.
+          return {
+            playerId: player.id,
+            gameId: game.id,
+            token: player.token,
+            nickname: player.nickname,
+            avatar: player.avatar,
+          };
         });
       },
     );
