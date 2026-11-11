@@ -464,14 +464,20 @@ describe('character picker (Phase 6.6.2)', () => {
 });
 
 describe('guests and mobile layout', () => {
-  it('leaves the guest player surface free of any profile or auth dependency', () => {
+  it('keeps the guest player surface free of any required profile or staff-auth dependency', () => {
     // A guest joins by PIN and never signs in. The player surface must therefore
-    // not touch the profile API or require a session — this guards that promise.
+    // not touch the profile API or the staff auth API, and must not *require* a
+    // session. Since Phase 6.8.3 it reads `/api/player-auth/me` once, but only
+    // best-effort: a guest (or a host-only browser) is simply treated as a guest
+    // and still joins with a PIN and a nickname — this guards that promise.
     const here = dirname(fileURLToPath(import.meta.url));
     const player = readFileSync(join(here, 'pages/player.ts'), 'utf8');
     expect(player).not.toContain('/api/profile');
-    expect(player).not.toContain('/api/player-auth');
-    expect(player).not.toContain('/api/auth');
+    expect(player).not.toContain('/api/auth/');
+    // The only auth read is the optional player-context lookup, and it is guarded
+    // so a failure falls back to the guest path.
+    expect(player).toContain('/api/player-auth/me');
+    expect(player).toMatch(/catch \{\s*account = null;/);
   });
 
   it('stacks the picker to one column on a phone and keeps tap-sized options', () => {
@@ -731,6 +737,37 @@ describe('profile progression (Phase 6.8)', () => {
     expect(text).toContain('12500');
     // While the reward matrix is unapproved, the card says so plainly.
     expect(text).toContain('no item is granted yet');
+  });
+
+  it('does not duplicate the inventory’s item figures (Phase 6.8.3)', async () => {
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/profile$/, body: EMPTY_PROFILE },
+      {
+        match: /\/api\/progress$/,
+        body: {
+          xp: 12_500,
+          level: 2,
+          progress: {
+            level: 2,
+            xpIntoLevel: 2_500,
+            xpForThisLevel: 10_000,
+            xpToNextLevel: 7_500,
+            nextLevel: 3,
+            ratio: 0.25,
+          },
+          nextRewardLevel: null,
+          achievementsUnlocked: 1,
+          itemsOwned: 5,
+        },
+      },
+      { match: /\/api\/achievements$/, body: { achievements: [] } },
+    ]);
+    await bootProfile();
+
+    // The profile owns level/XP/achievements; the item count lives on the
+    // inventory page, so the two surfaces no longer show the same tiles.
+    expect(APP().textContent).not.toContain('Items');
   });
 
   it('lists achievements with progress and an unlocked state', async () => {

@@ -1,37 +1,37 @@
 /**
- * Inventory surface (Phase 6.8).
+ * Inventory surface (Phase 6.8, de-duplicated Phase 6.8.3).
  *
- * A standalone page (inventory.html) for a **signed-in** account. It shows the
- * account's level and XP, the items of its **currently chosen** character (owned
- * and locked alike) and its achievements.
+ * A standalone page (inventory.html) for a **signed-in** account. It owns the
+ * **items** half of the player's progress: the active character's items (owned
+ * and locked alike), the equipment currently worn and the equip management. It
+ * deliberately no longer repeats the level/XP and achievement figures — those
+ * live on the profile page (Phase 6.8.3), so the two surfaces are distinct
+ * rather than two copies of the same cards.
  *
- * Everything is server-authoritative. The page reads `GET /api/inventory`,
- * `GET /api/progress` and `GET /api/achievements`, and equips through
- * `POST /api/inventory/equip`; it never computes a level, an XP total or an
- * unlock. A locked item is shown with the server's own unlock hint (an honest
- * "to be defined" while the reward matrix is unapproved), never an invented
- * condition, and its equip control is disabled.
+ * Everything is server-authoritative. The page reads `GET /api/inventory` and
+ * equips through `POST /api/inventory/equip`; it never computes an unlock. A
+ * locked item is shown with the server's own unlock hint (an honest "to be
+ * defined" while the reward matrix is unapproved), never an invented condition,
+ * and its equip control is disabled.
  *
- * It reuses the existing design system (`appShell`, `card`, `progress`,
- * `emptyState`, `chip`), so it inherits the dark glassmorphism look with no new
- * styling rules beyond the achievement list.
+ * It reuses the existing design system (`appShell`, `card`, `emptyState`,
+ * `chip`, `avatarPreview`), so it inherits the dark glassmorphism look with no
+ * new styling rules.
  */
 
 import type {
-  AchievementView,
-  AchievementsView,
   AvatarConfig,
+  AvatarEquipment,
   EquipmentSlot,
   InventoryItemView,
   InventoryView,
-  ProgressView,
 } from '@zeropeek/shared';
-import { findCharacter } from '@zeropeek/shared';
+import { EQUIPMENT_SLOTS, findCharacter } from '@zeropeek/shared';
 
 import { ApiError, get, post, setCsrfToken } from '../api.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
-import { SLOT_LABELS, itemThumb } from '../avatar.js';
+import { SLOT_LABELS, avatarPreview, itemThumb } from '../avatar.js';
 import {
   button,
   chip,
@@ -39,10 +39,8 @@ import {
   errorText,
   field,
   notice,
-  progress,
   setBusy,
   skeleton,
-  statTile,
   toast,
 } from '../ui.js';
 
@@ -74,37 +72,79 @@ function statusScreen(node: HTMLElement): HTMLElement {
   return shell([el('section', { class: 'centered' }, el('div', { class: 'card' }, node))]);
 }
 
-/** A `ratio` (0..1) as a whole-number percentage. */
-function percent(ratio: number): string {
-  return `${Math.round(ratio * 100)}%`;
+/** The avatar configuration implied by the inventory's equipped items. */
+function configFromItems(view: InventoryView): AvatarConfig | null {
+  if (!view.characterId) return null;
+  const equipment: AvatarEquipment = {
+    visor: null,
+    outfit: null,
+    backpack: null,
+    neckAccessory: null,
+    wristAccessory: null,
+  };
+  for (const row of view.items) {
+    if (row.equipped) equipment[row.item.slot as EquipmentSlot] = row.item.id;
+  }
+  return { characterId: view.characterId, equipment };
 }
 
-/** The level/XP summary card. */
-function progressSection(view: ProgressView): HTMLElement {
-  const { progress: bar } = view;
+/** The number of the five slots that currently hold an item. */
+function equippedCount(view: InventoryView): number {
+  return view.items.filter((row) => row.equipped).length;
+}
+
+/**
+ * The "what you are wearing" card: the character figure plus the five slots.
+ *
+ * This is the inventory's own view of the loadout — the equipment half of the
+ * progress — kept apart from the profile, which shows the character choice and
+ * the statistics. Each slot names the item worn or states plainly that it is
+ * empty, so the player can see at a glance what is equipped without scanning the
+ * item list.
+ */
+function loadoutSection(view: InventoryView, characterName: string): HTMLElement {
+  const config = configFromItems(view);
+  if (!config) {
+    return el(
+      'section',
+      { class: 'card' },
+      el('h3', { class: 'profile__section-title' }, 'Equipped'),
+      emptyState(
+        'Nothing equipped yet',
+        'Choose a character on your profile first. Each character owns its own items.',
+      ),
+    );
+  }
+
+  const preview = avatarPreview(config);
   return el(
     'section',
     { class: 'card' },
-    el('h3', { class: 'profile__section-title' }, 'Progress'),
-    el(
-      'div',
-      { class: 'profile__stats' },
-      statTile(String(view.level), 'Level'),
-      statTile(String(view.xp), 'Experience'),
-      statTile(String(view.achievementsUnlocked), 'Achievements'),
-      statTile(String(view.itemsOwned), 'Items'),
-    ),
-    progress(bar.xpIntoLevel, bar.xpIntoLevel + bar.xpToNextLevel, {
-      label: `Level ${view.level}`,
-      caption: `${bar.xpIntoLevel} / ${bar.xpIntoLevel + bar.xpToNextLevel} XP to level ${view.level + 1}`,
-    }),
+    el('h3', { class: 'profile__section-title' }, `Equipped on ${characterName}`),
     el(
       'p',
       { class: 'muted profile__hint' },
-      view.nextRewardLevel === null
-        ? 'Rewards for levelling up are still being finalised, so no item is granted yet.'
-        : `Next reward at level ${view.nextRewardLevel}.`,
+      `${equippedCount(view)} of ${EQUIPMENT_SLOTS.length} slots filled.`,
     ),
+    preview ??
+      el(
+        'ul',
+        { class: 'avatar__loadout' },
+        ...EQUIPMENT_SLOTS.map((slot) =>
+          el(
+            'li',
+            { class: 'avatar__loadout-row' },
+            el('span', { class: 'avatar__loadout-slot' }, SLOT_LABELS[slot]),
+            el(
+              'span',
+              { class: 'avatar__loadout-value' },
+              config.equipment[slot]
+                ? el('span', { class: 'avatar__loadout-name' }, config.equipment[slot] as string)
+                : el('span', { class: 'avatar__loadout-empty muted' }, 'Nothing equipped'),
+            ),
+          ),
+        ),
+      ),
   );
 }
 
@@ -171,49 +211,8 @@ function itemsSection(
   );
 }
 
-/** One achievement row: name, description and progress toward the threshold. */
-function achievementRow(view: AchievementView): HTMLElement {
-  const { achievement } = view;
-  return el(
-    'li',
-    { class: `achievement${view.earned ? ' achievement--earned' : ''}` },
-    el(
-      'div',
-      { class: 'achievement__head' },
-      el('span', { class: 'achievement__name' }, achievement.name),
-      view.earned
-        ? chip('Unlocked', 'ok', true)
-        : chip(`${view.current} / ${view.threshold}`, 'muted'),
-    ),
-    el('p', { class: 'muted achievement__hint' }, achievement.description),
-    view.earned
-      ? null
-      : progress(view.current, view.threshold, { label: 'Progress', caption: percent(view.ratio) }),
-  );
-}
-
-/** The achievements card. */
-function achievementsSection(view: AchievementsView): HTMLElement {
-  return el(
-    'section',
-    { class: 'card' },
-    el('h3', { class: 'profile__section-title' }, 'Achievements'),
-    view.achievements.length === 0
-      ? emptyState('No achievements yet', 'Achievements will appear here once they are defined.')
-      : el(
-          'ul',
-          { class: 'achievements' },
-          ...view.achievements.map((achievement) => achievementRow(achievement)),
-        ),
-  );
-}
-
 /** Render the full inventory. */
-function showInventory(
-  view: InventoryView,
-  progress: ProgressView,
-  achievements: AchievementsView,
-): void {
+function showInventory(view: InventoryView): void {
   const character = findCharacter(view.characterId);
   const characterName = character ? character.name : (view.characterId ?? 'your character');
 
@@ -251,9 +250,8 @@ function showInventory(
           ),
         ),
       ),
-      progressSection(progress),
+      loadoutSection(view, characterName),
       itemsSection(view, characterName, equip),
-      achievementsSection(achievements),
     ]),
   );
 }
@@ -319,12 +317,8 @@ function renderSignIn(): void {
 /** Load and render the inventory, or a sign-in / error screen. */
 async function load(): Promise<void> {
   try {
-    const [view, progress, achievements] = await Promise.all([
-      get<InventoryView>('/api/inventory'),
-      get<ProgressView>('/api/progress'),
-      get<AchievementsView>('/api/achievements'),
-    ]);
-    showInventory(view, progress, achievements);
+    const view = await get<InventoryView>('/api/inventory');
+    showInventory(view);
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       renderSignIn();

@@ -16,15 +16,29 @@ import type {
   PublicQuestion,
 } from '@zeropeek/shared';
 
+import { get } from '../api.js';
+import { playerAvatar } from '../avatar.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { questionInput, questionPrompt } from '../questionView.js';
-import { hostStatusChip, lobbyRoster, registerOffer, screenForSync } from '../playerView.js';
+import {
+  endProgressActions,
+  hostStatusChip,
+  joinIdentityHint,
+  lobbyRoster,
+  screenForSync,
+} from '../playerView.js';
 import { button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
 import { saveClaim } from '../claim.js';
 
 const STORAGE_KEY = 'zeropeek.player';
+
+/** The signed-in player account, or `null` for a guest (Phase 6.8.3). */
+interface PlayerAccount {
+  id: string;
+  username: string;
+}
 
 /** The host's reachability as last announced, or null before the first event. */
 let hostStatus: HostPresence | null = null;
@@ -33,6 +47,14 @@ let currentQuestion: PublicQuestion | null = null;
 let currentPrior: PlayerAnswerState | null = null;
 /** A closure that repaints the current screen, so a host-status change re-renders it. */
 let repaint: (() => void) | null = null;
+/**
+ * The signed-in player account, resolved once at boot from `/api/player-auth/me`
+ * (Phase 6.8.3). `null` means a guest. It decides whether the join asks for a
+ * name (guest) or uses the account's (signed-in) and whether the end screen
+ * offers registration — the two bugs this phase fixes. Only the **player**
+ * context is read, so a host signed in on the same browser stays a guest here.
+ */
+let account: PlayerAccount | null = null;
 
 /** Repaint the current screen in place (used when only the host status changed). */
 function rerenderCurrent(): void {
@@ -59,6 +81,8 @@ interface StoredSession {
   playerId: string;
   token: string;
   nickname: string;
+  /** The character id the server seated this player with, or `''` (Phase 6.8.3). */
+  avatar: string;
 }
 
 function loadSession(): StoredSession | null {
@@ -85,7 +109,7 @@ const app: HTMLElement = appElement;
 {
   const socket: PlayerSocket = connectPlayer();
 
-  /** Show the join form. */
+  /** Show the join form. A signed-in player is asked for the PIN only. */
   function showJoin(message?: string): void {
     const pin = el('input', {
       class: 'input',
@@ -107,12 +131,21 @@ const app: HTMLElement = appElement;
         feedback.replaceChildren();
         setBusy(submit, true);
         try {
-          const result = await request<{ playerId: string; gameId: string; token: string }>(
-            socket,
-            'player:join',
-            { pin: pin.value.trim().toUpperCase(), nickname: nickname.value.trim() },
-          );
-          saveSession({ ...result, nickname: nickname.value.trim() });
+          // A signed-in player sends no nickname: the server seats them under
+          // their account name and avatar (Phase 6.8.3). A guest sends the name.
+          const payload = account
+            ? { pin: pin.value.trim().toUpperCase() }
+            : { pin: pin.value.trim().toUpperCase(), nickname: nickname.value.trim() };
+          const result = await request<{
+            playerId: string;
+            gameId: string;
+            token: string;
+            nickname: string;
+            avatar: string;
+          }>(socket, 'player:join', payload);
+          // Store the identity the **server** seated (never the typed one), so a
+          // reconnect and the screens agree with the roster.
+          saveSession({ ...result });
           showWaiting();
         } catch (error) {
           feedback.replaceChildren(notice(errorText(error), 'error'));
@@ -140,8 +173,10 @@ const app: HTMLElement = appElement;
             },
             el('h1', { class: 'join__title' }, 'Join a game'),
             el('p', { class: 'muted' }, 'Enter the PIN shown on the big screen.'),
+            account ? joinIdentityHint(account.username) : null,
             field('Game PIN', pin),
-            field('Your name', nickname),
+            // A guest must supply a name; a signed-in player never re-enters one.
+            account ? null : field('Your name', nickname),
             message ? notice(message, 'info') : null,
             feedback,
             el('div', { class: 'join__actions' }, submit),
@@ -165,6 +200,11 @@ const app: HTMLElement = appElement;
           el(
             'div',
             { class: 'card lobby anim-fade-in' },
+            el(
+              'div',
+              { class: 'lobby__me' },
+              playerAvatar(session?.nickname ?? 'player', session?.avatar, { size: 'lg' }),
+            ),
             el('h1', { class: 'join__title' }, `You're in, ${session?.nickname ?? 'player'}!`),
             el('p', { class: 'muted' }, 'Look at the big screen. The game starts soon.'),
             el(
@@ -209,6 +249,7 @@ const app: HTMLElement = appElement;
       });
     }
 
+    const me = loadSession();
     render(
       app,
       shell(
@@ -219,6 +260,12 @@ const app: HTMLElement = appElement;
           el(
             'div',
             { class: 'card question' },
+            el(
+              'div',
+              { class: 'question__who' },
+              playerAvatar(me?.nickname ?? 'player', me?.avatar, { size: 'sm' }),
+              el('span', { class: 'question__who-name' }, me?.nickname ?? 'player'),
+            ),
             el(
               'div',
               { class: 'question__meta muted' },
@@ -334,7 +381,12 @@ const app: HTMLElement = appElement;
                         : 'leaderboard__row',
                   },
                   el('span', { class: 'leaderboard__rank' }, String(index + 1)),
-                  el('span', { class: 'leaderboard__name' }, player.nickname),
+                  el(
+                    'span',
+                    { class: 'leaderboard__who' },
+                    playerAvatar(player.nickname, player.avatar, { size: 'sm' }),
+                    el('span', { class: 'leaderboard__name' }, player.nickname),
+                  ),
                   el('span', { class: 'leaderboard__score' }, String(player.score)),
                 ),
               ),
@@ -347,6 +399,7 @@ const app: HTMLElement = appElement;
 
   /** Show the final placement. */
   function showEnd(payload: { rank: number; score: number; podium: PublicPlayer[] }): void {
+    const session = loadSession();
     render(
       app,
       shell(
@@ -357,6 +410,11 @@ const app: HTMLElement = appElement;
           el(
             'div',
             { class: 'card' },
+            el(
+              'div',
+              { class: 'lobby__me' },
+              playerAvatar(session?.nickname ?? 'player', session?.avatar, { size: 'lg' }),
+            ),
             el('h1', { class: 'join__title' }, `You finished #${payload.rank}`),
             el('p', { class: 'muted' }, `Final score: ${payload.score}`),
             el(
@@ -367,7 +425,12 @@ const app: HTMLElement = appElement;
                   'li',
                   { class: 'leaderboard__row' },
                   el('span', { class: 'leaderboard__rank' }, String(index + 1)),
-                  el('span', { class: 'leaderboard__name' }, player.nickname),
+                  el(
+                    'span',
+                    { class: 'leaderboard__who' },
+                    playerAvatar(player.nickname, player.avatar, { size: 'sm' }),
+                    el('span', { class: 'leaderboard__name' }, player.nickname),
+                  ),
                   el('span', { class: 'leaderboard__score' }, String(player.score)),
                 ),
               ),
@@ -383,9 +446,10 @@ const app: HTMLElement = appElement;
                 },
               }),
             ),
-            // Optional: an account keeps progress across games. A guest can
-            // simply play again; this never blocks anything.
-            registerOffer(),
+            // A signed-in player's round was already granted to their account, so
+            // they are told it was saved and offered no registration. A guest
+            // keeps the optional invitation (Phase 6.8.3).
+            endProgressActions(account !== null),
           ),
         ),
       ),
@@ -516,6 +580,20 @@ const app: HTMLElement = appElement;
     hasConnected = true;
   });
 
-  if (loadSession()) rejoinStored();
-  else showJoin();
+  // Resolve the signed-in player account once, then boot. The lookup is
+  // best-effort: any failure (offline, a stale cookie, a 401) simply means
+  // "guest", so the join is never blocked by it. Only the **player** context is
+  // read, so a host signed in on the same browser stays a guest on this surface.
+  void (async () => {
+    try {
+      const me = await get<{ user: { id: string; username: string; role: string } | null }>(
+        '/api/player-auth/me',
+      );
+      account = me.user ? { id: me.user.id, username: me.user.username } : null;
+    } catch {
+      account = null;
+    }
+    if (loadSession()) rejoinStored();
+    else showJoin();
+  })();
 }

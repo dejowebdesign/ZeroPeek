@@ -473,6 +473,10 @@ function percent(ratio: number): string {
  * All values come from the server (`GET /api/progress`); the page never computes
  * an XP total or a level itself. The progress bar shows the XP inside the current
  * level against the climb to the next one, so the numbers and the bar agree.
+ *
+ * This card owns **level and XP** for the profile. The item count and the
+ * equipment live on the inventory page instead (Phase 6.8.3), so the two
+ * surfaces no longer repeat the same figures.
  */
 function progressSection(view: ProgressView): HTMLElement {
   const { progress: bar } = view;
@@ -486,7 +490,6 @@ function progressSection(view: ProgressView): HTMLElement {
       statTile(String(view.level), 'Level'),
       statTile(String(view.xp), 'Experience'),
       statTile(String(view.achievementsUnlocked), 'Achievements'),
-      statTile(String(view.itemsOwned), 'Items'),
     ),
     progress(bar.xpIntoLevel, bar.xpIntoLevel + bar.xpToNextLevel, {
       label: `Level ${view.level}`,

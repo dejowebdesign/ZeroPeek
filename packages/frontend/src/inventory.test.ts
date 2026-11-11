@@ -61,22 +61,6 @@ function stubFetch(routes: Route[]): Call[] {
 
 const ME = { user: { id: 'p1', username: 'alice', role: 'PLAYER' }, csrfToken: 'csrf-token' };
 
-const PROGRESS = {
-  xp: 12_500,
-  level: 2,
-  progress: {
-    level: 2,
-    xpIntoLevel: 2_500,
-    xpForThisLevel: 10_000,
-    xpToNextLevel: 7_500,
-    nextLevel: 3,
-    ratio: 0.25,
-  },
-  nextRewardLevel: null,
-  achievementsUnlocked: 1,
-  itemsOwned: 5,
-};
-
 const ITEM = {
   id: 'ethan_visor',
   name: 'Field visor',
@@ -91,32 +75,13 @@ const ITEM = {
 const INVENTORY = {
   characterId: 'ethan',
   items: [
-    { item: ITEM, owned: true, source: 'default', equipped: false, unlockHint: null },
+    { item: ITEM, owned: true, source: 'default', equipped: true, unlockHint: null },
     {
       item: { ...ITEM, id: 'ethan_crown', name: 'Golden crown' },
       owned: false,
       source: null,
       equipped: false,
       unlockHint: 'The unlock condition is not defined yet.',
-    },
-  ],
-};
-
-const ACHIEVEMENTS = {
-  achievements: [
-    {
-      achievement: {
-        id: 'first-game',
-        name: 'First round',
-        description: 'Finish your first game.',
-        condition: { kind: 'games-played', threshold: 1 },
-        rewardItemId: null,
-      },
-      earned: false,
-      unlockedAt: null,
-      current: 0,
-      threshold: 1,
-      ratio: 0,
     },
   ],
 };
@@ -139,28 +104,40 @@ afterEach(() => {
 });
 
 describe('inventory page', () => {
-  it('shows the server level and XP, the items and the achievements', async () => {
+  it('shows the active character’s items, owned and locked, with the equipped loadout', async () => {
     stubFetch([
       { match: /\/api\/player-auth\/me$/, body: ME },
       { match: /\/api\/inventory$/, body: INVENTORY },
-      { match: /\/api\/progress$/, body: PROGRESS },
-      { match: /\/api\/achievements$/, body: ACHIEVEMENTS },
     ]);
     await bootInventory();
 
     const text = APP().textContent ?? '';
-    expect(text).toContain('12500');
     expect(text).toContain('Field visor');
     expect(text).toContain('Golden crown');
-    expect(text).toContain('First round');
+    // The inventory owns the equipment view: the loadout card names the slots.
+    expect(text).toContain('Equipped on');
+    expect(text).toContain('Backpack');
+    // It no longer repeats the profile's level/XP/achievements figures.
+    expect(text).not.toContain('12500');
+    expect(text).not.toContain('First round');
+  });
+
+  it('reads only the inventory endpoint, not progress or achievements (de-duplicated)', async () => {
+    const calls = stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      { match: /\/api\/inventory$/, body: INVENTORY },
+    ]);
+    await bootInventory();
+
+    expect(calls.some((call) => /\/api\/inventory$/.test(call.url))).toBe(true);
+    expect(calls.some((call) => /\/api\/progress$/.test(call.url))).toBe(false);
+    expect(calls.some((call) => /\/api\/achievements$/.test(call.url))).toBe(false);
   });
 
   it('shows a locked item with the server hint and no equip control', async () => {
     stubFetch([
       { match: /\/api\/player-auth\/me$/, body: ME },
       { match: /\/api\/inventory$/, body: INVENTORY },
-      { match: /\/api\/progress$/, body: PROGRESS },
-      { match: /\/api\/achievements$/, body: ACHIEVEMENTS },
     ]);
     await bootInventory();
 
@@ -174,9 +151,15 @@ describe('inventory page', () => {
   it('equips an owned item through the server with the CSRF token', async () => {
     const calls = stubFetch([
       { match: /\/api\/player-auth\/me$/, body: ME },
-      { match: /\/api\/inventory$/, body: INVENTORY },
-      { match: /\/api\/progress$/, body: PROGRESS },
-      { match: /\/api\/achievements$/, body: ACHIEVEMENTS },
+      {
+        match: /\/api\/inventory$/,
+        body: {
+          characterId: 'ethan',
+          items: [
+            { item: ITEM, owned: true, source: 'default', equipped: false, unlockHint: null },
+          ],
+        },
+      },
       {
         match: /\/api\/inventory\/equip$/,
         method: 'POST',

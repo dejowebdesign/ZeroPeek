@@ -272,6 +272,20 @@ describe('design-system components', () => {
     'achievement__head',
     'achievement__name',
     'achievement__hint',
+    // Player avatar badge and in-game identity (Phase 6.8.3).
+    'player-avatar',
+    'player-avatar--sm',
+    'player-avatar--md',
+    'player-avatar--lg',
+    'player-avatar__img',
+    'player-avatar__initial',
+    'leaderboard__who',
+    'question__who',
+    'question__who-name',
+    'lobby__me',
+    'end-saved',
+    'end-saved__hint',
+    'end-saved__actions',
   ];
 
   for (const name of classes) {

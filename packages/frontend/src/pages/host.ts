@@ -22,6 +22,7 @@ import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
+import { playerAvatar } from '../avatar.js';
 import { leaderboardRow, podiumPlace, questionDisplayOptions } from '../showView.js';
 import {
   attachHostHandlers,
@@ -674,6 +675,7 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
         el(
           'li',
           { class: 'lobby__player' },
+          playerAvatar(player.nickname, player.avatar, { size: 'sm' }),
           el('span', { class: 'lobby__player-name' }, player.nickname),
           kickButton(player.id, player.nickname),
         ),

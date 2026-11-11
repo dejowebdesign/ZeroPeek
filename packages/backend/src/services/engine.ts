@@ -535,6 +535,16 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     },
   ): Promise<void> {
     const game = await this.get(gameId);
+    const existing = game.players.get(player.id);
+    if (existing) {
+      // A signed-in player rejoining their own seat (Phase 6.8.3): refresh the
+      // display fields, but never reset a live score or connection state, so a
+      // reload mid-lobby cannot wipe progress or fake a reconnect.
+      existing.nickname = player.nickname;
+      existing.avatar = player.avatar;
+      this.emitLobby(game);
+      return;
+    }
     game.players.set(player.id, {
       id: player.id,
       nickname: player.nickname,

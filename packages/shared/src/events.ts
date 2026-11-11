@@ -192,9 +192,18 @@ export interface PlayerServerEvents {
 
 /** Player → server events (namespace `/`). */
 export interface PlayerClientEvents {
+  /**
+   * Join a lobby. A **signed-in** player may omit `nickname` and `avatar`: the
+   * server then seats them under the account's own username and selected
+   * character, so a registered player never has to re-enter a name and always
+   * appears with their avatar. A `nickname` sent by a signed-in player is
+   * ignored — the account name always wins — while a guest must supply one (and
+   * their avatar stays empty). The ACK echoes the identity the server actually
+   * seated, so the client shows what it joined as rather than what it typed.
+   */
   'player:join': (
-    payload: { pin: string; nickname: string; avatar?: string },
-    ack: Ack<{ playerId: string; gameId: string; token: string }>,
+    payload: { pin: string; nickname?: string; avatar?: string },
+    ack: Ack<{ playerId: string; gameId: string; token: string; nickname: string; avatar: string }>,
   ) => void;
   'player:answer': (
     payload: { questionId: string; answer: unknown },

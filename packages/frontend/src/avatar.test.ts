@@ -25,6 +25,7 @@ import {
   characterBaseImage,
   characterPreviewImage,
   itemThumb,
+  playerAvatar,
   slotItems,
   withSlot,
 } from './avatar.js';
@@ -135,5 +136,39 @@ describe('renderer', () => {
     expect(changed.outfit).toBe(base.outfit);
     // The original is untouched (pure helper).
     expect(base.visor).toBe('ethan_visor');
+  });
+});
+
+describe('player avatar badge (Phase 6.8.3)', () => {
+  it('draws the real character figure for a character with artwork', () => {
+    const badge = playerAvatar('Ada', 'ethan', { size: 'sm' });
+    expect(badge.classList.contains('player-avatar')).toBe(true);
+    expect(badge.classList.contains('player-avatar--art')).toBe(true);
+    const img = badge.querySelector<HTMLImageElement>('.player-avatar__img');
+    expect(img?.getAttribute('src')).toBe('/characters/ethan/ethan_base_current.webp');
+    // Decorative: the nickname beside it carries the meaning.
+    expect(badge.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('falls back to a letter badge for a missing or art-less character', () => {
+    for (const avatarId of ['', null, undefined, 'pixel', 'not-a-character']) {
+      const badge = playerAvatar('maya', avatarId);
+      expect(badge.classList.contains('player-avatar--art')).toBe(false);
+      // No image at all — never an empty frame or an invented path.
+      expect(badge.querySelector('img')).toBeNull();
+      expect(badge.querySelector('.player-avatar__initial')?.textContent).toBe('M');
+    }
+  });
+
+  it('uses a placeholder initial when the nickname is blank', () => {
+    const badge = playerAvatar('   ');
+    expect(badge.querySelector('.player-avatar__initial')?.textContent).toBe('?');
+  });
+
+  it('never invents a path: an art badge points at an existing file', () => {
+    const badge = playerAvatar('Ada', 'maya', { size: 'lg' });
+    const src = badge.querySelector<HTMLImageElement>('.player-avatar__img')?.getAttribute('src');
+    expect(src).toBeTruthy();
+    expect(existsSync(assetFile(src!))).toBe(true);
   });
 });
