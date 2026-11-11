@@ -1,0 +1,11 @@
+-- Safe default role (least privilege).
+--
+-- Only the *column default* changes: a user created without an explicit role is
+-- now a PLAYER instead of a TRAINER. No existing row is read or written, so no
+-- account is reclassified -- ADMIN and TRAINER accounts keep their role, and the
+-- deliberate creation of staff accounts (which always passes the role
+-- explicitly) is unaffected.
+--
+-- Reverse (to roll back):
+--   ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'TRAINER';
+ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'PLAYER';

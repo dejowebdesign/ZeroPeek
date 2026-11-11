@@ -57,6 +57,13 @@ in principle with our own implementation.
 - Roles (`ADMIN`, `TRAINER`, `PLAYER`) enforced **server-side** on every route and every socket event.
   The client never decides permissions. `PLAYER` is authenticated but not staff, so it cannot reach
   the trainer or admin surfaces.
+- **Least-privilege default.** A user created without an explicit role is a `PLAYER`, never staff
+  (schema default and `createUser`/admin-create fallback). Staff accounts are only ever created with
+  an explicit `ADMIN`/`TRAINER` role, so a missing role can never silently grant host access.
+- **Manual e-mail confirmation.** `POST /api/admin/users/:id/verified` (ADMIN only, CSRF-protected)
+  lets an administrator confirm a single account's address when the confirmation mail could not be
+  delivered. It writes only `emailVerifiedAt` on that one account and is idempotent; it is not a
+  global bypass of e-mail verification.
 
 **Realtime**
 

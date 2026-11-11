@@ -446,6 +446,243 @@ describe.skipIf(!available)('REST API integration', () => {
       });
       expect(response.statusCode).toBe(403);
     });
+
+    it('accepts PLAYER as a target role and shows it back', async () => {
+      const target = await createUser({
+        username: 'gamer',
+        password: 'correct-horse-battery',
+        role: 'TRAINER',
+      });
+      const admin = await asAdmin();
+      const response = await admin('POST', `/api/admin/users/${target.id}/role`, {
+        role: 'PLAYER',
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().role).toBe('PLAYER');
+    });
+
+    it('refuses to demote the last administrator to PLAYER', async () => {
+      // The last-admin rule must hold for the new PLAYER target too, not only
+      // for TRAINER, or an installation could lose its only admin.
+      const admin = await asAdmin();
+      const me = await admin('GET', '/api/auth/me');
+      const response = await admin('POST', `/api/admin/users/${me.json().user.id}/role`, {
+        role: 'PLAYER',
+      });
+      expect(response.statusCode).toBe(409);
+    });
+
+    it('rejects an unknown role', async () => {
+      const target = await createUser({
+        username: 'gamer',
+        password: 'correct-horse-battery',
+        role: 'TRAINER',
+      });
+      const admin = await asAdmin();
+      const response = await admin('POST', `/api/admin/users/${target.id}/role`, {
+        role: 'SUPERUSER',
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('creates a user as PLAYER when no role is given', async () => {
+      // Least privilege: an omitted role must not produce staff.
+      const admin = await asAdmin();
+      const created = await admin('POST', '/api/admin/users', {
+        username: 'no-role',
+        password: 'a-long-enough-password',
+      });
+      expect(created.statusCode).toBe(200);
+      expect(created.json().role).toBe('PLAYER');
+    });
+
+    it('defaults a user created without a role to PLAYER at the service level', async () => {
+      const user = await createUser({
+        username: 'service-default',
+        password: 'correct-horse-battery',
+      });
+      expect(user.role).toBe('PLAYER');
+    });
+
+    describe('e-mail confirmation', () => {
+      it('lets an admin confirm a single unconfirmed account', async () => {
+        const player = await createUser({
+          username: 'maya',
+          password: 'correct-horse-battery',
+          email: 'maya@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: null,
+        });
+        const admin = await asAdmin();
+        const response = await admin('POST', `/api/admin/users/${player.id}/verified`, {});
+        expect(response.statusCode).toBe(200);
+        expect(response.json().emailVerifiedAt).not.toBeNull();
+      });
+
+      it('is idempotent and keeps the original confirmation time', async () => {
+        const first = new Date('2026-01-02T03:04:05.000Z');
+        const player = await createUser({
+          username: 'maya',
+          password: 'correct-horse-battery',
+          email: 'maya@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: first,
+        });
+        const admin = await asAdmin();
+        const response = await admin('POST', `/api/admin/users/${player.id}/verified`, {});
+        expect(response.statusCode).toBe(200);
+        expect(new Date(response.json().emailVerifiedAt).toISOString()).toBe(first.toISOString());
+      });
+
+      it('does not touch any other account', async () => {
+        const target = await createUser({
+          username: 'maya',
+          password: 'correct-horse-battery',
+          email: 'maya@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: null,
+        });
+        await createUser({
+          username: 'other',
+          password: 'correct-horse-battery',
+          email: 'other@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: null,
+        });
+        const admin = await asAdmin();
+        await admin('POST', `/api/admin/users/${target.id}/verified`, {});
+        const list = await admin('GET', '/api/admin/users');
+        const other = list.json().users.find((u: { username: string }) => u.username === 'other');
+        expect(other.emailVerifiedAt).toBeNull();
+      });
+
+      it('leaves the role, password and session state untouched', async () => {
+        const player = await createUser({
+          username: 'maya',
+          password: 'correct-horse-battery',
+          email: 'maya@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: null,
+        });
+        const before = await prisma.user.findUniqueOrThrow({ where: { id: player.id } });
+        const admin = await asAdmin();
+        await admin('POST', `/api/admin/users/${player.id}/verified`, {});
+        const after = await prisma.user.findUniqueOrThrow({ where: { id: player.id } });
+        expect(after.role).toBe(before.role);
+        expect(after.passwordHash).toBe(before.passwordHash);
+        expect(after.disabled).toBe(before.disabled);
+      });
+
+      it('lets a confirmed player sign in afterwards', async () => {
+        const player = await createUser({
+          username: 'maya',
+          password: 'correct-horse-battery',
+          email: 'maya@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: null,
+        });
+        const blocked = await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { username: 'maya', password: 'correct-horse-battery' },
+        });
+        expect(blocked.statusCode).toBe(403);
+
+        const admin = await asAdmin();
+        await admin('POST', `/api/admin/users/${player.id}/verified`, {});
+
+        const allowed = await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { username: 'maya', password: 'correct-horse-battery' },
+        });
+        expect(allowed.statusCode).toBe(200);
+      });
+
+      it('can be reversed with verified:false', async () => {
+        const player = await createUser({
+          username: 'maya',
+          password: 'correct-horse-battery',
+          email: 'maya@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: null,
+        });
+        const admin = await asAdmin();
+        await admin('POST', `/api/admin/users/${player.id}/verified`, {});
+        const cleared = await admin('POST', `/api/admin/users/${player.id}/verified`, {
+          verified: false,
+        });
+        expect(cleared.statusCode).toBe(200);
+        expect(cleared.json().emailVerifiedAt).toBeNull();
+      });
+
+      it('forbids a trainer (non-admin) from confirming', async () => {
+        const player = await createUser({
+          username: 'maya',
+          password: 'correct-horse-battery',
+          email: 'maya@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: null,
+        });
+        // `as` uses the trainer session established in beforeEach.
+        const response = await as('POST', `/api/admin/users/${player.id}/verified`, {});
+        expect(response.statusCode).toBe(403);
+        const after = await prisma.user.findUniqueOrThrow({ where: { id: player.id } });
+        expect(after.emailVerifiedAt).toBeNull();
+      });
+
+      it('requires a session', async () => {
+        const player = await createUser({
+          username: 'maya',
+          password: 'correct-horse-battery',
+          email: 'maya@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: null,
+        });
+        const response = await app.inject({
+          method: 'POST',
+          url: `/api/admin/users/${player.id}/verified`,
+          headers: { 'x-csrf-token': 'irrelevant' },
+          payload: {},
+        });
+        expect(response.statusCode).toBe(401);
+      });
+
+      it('requires the CSRF token', async () => {
+        const player = await createUser({
+          username: 'maya',
+          password: 'correct-horse-battery',
+          email: 'maya@example.com',
+          role: 'PLAYER',
+          emailVerifiedAt: null,
+        });
+        const login = await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { username: 'root', password: 'correct-horse-battery' },
+        });
+        const adminCookie = String(login.headers['set-cookie']).split(';')[0]!;
+        const response = await app.inject({
+          method: 'POST',
+          url: `/api/admin/users/${player.id}/verified`,
+          headers: { cookie: adminCookie },
+          payload: {},
+        });
+        expect(response.statusCode).toBe(403);
+        const after = await prisma.user.findUniqueOrThrow({ where: { id: player.id } });
+        expect(after.emailVerifiedAt).toBeNull();
+      });
+
+      it('answers 404 for an unknown account', async () => {
+        const admin = await asAdmin();
+        const response = await admin(
+          'POST',
+          '/api/admin/users/00000000-0000-0000-0000-000000000000/verified',
+          {},
+        );
+        expect(response.statusCode).toBe(404);
+      });
+    });
   });
 });
 

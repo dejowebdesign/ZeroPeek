@@ -92,7 +92,9 @@ export async function createUser(input: {
       username,
       email,
       passwordHash: await hashPassword(input.password),
-      role: input.role ?? 'TRAINER',
+      // Least privilege: an omitted role means PLAYER. Staff accounts are only
+      // ever created by an administrator, who passes the role explicitly.
+      role: input.role ?? 'PLAYER',
       emailVerifiedAt: input.emailVerifiedAt === undefined ? new Date() : input.emailVerifiedAt,
     },
   });
@@ -178,6 +180,28 @@ export async function setRole(id: string, role: UserRole): Promise<PublicUser> {
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user) throw notFound('User not found.');
   return toPublic(await prisma.user.update({ where: { id }, data: { role } }));
+}
+
+/**
+ * Mark a single account's e-mail as confirmed (admin action). Sets
+ * `emailVerifiedAt` to now, or back to `null` when `verified` is false.
+ *
+ * Only this one column of this one row is written: the role, password,
+ * sessions, progression and game history are untouched, and no other account is
+ * affected. An already-confirmed account keeps its original timestamp
+ * (idempotent) so a repeated click never rewrites the recorded moment.
+ */
+export async function setEmailVerified(id: string, verified: boolean): Promise<PublicUser> {
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) throw notFound('User not found.');
+  if (!verified) {
+    return toPublic(await prisma.user.update({ where: { id }, data: { emailVerifiedAt: null } }));
+  }
+  // Idempotent: keep the first confirmation time if one is already recorded.
+  if (user.emailVerifiedAt) return toPublic(user);
+  return toPublic(
+    await prisma.user.update({ where: { id }, data: { emailVerifiedAt: new Date() } }),
+  );
 }
 
 /** Count the admins, so the last one cannot be demoted or disabled. */

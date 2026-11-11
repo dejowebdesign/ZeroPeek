@@ -29,7 +29,11 @@ model User {
   username        String    @unique
   email           String?   @unique
   passwordHash    String    @map("password_hash")
-  role            UserRole  @default(TRAINER)
+  /// Least-privilege default: a user created without an explicit role is a
+  /// player, never staff. Staff accounts are always created with an explicit
+  /// `ADMIN`/`TRAINER` role, so the safe default can never silently grant host
+  /// access. Existing rows are unaffected — only the column default changes.
+  role            UserRole  @default(PLAYER)
   disabled        Boolean   @default(false)
   /// When the e-mail address was confirmed. `null` means not yet confirmed;
   /// accounts that existed before Phase 6.3 are treated as confirmed by the
