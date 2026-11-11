@@ -38,7 +38,7 @@ import {
   toast,
 } from '../ui.js';
 
-type UserRole = 'ADMIN' | 'TRAINER';
+type UserRole = 'ADMIN' | 'TRAINER' | 'PLAYER';
 
 interface User {
   id: string;
@@ -46,6 +46,8 @@ interface User {
   email: string | null;
   role: UserRole;
   disabled: boolean;
+  /** When the e-mail was confirmed; `null` means not yet confirmed. */
+  emailVerifiedAt: string | null;
   createdAt: string;
 }
 
@@ -80,7 +82,9 @@ interface AdminView {
 }
 
 function roleLabel(role: UserRole): string {
-  return role === 'ADMIN' ? 'Administrator' : 'Trainer';
+  if (role === 'ADMIN') return 'Administrator';
+  if (role === 'TRAINER') return 'Trainer';
+  return 'Player';
 }
 
 /**
@@ -145,6 +149,11 @@ function row(user: User, view: AdminView): HTMLElement {
   const roleSelect = el(
     'select',
     { class: 'input' },
+    el(
+      'option',
+      { value: 'PLAYER', ...(user.role === 'PLAYER' ? { selected: true } : {}) },
+      'Player',
+    ),
     el(
       'option',
       { value: 'TRAINER', ...(user.role === 'TRAINER' ? { selected: true } : {}) },
@@ -221,7 +230,12 @@ function row(user: User, view: AdminView): HTMLElement {
     el(
       'td',
       { 'data-label': 'Status' },
-      chip(user.disabled ? 'Disabled' : 'Active', user.disabled ? 'bad' : 'ok', true),
+      el(
+        'div',
+        { class: 'admin__cell' },
+        chip(user.disabled ? 'Disabled' : 'Active', user.disabled ? 'bad' : 'ok', true),
+        emailStatusChip(user),
+      ),
     ),
     el(
       'td',
@@ -230,10 +244,51 @@ function row(user: User, view: AdminView): HTMLElement {
         'div',
         { class: 'admin__actions' },
         toggle,
+        verifyButton(user, view),
         button('Reset password', { small: true, onClick: () => resetPassword(user) }),
       ),
     ),
   );
+}
+
+/**
+ * The e-mail confirmation state of an account. An account without an address
+ * cannot be confirmed, and a confirmed one has nothing left to do, so both are
+ * shown as plain facts; only an unconfirmed address is a call to action.
+ */
+function emailStatusChip(user: User): HTMLElement {
+  if (!user.email) return chip('No e-mail', 'muted');
+  if (user.emailVerifiedAt) return chip('E-mail confirmed', 'ok', true);
+  return chip('E-mail unconfirmed', 'warn', true);
+}
+
+/**
+ * The "Confirm e-mail" action, shown only for an account that has an address
+ * that is not confirmed yet. Confirming an already-confirmed account would be a
+ * no-op, so the control is simply absent. The server enforces the same rule.
+ */
+function verifyButton(user: User, view: AdminView): HTMLElement | null {
+  if (!user.email || user.emailVerifiedAt) return null;
+  return button('Confirm e-mail', {
+    small: true,
+    variant: 'secondary',
+    onClick: () => {
+      confirmDialog({
+        title: 'Confirm this e-mail?',
+        body: `${user.username} (${user.email}) will be marked as confirmed and can sign in immediately. This is meant for accounts whose confirmation e-mail could not be delivered. The password, role, sessions and game data are not touched.`,
+        confirmLabel: 'Confirm e-mail',
+        onConfirm: () => {
+          void mutate(
+            async () => {
+              await post(`/api/admin/users/${user.id}/verified`, {});
+            },
+            `E-mail confirmed for ${user.username}.`,
+            view,
+          );
+        },
+      });
+    },
+  });
 }
 
 /** Run a mutation, report the outcome, and repaint from the server on the way out. */
@@ -278,7 +333,9 @@ function changeRole(
         { class: 'muted' },
         nextRole === 'ADMIN'
           ? 'This account gains full administrative rights, including user management.'
-          : 'This account loses administrative rights. It keeps the trainer areas (quizzes and games).',
+          : nextRole === 'TRAINER'
+            ? 'This account gains the host areas (quizzes and games) but no administrative rights.'
+            : 'This account loses all staff access and becomes a player. It can only join games.',
       ),
     ),
     actions: [
@@ -385,6 +442,7 @@ async function showUsers(): Promise<void> {
     { class: 'input' },
     el('option', { value: 'TRAINER' }, 'Trainer'),
     el('option', { value: 'ADMIN' }, 'Administrator'),
+    el('option', { value: 'PLAYER' }, 'Player'),
   );
   const feedback = el('div');
   const submit = button('Create user', { type: 'submit', variant: 'primary' });

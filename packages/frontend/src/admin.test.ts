@@ -378,3 +378,154 @@ describe('admin page: reset password', () => {
     });
   });
 });
+
+describe('admin page: role display', () => {
+  const users = [
+    {
+      id: 'a1',
+      username: 'root',
+      email: null,
+      role: 'ADMIN',
+      disabled: false,
+      emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
+      id: 't1',
+      username: 'trainer',
+      email: null,
+      role: 'TRAINER',
+      disabled: false,
+      emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-02T00:00:00.000Z',
+    },
+    {
+      id: 'p1',
+      username: 'player',
+      email: 'p@example.com',
+      role: 'PLAYER',
+      disabled: false,
+      emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-03T00:00:00.000Z',
+    },
+  ];
+
+  async function boot(): Promise<void> {
+    stubFetch([
+      { match: /\/api\/auth\/me$/, body: ADMIN_ME },
+      { match: /\/api\/admin\/users$/, body: { users } },
+    ]);
+    await bootAdmin();
+  }
+
+  it('labels each role correctly, PLAYER included', async () => {
+    await boot();
+    // Check the role chip, not the whole row: the row also contains the role
+    // <select>, whose options list every role name.
+    const chipText = (username: string) =>
+      [...rowFor(username).querySelectorAll('.chip')].map((c) => c.textContent?.trim());
+    expect(chipText('root')).toContain('Administrator');
+    expect(chipText('trainer')).toContain('Trainer');
+    // Regression: a real PLAYER must be labelled Player, never Trainer.
+    expect(chipText('player')).toContain('Player');
+    expect(chipText('player')).not.toContain('Trainer');
+  });
+
+  it('offers all three roles in every row selector', async () => {
+    await boot();
+    for (const username of ['root', 'trainer', 'player']) {
+      const options = [...rowFor(username).querySelectorAll('option')].map((o) => o.value);
+      expect(options).toEqual(['PLAYER', 'TRAINER', 'ADMIN']);
+    }
+    // The player row selects PLAYER, not TRAINER.
+    const playerSelect = rowFor('player').querySelector<HTMLSelectElement>('select')!;
+    expect(playerSelect.value).toBe('PLAYER');
+  });
+});
+
+describe('admin page: e-mail confirmation', () => {
+  const unconfirmed = {
+    id: 'p1',
+    username: 'player',
+    email: 'p@example.com',
+    role: 'PLAYER',
+    disabled: false,
+    emailVerifiedAt: null,
+    createdAt: '2026-01-03T00:00:00.000Z',
+  };
+  const confirmed = {
+    id: 'a1',
+    username: 'root',
+    email: 'root@example.com',
+    role: 'ADMIN',
+    disabled: false,
+    emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  it('shows the verification status for every account', async () => {
+    stubFetch([
+      { match: /\/api\/auth\/me$/, body: ADMIN_ME },
+      { match: /\/api\/admin\/users$/, body: { users: [confirmed, unconfirmed] } },
+    ]);
+    await bootAdmin();
+    expect(rowFor('root').textContent).toContain('E-mail confirmed');
+    expect(rowFor('player').textContent).toContain('E-mail unconfirmed');
+  });
+
+  it('shows the confirm action only for an unconfirmed account', async () => {
+    stubFetch([
+      { match: /\/api\/auth\/me$/, body: ADMIN_ME },
+      { match: /\/api\/admin\/users$/, body: { users: [confirmed, unconfirmed] } },
+    ]);
+    await bootAdmin();
+    expect(rowButton('player', 'Confirm e-mail')).toBeTruthy();
+    // The confirmed admin row has no such button.
+    const adminButtons = [...rowFor('root').querySelectorAll('button')].map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(adminButtons).not.toContain('Confirm e-mail');
+  });
+
+  it('asks for confirmation and only then confirms', async () => {
+    const calls = stubFetch([
+      { match: /\/api\/auth\/me$/, body: ADMIN_ME },
+      { match: /\/api\/admin\/users$/, body: { users: [unconfirmed] } },
+      { match: /\/api\/admin\/users\/p1\/verified$/, body: { ok: true } },
+    ]);
+    await bootAdmin();
+
+    rowButton('player', 'Confirm e-mail').click();
+    expect(document.querySelector('.dialog')?.textContent).toContain('player');
+    // Nothing is sent until the dialog is confirmed.
+    expect(calls.some((call) => /\/verified$/.test(call.url))).toBe(false);
+
+    // Click the dialog's own confirm button (the row button has the same label
+    // and comes first in document order).
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>('.dialog button')].find(
+      (b) => b.textContent?.trim() === 'Confirm e-mail',
+    )!;
+    confirm.click();
+    await vi.waitFor(() => {
+      expect(calls.some((call) => /\/api\/admin\/users\/p1\/verified$/.test(call.url))).toBe(true);
+    });
+  });
+
+  it('shows no confirm action for an account without an e-mail address', async () => {
+    stubFetch([
+      { match: /\/api\/auth\/me$/, body: ADMIN_ME },
+      {
+        match: /\/api\/admin\/users$/,
+        body: {
+          users: [{ ...unconfirmed, email: null, emailVerifiedAt: null }],
+        },
+      },
+    ]);
+    await bootAdmin();
+    expect(rowFor('player').textContent).toContain('No e-mail');
+    const labels = [...rowFor('player').querySelectorAll('button')].map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(labels).not.toContain('Confirm e-mail');
+  });
+});

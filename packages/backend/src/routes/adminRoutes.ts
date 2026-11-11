@@ -19,6 +19,7 @@ import {
   getUser,
   listUsers,
   setDisabled,
+  setEmailVerified,
   setPassword,
   setRole,
 } from '../services/userService.js';
@@ -45,7 +46,9 @@ export function registerAdminRoutes(app: FastifyInstance, config: AppConfig): vo
       username: body.username,
       password: body.password,
       email: body.email ?? null,
-      role: body.role ?? 'TRAINER',
+      // Least privilege: an omitted role means PLAYER, matching the schema
+      // default. The admin UI always sends the role explicitly.
+      role: body.role ?? 'PLAYER',
     });
   });
 
@@ -89,15 +92,39 @@ export function registerAdminRoutes(app: FastifyInstance, config: AppConfig): vo
     guard,
     async (request) => {
       const role = request.body?.role;
-      if (role !== 'ADMIN' && role !== 'TRAINER') throw badRequest('Unknown role.');
+      if (role !== 'ADMIN' && role !== 'TRAINER' && role !== 'PLAYER') {
+        throw badRequest('Unknown role.');
+      }
       const target = await getUser(request.params.id);
-      if (target.role === 'ADMIN' && role === 'TRAINER' && (await countAdmins()) <= 1) {
+      // Any demotion of the only administrator is refused, whether to TRAINER or
+      // to PLAYER; otherwise the installation could be left without an admin.
+      if (target.role === 'ADMIN' && role !== 'ADMIN' && (await countAdmins()) <= 1) {
         throw conflict('The last administrator cannot be demoted.');
       }
       if (target.id === currentUser(request).id && role !== 'ADMIN') {
         throw forbidden('You cannot remove your own administrator role.');
       }
       return setRole(request.params.id, role);
+    },
+  );
+
+  /**
+   * Confirm a single account's e-mail address. This is the deliberate manual
+   * escape hatch for an account whose confirmation mail could not be delivered
+   * (e.g. before SMTP is configured). It is ADMIN only and writes only
+   * `emailVerifiedAt` on the one named account — never a role, password, session
+   * or game datum, and never a bulk operation.
+   *
+   * The body is optional and defaults to `{ verified: true }`; `verified: false`
+   * clears the timestamp, so the action stays reversible.
+   */
+  app.post<{ Params: { id: string }; Body: { verified?: boolean } }>(
+    '/api/admin/users/:id/verified',
+    guard,
+    async (request) => {
+      const verified = request.body?.verified ?? true;
+      if (typeof verified !== 'boolean') throw badRequest('`verified` must be a boolean.');
+      return setEmailVerified(request.params.id, verified);
     },
   );
 }
