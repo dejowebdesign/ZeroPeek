@@ -438,13 +438,21 @@ Vorgang beim Spielende, in einer Transaktion.
   `GET /api/progress|inventory|achievements`, `POST /api/inventory/equip`, Haken am `ended`.
 - **6.8.2** – Gastkonto-Übernahme: `claimService`, `POST /api/guest-claim/status|guest-claim`,
   `game:claimable`-Socket-Ereignis (nur an den Gast selbst).
-- **Frontend** – `pages/profile.ts` (XP/Level/Erfolge + Übernahmeangebot), neue `pages/inventory.ts`
-  (+ `inventory.html`, Navigationseintrag „Inventory" verlinkt), `claim.ts` (lokaler Nachweis).
-- **Offen (Produktentscheidung):** endgültige **Belohnungsmatrix** und **Erfolgsnamen/-bedingungen**;
-  bis dahin ist die Matrix leer und jeder gesperrte Gegenstand meldet „Bedingung noch nicht definiert"
-  (kein erfundenes Asset, kein erfundener Text).
+- **6.8.4** – Fortschritt, Inventar und Spielpräsentation: neue **Levelkurve** §9.1, **slot-basierte
+  Belohnungsmatrix** (`shared/levelRewards.ts`), **Abgleich** der Levelbelohnungen
+  (`reconcileLevelRewards`), `POST /api/inventory/unequip`, Ausrüstungsverwaltung vom Profil ins
+  Inventar verschoben, Charakterkopf-Ausschnitt in der Spiel-/Beamer-Darstellung, Ganzfigur auf dem
+  Siegerpodium.
+- **Frontend** – `pages/profile.ts` (XP/Level/Erfolge + Übernahmeangebot, ohne Ausrüstungseditor),
+  neue `pages/inventory.ts` (+ `inventory.html`, Navigationseintrag „Inventory" verlinkt, Ausrüsten
+  **und** Ablegen), `claim.ts` (lokaler Nachweis), `avatar.ts` (`playerBadge`, Kopf-/Ganzfigur),
+  `showView.ts` (Kopf-Ausschnitt in Ranglisten).
+- **Offen (Produktentscheidung):** Belohnungsmatrix ab **Level 7**, weitere Charaktere (Pixel, Biene,
+  Dr. Obscura, O-Bot) und die **Erfolgsnamen/-bedingungen**. Level 7+ vergibt derzeit **nichts** und
+  blockiert weder XP noch Levelberechnung; ein gesperrter Gegenstand meldet seinen Freischaltlevel
+  oder ehrlich „Bedingung noch nicht definiert" (kein erfundenes Asset, kein erfundener Text).
 
-### 9.1 Verbindliche XP-Regeln (Phase 5c)
+### 9.1 Verbindliche XP-Regeln (Phase 6.8.4)
 
 - **XP = erreichte Spielpunkte.** Keine zweite XP-Formel; das bestehende Punktesystem bleibt
   maßgeblich (`game-design-concept.md` §5.2).
@@ -453,11 +461,19 @@ Vorgang beim Spielende, in einer Transaktion.
   Spielwertung eingerechnet (`game-design-concept.md` §5.3).
 - **Gleichstand:** Alle gleichplatzierten Spieler erhalten **denselben** Bonus. Die bestehende
   Ranglistenlogik ist darauf zu **prüfen und zu dokumentieren** (kein willkürlicher Tiebreak).
-- **Levelkurve (zentral in `shared`):** Level 1 = 0 XP; L1→L10 je 10.000; ab L10→L11 +11.000,
-  danach je +1.000. Eine Gutschrift kann **mehrere** Level überspringen; **alle** erreichten Level
-  und Belohnungen müssen berücksichtigt werden (`game-design-concept.md` §5.4).
+- **Levelkurve (zentral in `shared`, Phase 6.8.4):** `requiredXp(level) = 100.000 + (level − 1) × 10.000`;
+  Level 1 = 0 XP, Aufstieg 1 → 2 = 100.000, 2 → 3 = 110.000, 3 → 4 = 120.000 usw.
+  Eine Gutschrift kann **mehrere** Level überspringen; **alle** erreichten Level und Belohnungen
+  müssen berücksichtigt werden (`game-design-concept.md` §5.4).
+- **XP bleiben bei einer Kurvenänderung erhalten:** `PlayerProfile.xp` ist die Wahrheit, das Level
+  wird bei jedem Lesen daraus abgeleitet und die `level`-Spalte korrigiert. Eine teurere Kurve kann
+  das angezeigte Level senken – **kein** XP-Verlust, **keine** Verdopplung.
 - **Ledger-Idempotenz:** `XpLedger` mit `@@unique([userId, gameId, reason])`; eine erneute
   Verarbeitung desselben Spielabschlusses erzeugt **keine** weiteren XP.
+- **Belohnungsmatrix (Phase 6.8.4):** slot-basiert, `LEVEL_REWARDS` in `shared/levelRewards.ts`
+  (`game-design-concept.md` §6.2b/§6.6). Level 1 ohne Ausrüstung; Level 2–6 = Outfit, Rucksack,
+  Halskette, Visier, Armband; Level 7+ noch offen. Abgleich (`reconcileLevelRewards`) hält bestehende
+  Konten und Charakterwechsel idempotent korrekt.
 
 ### 9.2 Gastkonto-Übernahme (verbindlich, Phase 5c)
 
@@ -693,18 +709,18 @@ Phase 5c hat die **verbindlichen Produktentscheidungen** in die Konzeptunterlage
 (Details: `docs/reports/phase-5c-product-decisions.md`). Es wurde **kein** Anwendungscode, **keine**
 Migration und **kein** Phase-6-Branch erstellt.
 
-| Entscheidung                              | Wirkung auf die Roadmap                             |
-| ----------------------------------------- | --------------------------------------------------- |
-| XP = Spielpunkte                          | 6.8: kein zweites XP-System; Levelkurve in `shared` |
-| Platzierungsbonus 1500/1000/500           | 6.8: Bonus nach Spielende, Gleichstand fair         |
-| Levelkurve L1–L10 = 10.000, ab L11 +1.000 | 6.8: zentrale Funktion, Mehrfach-Aufstieg           |
-| Freiwillige Registrierung                 | 6.3: Angebot beim Beitritt und nach Spielende       |
-| Gastkonto-Übernahme                       | 6.8: neuer Schritt mit `Game.guestClaim`            |
-| Charakterexklusive Items                  | 6.7: Katalog pro Charakter, sichtbare Ausrüstung    |
-| Persönliche Statistik                     | 6.6: kein Spieler-Zugriff auf die Quizhistorie      |
-| Quiz-Snapshot                             | 6.4: `GameSnapshot`, R-3 entschärft                 |
-| Hintergrund Standard Zufall               | 6.10: einmal je Runde, Host kann vorab wählen       |
-| Audio nur Host                            | 6.11: keine Show-Musik auf Spieler-Telefonen        |
+| Entscheidung                                | Wirkung auf die Roadmap                             |
+| ------------------------------------------- | --------------------------------------------------- |
+| XP = Spielpunkte                            | 6.8: kein zweites XP-System; Levelkurve in `shared` |
+| Platzierungsbonus 1500/1000/500             | 6.8: Bonus nach Spielende, Gleichstand fair         |
+| Levelkurve `100.000 + (n−1)·10.000` (6.8.4) | 6.8: zentrale Funktion, Mehrfach-Aufstieg           |
+| Freiwillige Registrierung                   | 6.3: Angebot beim Beitritt und nach Spielende       |
+| Gastkonto-Übernahme                         | 6.8: neuer Schritt mit `Game.guestClaim`            |
+| Charakterexklusive Items                    | 6.7: Katalog pro Charakter, sichtbare Ausrüstung    |
+| Persönliche Statistik                       | 6.6: kein Spieler-Zugriff auf die Quizhistorie      |
+| Quiz-Snapshot                               | 6.4: `GameSnapshot`, R-3 entschärft                 |
+| Hintergrund Standard Zufall                 | 6.10: einmal je Runde, Host kann vorab wählen       |
+| Audio nur Host                              | 6.11: keine Show-Musik auf Spieler-Telefonen        |
 
 ---
 

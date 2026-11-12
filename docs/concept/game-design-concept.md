@@ -413,37 +413,40 @@ zu dokumentieren (Roadmap §6.8).
 des Spiels und den Abschlussstand danach. Erstellen sie anschließend ein Konto, können XP und
 Statistik **dieser** Runde nach §4.4 übernommen werden.
 
-### 5.4 Levelkurve (verbindlich, Phase 5c)
+### 5.4 Levelkurve (verbindlich, Phase 6.8.4)
 
 - Level 1 beginnt bei **0 XP**.
-- Die Aufstiege von Level 1 bis einschließlich Level 10 benötigen je **10.000 XP**.
-- Ab dem Aufstieg Level 10 → 11 steigt der Betrag auf **11.000 XP**.
-- Jeder weitere Aufstieg benötigt **1.000 XP mehr** als der vorherige.
+- Der Aufstieg von `level` auf `level + 1` benötigt
+  `requiredXp(level) = 100.000 + (level − 1) × 10.000` XP.
+- Der Aufstieg **1 → 2** kostet **100.000 XP**, **2 → 3** **110.000**, **3 → 4** **120.000** usw.
 
 | Neues Level | XP für den Aufstieg | Gesamt-XP |
 | ----------: | ------------------: | --------: |
 |           1 |                   – |         0 |
-|           2 |              10.000 |    10.000 |
-|           3 |              10.000 |    20.000 |
-|           4 |              10.000 |    30.000 |
-|           5 |              10.000 |    40.000 |
-|           6 |              10.000 |    50.000 |
-|           7 |              10.000 |    60.000 |
-|           8 |              10.000 |    70.000 |
-|           9 |              10.000 |    80.000 |
-|          10 |              10.000 |    90.000 |
-|          11 |              11.000 |   101.000 |
-|          12 |              12.000 |   113.000 |
-|          13 |              13.000 |   126.000 |
-|          14 |              14.000 |   140.000 |
-|          15 |              15.000 |   155.000 |
+|           2 |             100.000 |   100.000 |
+|           3 |             110.000 |   210.000 |
+|           4 |             120.000 |   330.000 |
+|           5 |             130.000 |   460.000 |
+|           6 |             140.000 |   600.000 |
+|           7 |             150.000 |   750.000 |
+|           8 |             160.000 |   910.000 |
+|           9 |             170.000 | 1.080.000 |
+|          10 |             180.000 | 1.260.000 |
+|          11 |             190.000 | 1.450.000 |
 
 **Regel:** Die Berechnung wird **zentral und eindeutig** implementiert (eine Funktion in
 `@zeropeek/shared`, siehe §7.2). Es gibt **keine** mehrfach gepflegten Leveltabellen in
 verschiedenen Komponenten. Überschreitet eine XP-Gutschrift **mehrere** Levelgrenzen, müssen
 **alle** erreichten Level korrekt erkannt und ihre Belohnungen berücksichtigt werden (Roadmap §6.8).
 
+> **XP bleiben bei einer Kurvenänderung erhalten.** `PlayerProfile.xp` ist die Wahrheit, das Level
+> wird bei jedem Lesen daraus **abgeleitet**. Eine neue, teurere Kurve kann das **angezeigte** Level
+> eines bestehenden Kontos senken – das ist eine Neuinterpretation, **kein** Verlust und **keine**
+> Verdopplung von XP. Die gespeicherte `level`-Spalte wird beim Lesen auf den abgeleiteten Wert
+> korrigiert.
+
 > **Ersetzt:** Die frühere Formel `100 × (n−1)^1.5` und die alte 7-Level-Tabelle gelten **nicht mehr**.
+> Die Zwischenkurve „L1–L10 je 10.000 XP, ab L11 +1.000" (Phase 5c) ist ebenfalls **ersetzt**.
 
 ### 5.5 Levelaufstieg
 
@@ -465,8 +468,9 @@ Annahmen: Quiz mit **10 Fragen**, Zeitlimit je Frage 20 s, „zu schnell"-Regel 
 | Platzierungsbonus (1. Platz)            | +1.500     |
 | **Summe für dieses Spiel**              | **10.000** |
 
-- Startet der Spieler bei **0 XP** (Level 1), steht er nach dem Spiel bei **10.000 XP** →
-  **Level 2**. Der Aufstieg wird einmalig verbucht.
+- Startet der Spieler bei **0 XP** (Level 1), steht er nach dem Spiel bei **10.000 XP** und bleibt
+  unter der Kurve §5.4 auf **Level 1** (der Aufstieg 1 → 2 kostet 100.000 XP). Die XP werden
+  **vollständig** gutgeschrieben, nur das angezeigte Level wird aus dem Gesamtwert abgeleitet.
 - **Idempotenz:** Wird dasselbe Spiel erneut als „abgeschlossen" gemeldet, entstehen **keine**
   weiteren XP. Der Anker ist eine `@@unique`-Sperre je (Spieler, Spiel) im XP-Ledger (§7.3).
 - **Reihenfolge:** XP werden **einmal**, am Spielende, in **einer** Transaktion berechnet und
@@ -494,6 +498,37 @@ der Projektverantwortliche fest. Mögliche Gegenstände: Cyberbrillen, futuristi
 Rucksäcke, technische Armbänder, Kopfhörer, charakterbezogene Werkzeuge, besondere Cyber-Accessoires,
 exklusive Farbvarianten.
 
+### 6.2b Belohnungsmatrix (verbindlich, Phase 6.8.4)
+
+Die Matrix ist **slot-basiert**, nicht item-basiert: jede Stufe nennt den **Ausrüstungs-Slot**, und
+die konkrete Belohnung ist der **eigene Gegenstand des gewählten Charakters** in diesem Slot. Das
+macht die Matrix **charakterunabhängig** (Ethan und Maya nutzen dieselbe Matrix) und **erweiterbar**
+(weitere Level = je ein weiterer Eintrag).
+
+| Level | Belohnung (Slot)   | Ethan (Beispiel)  | Maya (Beispiel)      |
+| ----: | ------------------ | ----------------- | -------------------- |
+|     1 | Grundfigur, nichts | –                 | –                    |
+|     2 | Outfit             | `ethan_outfit`    | `maya_outfit`        |
+|     3 | Rucksack           | `ethan_backpack`  | `maya_backpack`      |
+|     4 | Halskette          | `ethan_compass`   | `maya_compass`       |
+|     5 | Visier             | `ethan_visor`     | `maya_visor_headset` |
+|     6 | Armband            | `ethan_wristband` | `maya_wristband`     |
+|    7+ | **noch offen**     | –                 | –                    |
+
+**Regeln (verbindlich):**
+
+- **Level 1 startet ohne Ausrüstung.** Ein frisches Konto besitzt **keine** Gegenstände und trägt
+  nichts. Erst ein Aufstieg schaltet den Slot frei.
+- **Genau ein Gegenstand je Aufstieg**, für den **aktuell gewählten** Charakter.
+- **Level 7+ haben noch keinen Eintrag** (der Projektverantwortliche hat sie nicht definiert). Ein
+  Level ohne Eintrag vergibt **nichts** und **blockiert weder XP-Gutschrift noch Levelberechnung**.
+  Die Matrix wird an **einer** Stelle (`LEVEL_REWARDS` in `@zeropeek/shared`) ergänzt.
+- **Ein fehlender Slot-Gegenstand** (z. B. ein Charakter ohne diesen Slot) verschiebt die Belohnung,
+  statt einen falschen oder nicht existierenden Gegenstand zu vergeben.
+- **Kein Zufall, keine Lootbox.** Rein deterministisch und nachvollziehbar.
+- **Bestehende Konten** erhalten die Gegenstände für ihr erreichtes Level **konsistent und
+  idempotent** (Abgleich, §6.6).
+
 | Art                 | Beispiel                                       | Freischaltung                    |
 | ------------------- | ---------------------------------------------- | -------------------------------- |
 | **Level-Belohnung** | **je Levelaufstieg ein Gegenstand**            | Level erreicht                   |
@@ -516,7 +551,8 @@ Ein Levelaufstieg schaltet einen Gegenstand aus dem **charakterbezogenen** Beloh
 - Freischaltungen sind **deterministisch** und nachvollziehbar (kein Zufall, keine Lootbox).
 
 **Offen (Projektverantwortlicher):** die endgültige **Belohnungsmatrix** und die Zuordnung der
-einzelnen Gegenstände. OpenHands entwirft **keine** endgültigen Belohnungsassets.
+einzelnen Gegenstände. OpenHands entwirft **keine** endgültigen Belohnungsassets. Die slot-basierte
+Matrix §6.2b ist der umgesetzte Stand.
 
 ### 6.3 Vorschlag für Erfolge (Auswahl)
 
@@ -549,22 +585,35 @@ einzelnen Gegenstände. OpenHands entwirft **keine** endgültigen Belohnungsasse
 - Ausgerüstete Gegenstände sind am Avatar **sichtbar** (§3.2), nicht nur als Icon.
 - Keine unzulässige Kombination: Das Inventar bietet nur Gegenstände des **aktiven** Charakters an.
 
-### 6.6 Zuordnung Levelbelohnung → aktiver Avatar (verbindlich, Phase 5c)
+### 6.6 Zuordnung Levelbelohnung → aktiver Avatar (verbindlich, Phase 6.8.4)
 
 Ein Levelaufstieg schaltet einen Gegenstand des **charakterbezogenen** Katalogs frei. Damit die
 Zuordnung eindeutig ist:
 
-1. Der Katalog ist **pro Charakter** strukturiert: jeder Gegenstand hat `characterId` und einen
-   `unlockRule`-Eintrag (z. B. `level:5`).
-2. Beim Aufstieg wählt der Server den **nächsten noch gesperrten Levelgegenstand** des aktuell
-   gewählten Avatars (`PlayerProfile.selectedCharacterId`) aus.
-3. Ist für diesen Avatar auf dieser Stufe kein Gegenstand definiert, wird die Freischaltung
-   **aufgeschoben** und beim nächsten Aufstieg nachgeholt (kein Verlust).
-4. Wird der Avatar **gewechselt**, gelten die Freischaltungen weiter; die Zuordnung bleibt an den
-   Charakter gebunden, nicht an den Zeitpunkt.
+1. Die Matrix ist **slot-basiert** (§6.2b): eine Stufe nennt den Slot, die konkrete Belohnung ist der
+   eigene Gegenstand des gewählten Charakters in diesem Slot.
+2. Beim Aufstieg vergibt der Server **je überschrittenem Level genau einen** Gegenstand für den
+   aktuell gewählten Avatar (`PlayerProfile.selectedCharacterId`).
+3. Ist für diesen Avatar auf dieser Stufe **kein** Gegenstand definiert (kein Matrix-Eintrag oder kein
+   Slot-Gegenstand), wird die Freischaltung **aufgeschoben** – **kein Verlust**, die XP- und
+   Levelberechnung läuft unabhängig weiter.
+4. Wird der Avatar **gewechselt**, bleiben die Gegenstände des alten Charakters erhalten; sie werden
+   **nicht** übertragen. Der neue Charakter erhält seine eigenen Gegenstände für das erreichte Level
+   über den **Abgleich** (Punkt 5).
+5. **Abgleich (Reconciliation).** Besitz ist **abgeleitet und persistiert**: eine Zeile in
+   `PlayerInventory` bedeutet „im Besitz". `reconcileLevelRewards` fügt **idempotent**
+   (`skipDuplicates`, `@@unique([userId, itemId])`) genau die Gegenstände ein, die das Konto für seinen
+   **aktuellen** Charakter durch sein **aktuelles** Level verdient hat (Level 2 … Level). Dadurch sind
+   drei Fälle mit **einem** Mechanismus korrekt: ein bestehendes Konto, das ein Level unter der alten
+   Kurve erreicht hat, erhält seine Gegenstände; ein Charakterwechsel vergibt die verdienten
+   Gegenstände des neuen Charakters (nur das **Recht**, sie zu besitzen – ein Gegenstand wird nie
+   übertragen); und ein wiederholter Aufruf erzeugt **nie** eine doppelte Zeile. Der Abgleich läuft
+   beim Gutschreiben (Spielende), beim Charakterwechsel (`PUT /api/profile`) und bei jedem Lesen von
+   Inventar/Fortschritt.
 
-> **Offen:** Die **endgültige Belohnungsmatrix** und die Zuordnung der einzelnen Gegenstände legt der
-> Projektverantwortliche fest. OpenHands erstellt **keine** endgültigen Belohnungsassets.
+> **Offen:** Die Matrix für **Level 7+** und weitere Charaktere (Pixel, Biene, Dr. Obscura, O-Bot,
+> die noch keine Gegenstands-Assets haben) legt der Projektverantwortliche fest. OpenHands erstellt
+> **keine** endgültigen Belohnungsassets.
 
 ---
 
@@ -975,32 +1024,32 @@ XP-Ledger; sie wird daher zusammen mit XP/Level in **6.8** umgesetzt, nicht vorh
 
 ### 16.1 Verbindlich (Phase 5c, 2026-11-04)
 
-| Thema                 | Entscheidung                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------- |
-| Spielerregistrierung  | **Freiwillig**; Angebot beim Beitritt **und** nach Spielende; Gastzugang ohne Konto bleibt        |
-| Kontoanforderungen    | E-Mail + Passwort + **E-Mail-Bestätigung** + Anzeigename                                          |
-| Rolle `PLAYER`        | Wird in die Planung aufgenommen; **keine** Admin-/Trainerrechte                                   |
-| Gastkonto-Übernahme   | **Verbindlich** für die **gerade abgeschlossene** Runde; einmalig, serverseitig, mit Nachweis     |
-| XP-Berechnung         | **XP = im Quiz erreichte Spielpunkte**; keine zweite XP-Formel                                    |
-| Platzierungsbonus     | 1./2./3. Platz = 1.500/1.000/500 XP; **nicht** in die Spielwertung eingerechnet; Gleichstand fair |
-| Levelkurve            | Level 1 = 0 XP; L1→L10 je 10.000; ab L10→L11 +11.000, danach je +1.000                            |
-| Levelbelohnung        | **Jeder Levelaufstieg** schaltet einen Gegenstand frei; rein kosmetisch                           |
-| Gegenstände           | **Charakterexklusiv**; sichtbar am Avatar tragbar; zentraler, versionierter Katalog               |
-| Persönliche Statistik | Eigener Fortschritt sichtbar; **Quizhistorie nur Administratoren**                                |
-| Quizhistorie          | **Unveränderlicher Quiz-Snapshot** je Spiel (§8.7)                                                |
-| Hintergrundauswahl    | **Standard Zufall**; genau einmal je Runde; Host kann vorab wählen                                |
-| Sprache               | **Deutsch** standardmäßig, Englisch auswählbar; zentrale Übersetzungsarchitektur                  |
-| Quizfragen            | **Keine** automatische Übersetzung oder Veränderung                                               |
-| Host                  | Spielleiter, **kein** Mitspieler                                                                  |
-| Host/Beamer           | **Bestehende kombinierte Ansicht** bleibt; keine eigene Beamer-Anwendung                          |
-| Spielaudio            | **Ausschließlich** Host-/Beamer-Ansicht                                                           |
-| QR-Code               | Spielcode **und** QR-Code in der Lobby                                                            |
-| Wiederverbindung      | Für Gäste **und** registrierte Spieler                                                            |
-| Redis                 | Zum Start **nicht** erforderlich                                                                  |
-| Self-Hosting          | Schlanke Einzelinstanz                                                                            |
-| Monitoring            | **Keine** zusätzliche Infrastruktur                                                               |
-| Backups               | **Keine** neue Backup-Architektur im Projektumfang                                                |
-| Performance           | **25 Spieler + Host** als reguläres Ziel; Belastungstest ~**35 Spieler + Host**                   |
+| Thema                 | Entscheidung                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spielerregistrierung  | **Freiwillig**; Angebot beim Beitritt **und** nach Spielende; Gastzugang ohne Konto bleibt                                                                    |
+| Kontoanforderungen    | E-Mail + Passwort + **E-Mail-Bestätigung** + Anzeigename                                                                                                      |
+| Rolle `PLAYER`        | Wird in die Planung aufgenommen; **keine** Admin-/Trainerrechte                                                                                               |
+| Gastkonto-Übernahme   | **Verbindlich** für die **gerade abgeschlossene** Runde; einmalig, serverseitig, mit Nachweis                                                                 |
+| XP-Berechnung         | **XP = im Quiz erreichte Spielpunkte**; keine zweite XP-Formel                                                                                                |
+| Platzierungsbonus     | 1./2./3. Platz = 1.500/1.000/500 XP; **nicht** in die Spielwertung eingerechnet; Gleichstand fair                                                             |
+| Levelkurve            | Level 1 = 0 XP; L1→L10 je 10.000; ab L10→L11 +11.000, danach je +1.000 — **ersetzt durch 6.8.4 (§5.4):** `requiredXp(level) = 100.000 + (level − 1) × 10.000` |
+| Levelbelohnung        | **Jeder Levelaufstieg** schaltet einen Gegenstand frei; rein kosmetisch; **Matrix slot-basiert ab 6.8.4 (§6.2b)**                                             |
+| Gegenstände           | **Charakterexklusiv**; sichtbar am Avatar tragbar; zentraler, versionierter Katalog                                                                           |
+| Persönliche Statistik | Eigener Fortschritt sichtbar; **Quizhistorie nur Administratoren**                                                                                            |
+| Quizhistorie          | **Unveränderlicher Quiz-Snapshot** je Spiel (§8.7)                                                                                                            |
+| Hintergrundauswahl    | **Standard Zufall**; genau einmal je Runde; Host kann vorab wählen                                                                                            |
+| Sprache               | **Deutsch** standardmäßig, Englisch auswählbar; zentrale Übersetzungsarchitektur                                                                              |
+| Quizfragen            | **Keine** automatische Übersetzung oder Veränderung                                                                                                           |
+| Host                  | Spielleiter, **kein** Mitspieler                                                                                                                              |
+| Host/Beamer           | **Bestehende kombinierte Ansicht** bleibt; keine eigene Beamer-Anwendung                                                                                      |
+| Spielaudio            | **Ausschließlich** Host-/Beamer-Ansicht                                                                                                                       |
+| QR-Code               | Spielcode **und** QR-Code in der Lobby                                                                                                                        |
+| Wiederverbindung      | Für Gäste **und** registrierte Spieler                                                                                                                        |
+| Redis                 | Zum Start **nicht** erforderlich                                                                                                                              |
+| Self-Hosting          | Schlanke Einzelinstanz                                                                                                                                        |
+| Monitoring            | **Keine** zusätzliche Infrastruktur                                                                                                                           |
+| Backups               | **Keine** neue Backup-Architektur im Projektumfang                                                                                                            |
+| Performance           | **25 Spieler + Host** als reguläres Ziel; Belastungstest ~**35 Spieler + Host**                                                                               |
 
 ### 16.2 Offene Fragen (nicht beschlossen)
 

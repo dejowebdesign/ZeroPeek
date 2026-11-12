@@ -69,10 +69,12 @@ describe('leaderboardRow', () => {
     expect(node.querySelector('.leaderboard__score')?.textContent).toBe('1234');
   });
 
-  it('carries the player’s avatar in the name cell (Phase 6.8.3)', () => {
+  it('carries the player’s head portrait in the name cell (Phase 6.8.3/6.8.4)', () => {
     const withArt = leaderboardRow({ ...player, avatar: 'maya' }, 0);
     expect(withArt.querySelector('.leaderboard__who .player-avatar--art')).not.toBeNull();
     expect(withArt.querySelector('.player-avatar__img')).not.toBeNull();
+    // In-game surfaces show the head crop, not the whole figure (Phase 6.8.4 §5).
+    expect(withArt.querySelector('.player-avatar--head')).not.toBeNull();
     // A guest seat with no avatar shows a letter badge, never an empty frame.
     const guest = leaderboardRow(player, 0);
     expect(guest.querySelector('.player-avatar--art')).toBeNull();
@@ -89,12 +91,21 @@ describe('podiumPlace', () => {
     expect(node.querySelector('.podium__score')?.textContent).toBe('1234');
   });
 
-  it('shows the winner’s avatar large (Phase 6.8.3)', () => {
+  it('shows the winner’s full character figure large (Phase 6.8.4 §4)', () => {
     const node = podiumPlace({ ...player, avatar: 'ethan' }, 1);
     const badge = node.querySelector('.player-avatar');
     expect(badge?.classList.contains('player-avatar--lg')).toBe(true);
+    // The podium shows the whole figure, never the head crop.
+    expect(badge?.classList.contains('player-avatar--full')).toBe(true);
+    expect(badge?.classList.contains('player-avatar--head')).toBe(false);
     expect(node.querySelector('.player-avatar__img')?.getAttribute('src')).toBe(
       '/characters/ethan/ethan_base_current.webp',
     );
+  });
+
+  it('falls back to a letter badge when a podium place has no artwork', () => {
+    const node = podiumPlace({ ...player, avatar: '' }, 2);
+    expect(node.querySelector('.player-avatar--art')).toBeNull();
+    expect(node.querySelector('.player-avatar__initial')?.textContent).toBe('M');
   });
 });

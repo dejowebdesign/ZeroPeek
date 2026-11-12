@@ -75,14 +75,31 @@ describe('character assets exist on disk', () => {
 });
 
 describe('renderer', () => {
-  it('builds a figure and a loadout for a character with artwork', () => {
+  it('builds a figure and an empty loadout for a character with artwork', () => {
     const node = avatarPreview(defaultAvatarConfig('ethan'));
     expect(node).not.toBeNull();
     const figure = node?.querySelector<HTMLImageElement>('.avatar__figure');
     expect(figure?.getAttribute('src')).toBe('/characters/ethan/ethan_full_preview.webp');
-    // One loadout row per slot, each with its item thumbnail.
+    // Phase 6.8.4: a character starts with nothing equipped, so there is one row
+    // per slot and no thumbnail until an item is worn.
     expect(node?.querySelectorAll('.avatar__loadout-row')).toHaveLength(5);
-    expect(node?.querySelectorAll('.avatar__thumb').length).toBe(5);
+    expect(node?.querySelectorAll('.avatar__thumb').length).toBe(0);
+    expect(node?.querySelectorAll('.avatar__loadout-empty').length).toBe(5);
+  });
+
+  it('draws a thumbnail for each equipped slot', () => {
+    const node = avatarPreview({
+      characterId: 'ethan',
+      equipment: {
+        visor: 'ethan_visor',
+        outfit: 'ethan_outfit',
+        backpack: null,
+        neckAccessory: null,
+        wristAccessory: null,
+      },
+    });
+    expect(node?.querySelectorAll('.avatar__thumb').length).toBe(2);
+    expect(node?.querySelectorAll('.avatar__loadout-empty').length).toBe(3);
   });
 
   it('returns null for a character without artwork, so no empty frame is drawn', () => {
@@ -130,7 +147,7 @@ describe('renderer', () => {
   });
 
   it('replaces one slot without disturbing the others', () => {
-    const base = defaultAvatarConfig('ethan').equipment;
+    const base = { ...defaultAvatarConfig('ethan').equipment, visor: 'ethan_visor' };
     const changed = withSlot(base, 'visor', null);
     expect(changed.visor).toBeNull();
     expect(changed.outfit).toBe(base.outfit);

@@ -68,19 +68,26 @@ const ITEM = {
   characterId: 'ethan',
   slot: 'visor',
   assetPath: '/characters/ethan/visor.webp',
-  unlockStatus: 'available',
   alignment: 'not_aligned',
 };
 
 const INVENTORY = {
   characterId: 'ethan',
   items: [
-    { item: ITEM, owned: true, source: 'default', equipped: true, unlockHint: null },
+    {
+      item: ITEM,
+      owned: true,
+      source: 'level',
+      equipped: true,
+      unlockLevel: null,
+      unlockHint: null,
+    },
     {
       item: { ...ITEM, id: 'ethan_crown', name: 'Golden crown' },
       owned: false,
       source: null,
       equipped: false,
+      unlockLevel: null,
       unlockHint: 'The unlock condition is not defined yet.',
     },
   ],
@@ -148,6 +155,33 @@ describe('inventory page', () => {
     expect(locked?.querySelector('button')).toBeNull();
   });
 
+  it('shows a locked item’s unlock level when the server defines one (Phase 6.8.4)', async () => {
+    stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      {
+        match: /\/api\/inventory$/,
+        body: {
+          characterId: 'ethan',
+          items: [
+            {
+              item: ITEM,
+              owned: false,
+              source: null,
+              equipped: false,
+              unlockLevel: 2,
+              unlockHint: 'Unlocks at level 2.',
+            },
+          ],
+        },
+      },
+    ]);
+    await bootInventory();
+
+    const locked = APP().querySelector('.inventory__item--locked');
+    expect(locked?.textContent).toContain('Unlocks at level 2');
+    expect(locked?.querySelector('button')).toBeNull();
+  });
+
   it('equips an owned item through the server with the CSRF token', async () => {
     const calls = stubFetch([
       { match: /\/api\/player-auth\/me$/, body: ME },
@@ -156,7 +190,14 @@ describe('inventory page', () => {
         body: {
           characterId: 'ethan',
           items: [
-            { item: ITEM, owned: true, source: 'default', equipped: false, unlockHint: null },
+            {
+              item: ITEM,
+              owned: true,
+              source: 'level',
+              equipped: false,
+              unlockLevel: null,
+              unlockHint: null,
+            },
           ],
         },
       },
@@ -181,6 +222,49 @@ describe('inventory page', () => {
     const call = calls.find((candidate) => /\/api\/inventory\/equip$/.test(candidate.url));
     expect(call?.headers['X-CSRF-Token']).toBe('csrf-token');
     expect(call?.payload).toEqual({ itemId: 'ethan_visor' });
+  });
+
+  it('unequips a worn item through the server with the CSRF token (Phase 6.8.4)', async () => {
+    const calls = stubFetch([
+      { match: /\/api\/player-auth\/me$/, body: ME },
+      {
+        match: /\/api\/inventory$/,
+        body: {
+          characterId: 'ethan',
+          items: [
+            {
+              item: ITEM,
+              owned: true,
+              source: 'level',
+              equipped: true,
+              unlockLevel: null,
+              unlockHint: null,
+            },
+          ],
+        },
+      },
+      {
+        match: /\/api\/inventory\/unequip$/,
+        method: 'POST',
+        body: { characterId: 'ethan', equipment: {} },
+      },
+    ]);
+    await bootInventory();
+
+    // The loadout card offers Unequip for a filled slot.
+    const unequip = Array.from(APP().querySelectorAll('button')).find(
+      (node) => node.textContent === 'Unequip',
+    );
+    expect(unequip).toBeTruthy();
+    unequip!.click();
+
+    await vi.waitFor(() => {
+      if (!calls.some((call) => /\/api\/inventory\/unequip$/.test(call.url)))
+        throw new Error('no call');
+    });
+    const call = calls.find((candidate) => /\/api\/inventory\/unequip$/.test(candidate.url));
+    expect(call?.headers['X-CSRF-Token']).toBe('csrf-token');
+    expect(call?.payload).toEqual({ slot: 'visor' });
   });
 
   it('invites a signed-out player to sign in and reads no inventory', async () => {

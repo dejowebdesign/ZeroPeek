@@ -1,5 +1,6 @@
 /**
- * Player progression (Phase 6.8): XP, level, inventory and achievements.
+ * Player progression (Phase 6.8, level rewards and reconciliation Phase 6.8.4):
+ * XP, level, inventory and achievements.
  *
  * This is the **only** writer of XP, level, inventory and achievement rows, and
  * it runs **server-side** only. There is no endpoint that accepts an XP value, a
@@ -18,6 +19,17 @@
  *     shared `rankPlayers`, which already assigns shared ranks).
  *   - Achievements and level rewards are computed from persisted data; the
  *     catalogues are code in `@zeropeek/shared`.
+ *
+ * **Rewards are reconciled, not just granted at level-up (Phase 6.8.4).** The
+ * inventory is derived: an item is owned when a `PlayerInventory` row exists for
+ * it. `reconcileLevelRewards` (called on every read of the inventory or the
+ * progress view) inserts exactly the reward items the account has *earned* by its
+ * current level, for the currently chosen character, with `skipDuplicates`. This
+ * makes three cases correct with one mechanism: an account that reached a level
+ * under the old curve still receives its items; a character change grants the new
+ * character's earned items (an unlocked item is never transferred, only the
+ * *right* to earn it); and a repeated call can never duplicate a row. The account's
+ * XP is never touched here.
  */
 
 import {
@@ -26,11 +38,14 @@ import {
   ACHIEVEMENT_CATALOGUE,
   cosmeticsForCharacter,
   findCosmetic,
+  isEquipmentSlot,
   levelForXp,
   levelProgress,
   levelRewardItem,
   nextRewardLevel,
   rankPlayers,
+  rewardItemsUpToLevel,
+  unlockLevelForItem,
   validateAvatarConfig,
   xpGrantForGame,
   XP_REASON_GAME,
@@ -38,6 +53,7 @@ import {
   type AchievementContext,
   type AchievementsView,
   type AvatarConfig,
+  type EquipmentSlot,
   type InventoryItemView,
   type InventoryView,
   type ProgressView,
@@ -382,19 +398,23 @@ async function grantForRegistration(
 
       const levelAfter = levelForXp(totalXp);
 
-      // Grant the reward of every level crossed by this single credit (a big
-      // credit can cross several), resolved against the live catalogue.
-      const unlockedItemIds: string[] = [];
-      for (let level = levelBefore + 1; level <= levelAfter; level += 1) {
-        const item = levelRewardItem(level);
-        if (item) unlockedItemIds.push(item.id);
-      }
-
       await tx.playerProfile.update({
         where: { userId: registration.userId },
         data: { xp: totalXp, level: levelAfter },
       });
 
+      // Grant the reward of every level this credit reached, for the account's
+      // currently chosen character. `levelBefore` is the **recomputed** level of
+      // the stored XP total (never the stored `level` column), so the reward is
+      // correct even when the level curve changed and the stored value is stale:
+      // a grant can then cross levels the old curve never recognised.
+      const chosenCharacter = profile.selectedCharacterId;
+      const effectiveBefore = levelForXp(xpBefore);
+      const unlockedItemIds: string[] = [];
+      for (let level = effectiveBefore + 1; level <= levelAfter; level += 1) {
+        const item = levelRewardItem(level, chosenCharacter);
+        if (item) unlockedItemIds.push(item.id);
+      }
       if (unlockedItemIds.length > 0) {
         await tx.playerInventory.createMany({
           data: unlockedItemIds.map((itemId) => ({
@@ -457,33 +477,6 @@ async function unlockAchievements(tx: Db, userId: string, level: number): Promis
   }
 }
 
-/** The account's XP, level and progress to the next level. */
-export async function getProgressView(userId: string): Promise<ProgressView> {
-  const profile = await ensureProfile(userId);
-  const [achievementsUnlocked, itemsOwned] = await Promise.all([
-    prisma.playerAchievement.count({ where: { userId } }),
-    prisma.playerInventory.count({ where: { userId } }),
-  ]);
-  return {
-    xp: profile.xp,
-    level: profile.level,
-    progress: levelProgress(profile.xp),
-    nextRewardLevel: nextRewardLevel(profile.level) ?? null,
-    achievementsUnlocked,
-    itemsOwned,
-  };
-}
-
-/** The default item ids of a character (already owned on selection). */
-function defaultItemIds(characterId: string | null): Set<string> {
-  if (!characterId) return new Set();
-  return new Set(
-    cosmeticsForCharacter(characterId)
-      .filter((item) => item.unlockStatus === 'available')
-      .map((item) => item.id),
-  );
-}
-
 /** The equipped item ids of an avatar configuration. */
 function equippedItemIds(config: AvatarConfig | null): Set<string> {
   if (!config) return new Set();
@@ -500,33 +493,95 @@ function readStoredAvatar(raw: unknown): AvatarConfig | null {
 }
 
 /**
+ * Reconcile an account's level-reward inventory with its current level and
+ * character (Phase 6.8.4).
+ *
+ * Inserts exactly the reward items the account has **earned** for the currently
+ * chosen character — the items of levels 2..`level` — using `skipDuplicates`, so
+ * a repeated call writes nothing. Returns the number of rows actually inserted.
+ *
+ * This is the one mechanism that keeps an existing account correct across a curve
+ * change (an account that reached a level under the old curve gets its items) and
+ * across a character change (the new character's earned items are granted, and an
+ * item is never transferred between characters). It never touches XP.
+ */
+export async function reconcileLevelRewards(
+  userId: string,
+  level: number,
+  characterId: string | null,
+): Promise<number> {
+  if (!characterId) return 0;
+  const earned = rewardItemsUpToLevel(level, characterId);
+  if (earned.length === 0) return 0;
+  const result = await prisma.playerInventory.createMany({
+    data: earned.map((item) => ({ userId, itemId: item.id, source: 'level' })),
+    skipDuplicates: true,
+  });
+  return result.count;
+}
+
+/** The account's XP, level and progress to the next level. */
+export async function getProgressView(userId: string): Promise<ProgressView> {
+  const profile = await ensureProfile(userId);
+  // The stored `level` column can be stale after a curve change; the level the
+  // player sees is always derived from the stored XP total, and the materialised
+  // column is repaired to match on read (idempotent, XP untouched).
+  const level = levelForXp(profile.xp);
+  if (level !== profile.level) {
+    await prisma.playerProfile.update({ where: { userId }, data: { level } });
+  }
+  await reconcileLevelRewards(userId, level, profile.selectedCharacterId);
+  const [achievementsUnlocked, itemsOwned] = await Promise.all([
+    prisma.playerAchievement.count({ where: { userId } }),
+    prisma.playerInventory.count({ where: { userId } }),
+  ]);
+  return {
+    xp: profile.xp,
+    level,
+    progress: levelProgress(profile.xp),
+    nextRewardLevel: nextRewardLevel(level) ?? null,
+    achievementsUnlocked,
+    itemsOwned,
+  };
+}
+
+/**
  * The account's inventory for its **active** character.
  *
  * Only the active character's items are listed (Phase 5c §3.2: items are
- * character-exclusive). An item is owned when it is part of the character's
- * default kit or a `PlayerInventory` row exists for it. Locked items are shown
- * with an honest unlock hint; while the reward matrix is unapproved the hint says
- * so rather than inventing a condition.
+ * character-exclusive). An item is owned when a `PlayerInventory` row exists for
+ * it; the level-reward rows are reconciled first, so an account that has earned a
+ * level always sees (and can equip) its reward. A locked item is shown with its
+ * unlock level when the matrix defines one, and an honest "to be defined"
+ * otherwise — never an invented condition.
  */
 export async function getInventoryView(userId: string): Promise<InventoryView> {
   const profile = await ensureProfile(userId);
   const characterId = profile.selectedCharacterId;
   if (!characterId) return { characterId: null, items: [] };
 
+  const level = levelForXp(profile.xp);
+  await reconcileLevelRewards(userId, level, characterId);
+
   const items = cosmeticsForCharacter(characterId);
   const rows = await prisma.playerInventory.findMany({ where: { userId } });
   const sources = new Map(rows.map((row) => [row.itemId, row.source]));
-  const defaults = defaultItemIds(characterId);
   const equipped = equippedItemIds(readStoredAvatar(profile.avatarConfig));
 
   const view: InventoryItemView[] = items.map((item) => {
-    const owned = defaults.has(item.id) || sources.has(item.id);
+    const owned = sources.has(item.id);
+    const unlockLevel = owned ? null : (unlockLevelForItem(item) ?? null);
     return {
       item,
       owned,
-      source: sources.get(item.id) ?? (defaults.has(item.id) ? 'default' : null),
+      source: sources.get(item.id) ?? null,
       equipped: equipped.has(item.id),
-      unlockHint: owned ? null : 'Unlock condition to be defined.',
+      unlockLevel,
+      unlockHint: owned
+        ? null
+        : unlockLevel !== null
+          ? `Unlocks at level ${unlockLevel}.`
+          : 'Unlock condition to be defined.',
     };
   });
   return { characterId, items: view };
@@ -551,6 +606,38 @@ export async function getAchievementsView(userId: string): Promise<AchievementsV
       };
     }),
   };
+}
+
+/** The empty avatar configuration for a character (nothing equipped). */
+function emptyEquipment(): AvatarConfig['equipment'] {
+  return {
+    visor: null,
+    outfit: null,
+    backpack: null,
+    neckAccessory: null,
+    wristAccessory: null,
+  };
+}
+
+/** Whether the account owns an item of its active character. */
+async function ownsItem(userId: string, itemId: string): Promise<boolean> {
+  const row = await prisma.playerInventory.findUnique({
+    where: { userId_itemId: { userId, itemId } },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
+/** Write a validated avatar configuration as the account's stored equipment. */
+async function writeAvatar(userId: string, config: AvatarConfig): Promise<AvatarConfig> {
+  await prisma.playerProfile.update({
+    where: { userId },
+    data: {
+      selectedCharacterId: config.characterId,
+      avatarConfig: config as unknown as Prisma.InputJsonValue,
+    },
+  });
+  return config;
 }
 
 /**
@@ -593,13 +680,11 @@ export async function equipItem(userId: string, body: unknown): Promise<AvatarCo
     ]);
   }
 
-  const owned =
-    defaultItemIds(characterId).has(item.id) ||
-    (await prisma.playerInventory.findUnique({
-      where: { userId_itemId: { userId, itemId: item.id } },
-      select: { id: true },
-    })) !== null;
-  if (!owned) {
+  // Make sure any earned reward is owned before the ownership test, so a player
+  // who just reached the level can equip the item immediately.
+  await reconcileLevelRewards(userId, levelForXp(profile.xp), characterId);
+
+  if (!(await ownsItem(userId, item.id))) {
     throw invalid('The equip request is invalid.', [
       { path: 'itemId', message: 'You do not own this item yet.' },
     ]);
@@ -607,13 +692,7 @@ export async function equipItem(userId: string, body: unknown): Promise<AvatarCo
 
   const current = readStoredAvatar(profile.avatarConfig) ?? {
     characterId,
-    equipment: {
-      visor: null,
-      outfit: null,
-      backpack: null,
-      neckAccessory: null,
-      wristAccessory: null,
-    },
+    equipment: emptyEquipment(),
   };
   const next: AvatarConfig = {
     characterId,
@@ -622,12 +701,53 @@ export async function equipItem(userId: string, body: unknown): Promise<AvatarCo
   const { config, issues: configIssues } = validateAvatarConfig(next);
   if (!config) throw invalid('The equip request is invalid.', configIssues);
 
-  await prisma.playerProfile.update({
-    where: { userId },
-    data: {
-      selectedCharacterId: config.characterId,
-      avatarConfig: config as unknown as Prisma.InputJsonValue,
-    },
-  });
-  return config;
+  return writeAvatar(userId, config);
+}
+
+/**
+ * Unequip the item in one slot of the account's active character.
+ *
+ * Clears exactly one slot; the other slots are untouched. A slot that is already
+ * empty is a no-op. The server is the only writer, so the client can never clear
+ * a slot of a character it does not own — the character comes from the session's
+ * own profile.
+ */
+export async function unequipItem(userId: string, body: unknown): Promise<AvatarConfig> {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throw invalid('A JSON object is required.', [
+      { path: '', message: 'A JSON object is required.' },
+    ]);
+  }
+  const record = body as Record<string, unknown>;
+  const issues: Array<{ path: string; message: string }> = [];
+  for (const key of Object.keys(record)) {
+    if (key !== 'slot') issues.push({ path: key, message: 'This field cannot be changed.' });
+  }
+  const slot = record.slot;
+  if (!isEquipmentSlot(slot)) {
+    issues.push({ path: 'slot', message: 'A valid equipment slot is required.' });
+  }
+  if (issues.length > 0) throw invalid('The unequip request is invalid.', issues);
+  const equipmentSlot = slot as EquipmentSlot;
+
+  const profile = await ensureProfile(userId);
+  const characterId = profile.selectedCharacterId;
+  if (!characterId) {
+    throw invalid('The unequip request is invalid.', [
+      { path: 'slot', message: 'You have not chosen a character yet.' },
+    ]);
+  }
+
+  const current = readStoredAvatar(profile.avatarConfig) ?? {
+    characterId,
+    equipment: emptyEquipment(),
+  };
+  const next: AvatarConfig = {
+    characterId,
+    equipment: { ...current.equipment, [equipmentSlot]: null },
+  };
+  const { config, issues: configIssues } = validateAvatarConfig(next);
+  if (!config) throw invalid('The unequip request is invalid.', configIssues);
+
+  return writeAvatar(userId, config);
 }

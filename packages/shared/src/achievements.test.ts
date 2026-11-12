@@ -21,6 +21,8 @@ import {
   levelRewardItem,
   levelsWithRewards,
   nextRewardLevel,
+  rewardItemsUpToLevel,
+  unlockLevelForItem,
 } from './levelRewards.js';
 
 /** A context with nothing achieved yet. */
@@ -112,11 +114,58 @@ describe('conditionMet / achievementProgress', () => {
   });
 });
 
-describe('level rewards (provisional, empty matrix)', () => {
-  it('grants nothing while the matrix is unapproved', () => {
-    expect(LEVEL_REWARDS).toEqual([]);
-    expect(levelRewardItem(5)).toBeUndefined();
-    expect(levelsWithRewards()).toEqual([]);
-    expect(nextRewardLevel(1)).toBeUndefined();
+describe('level rewards (binding matrix, Phase 6.8.4)', () => {
+  it('publishes the brief’s slot order for levels 2..6', () => {
+    expect(LEVEL_REWARDS).toEqual([
+      { level: 2, slot: 'outfit' },
+      { level: 3, slot: 'backpack' },
+      { level: 4, slot: 'neckAccessory' },
+      { level: 5, slot: 'visor' },
+      { level: 6, slot: 'wristAccessory' },
+    ]);
+    expect(levelsWithRewards()).toEqual([2, 3, 4, 5, 6]);
+  });
+
+  it('resolves a reward to the character’s own item for the slot', () => {
+    expect(levelRewardItem(2, 'ethan')?.id).toBe('ethan_outfit');
+    expect(levelRewardItem(3, 'maya')?.id).toBe('maya_backpack');
+    // The resolved item always belongs to the requested character.
+    for (const level of [2, 3, 4, 5, 6]) {
+      for (const id of ['ethan', 'maya']) {
+        expect(levelRewardItem(level, id)?.characterId).toBe(id);
+      }
+    }
+  });
+
+  it('grants nothing for a level without an entry or a character without artwork', () => {
+    expect(levelRewardItem(1, 'ethan')).toBeUndefined();
+    expect(levelRewardItem(7, 'ethan')).toBeUndefined();
+    expect(levelRewardItem(2, 'pixel')).toBeUndefined();
+    expect(levelRewardItem(2, null)).toBeUndefined();
+  });
+
+  it('reports the next reward level strictly after the current one', () => {
+    expect(nextRewardLevel(1)).toBe(2);
+    expect(nextRewardLevel(2)).toBe(3);
+    expect(nextRewardLevel(6)).toBeUndefined();
+  });
+
+  it('lists every reward earned up to a level, and none beyond', () => {
+    expect(rewardItemsUpToLevel(1, 'ethan')).toEqual([]);
+    expect(rewardItemsUpToLevel(2, 'ethan').map((item) => item.id)).toEqual(['ethan_outfit']);
+    expect(rewardItemsUpToLevel(6, 'ethan').map((item) => item.slot)).toEqual([
+      'outfit',
+      'backpack',
+      'neckAccessory',
+      'visor',
+      'wristAccessory',
+    ]);
+    // A level above the matrix grants nothing extra.
+    expect(rewardItemsUpToLevel(99, 'ethan')).toHaveLength(5);
+  });
+
+  it('maps an item back to its unlock level', () => {
+    expect(unlockLevelForItem({ slot: 'outfit' })).toBe(2);
+    expect(unlockLevelForItem({ slot: 'wristAccessory' })).toBe(6);
   });
 });

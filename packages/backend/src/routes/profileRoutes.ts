@@ -18,9 +18,17 @@
 
 import type { FastifyInstance } from 'fastify';
 
+import { levelForXp } from '@zeropeek/shared';
+
 import type { AppConfig } from '../config.js';
 import { currentPlayer, requirePlayerAuth } from '../sessions.js';
-import { getProfile, updateAvatar, updateProfile } from '../services/profileService.js';
+import {
+  ensureProfile,
+  getProfile,
+  updateAvatar,
+  updateProfile,
+} from '../services/profileService.js';
+import { reconcileLevelRewards } from '../services/progressionService.js';
 
 export function registerProfileRoutes(app: FastifyInstance, config: AppConfig): void {
   const guard = { preHandler: requirePlayerAuth(config) };
@@ -35,10 +43,19 @@ export function registerProfileRoutes(app: FastifyInstance, config: AppConfig): 
    * Change the fields Phase 6.6 owns. A body carrying anything else — a
    * statistic, an XP value, a `userId` — is rejected, so the client can never
    * write a server-computed value.
+   *
+   * When a character is chosen, the new character's already-earned level rewards
+   * are granted (idempotent; Phase 6.8.4). An item is never transferred between
+   * characters — only the *right* to own the new character's items is granted.
    */
   app.put('/api/profile', guard, async (request) => {
     const user = currentPlayer(request);
-    return updateProfile(user.id, request.body);
+    const result = await updateProfile(user.id, request.body);
+    if (result.selectedCharacterId) {
+      const profile = await ensureProfile(user.id);
+      await reconcileLevelRewards(user.id, levelForXp(profile.xp), result.selectedCharacterId);
+    }
+    return result;
   });
 
   /**

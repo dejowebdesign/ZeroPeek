@@ -1,18 +1,19 @@
 /**
- * Inventory surface (Phase 6.8, de-duplicated Phase 6.8.3).
+ * Inventory surface (Phase 6.8, de-duplicated Phase 6.8.3, equip/unequip
+ * Phase 6.8.4).
  *
- * A standalone page (inventory.html) for a **signed-in** account. It owns the
- * **items** half of the player's progress: the active character's items (owned
- * and locked alike), the equipment currently worn and the equip management. It
- * deliberately no longer repeats the level/XP and achievement figures — those
- * live on the profile page (Phase 6.8.3), so the two surfaces are distinct
- * rather than two copies of the same cards.
+ * A standalone page (inventory.html) for a **signed-in** account. It is the
+ * central surface for the player's **items**: the active character's items (owned
+ * and locked alike), the item equipped in each of the five slots, and the
+ * equip/unequip management. It deliberately does not repeat the level/XP and
+ * achievement figures — those live on the profile page (Phase 6.8.3/6.8.4), so
+ * the two surfaces are distinct rather than two copies of the same cards.
  *
- * Everything is server-authoritative. The page reads `GET /api/inventory` and
- * equips through `POST /api/inventory/equip`; it never computes an unlock. A
- * locked item is shown with the server's own unlock hint (an honest "to be
- * defined" while the reward matrix is unapproved), never an invented condition,
- * and its equip control is disabled.
+ * Everything is server-authoritative. The page reads `GET /api/inventory`,
+ * equips through `POST /api/inventory/equip` and unequips through
+ * `POST /api/inventory/unequip`; it never computes an unlock or decides ownership
+ * itself. A locked item is shown with the server's own unlock level/hint, never an
+ * invented condition, and its equip control is absent.
  *
  * It reuses the existing design system (`appShell`, `card`, `emptyState`,
  * `chip`, `avatarPreview`), so it inherits the dark glassmorphism look with no
@@ -93,16 +94,24 @@ function equippedCount(view: InventoryView): number {
   return view.items.filter((row) => row.equipped).length;
 }
 
+/** The item the active character currently wears in one slot, or `null`. */
+function equippedInSlot(view: InventoryView, slot: EquipmentSlot): InventoryItemView | null {
+  return view.items.find((row) => row.equipped && row.item.slot === slot) ?? null;
+}
+
 /**
  * The "what you are wearing" card: the character figure plus the five slots.
  *
- * This is the inventory's own view of the loadout — the equipment half of the
- * progress — kept apart from the profile, which shows the character choice and
- * the statistics. Each slot names the item worn or states plainly that it is
- * empty, so the player can see at a glance what is equipped without scanning the
- * item list.
+ * Each slot names the item worn or states plainly that it is empty, and a filled
+ * slot offers an **Unequip** control (Phase 6.8.4). This is the inventory's own
+ * view of the loadout — the equipment half of the progress — kept apart from the
+ * profile, which shows the character choice and the statistics.
  */
-function loadoutSection(view: InventoryView, characterName: string): HTMLElement {
+function loadoutSection(
+  view: InventoryView,
+  characterName: string,
+  onUnequip: (slot: EquipmentSlot) => Promise<void>,
+): HTMLElement {
   const config = configFromItems(view);
   if (!config) {
     return el(
@@ -117,6 +126,43 @@ function loadoutSection(view: InventoryView, characterName: string): HTMLElement
   }
 
   const preview = avatarPreview(config);
+  const slots = el(
+    'ul',
+    { class: 'avatar__loadout' },
+    ...EQUIPMENT_SLOTS.map((slot) => {
+      const worn = equippedInSlot(view, slot);
+      const value = worn
+        ? el(
+            'span',
+            { class: 'avatar__loadout-value' },
+            itemThumb(worn.item.id),
+            el('span', { class: 'avatar__loadout-name' }, worn.item.name),
+          )
+        : el(
+            'span',
+            { class: 'avatar__loadout-value' },
+            el('span', { class: 'avatar__loadout-empty muted' }, 'Nothing equipped'),
+          );
+      return el(
+        'li',
+        { class: 'avatar__loadout-row' },
+        el('span', { class: 'avatar__loadout-slot' }, SLOT_LABELS[slot]),
+        value,
+        worn
+          ? el(
+              'span',
+              { class: 'avatar__loadout-action' },
+              button('Unequip', {
+                variant: 'secondary',
+                small: true,
+                onClick: () => void onUnequip(slot),
+              }),
+            )
+          : null,
+      );
+    }),
+  );
+
   return el(
     'section',
     { class: 'card' },
@@ -126,39 +172,38 @@ function loadoutSection(view: InventoryView, characterName: string): HTMLElement
       { class: 'muted profile__hint' },
       `${equippedCount(view)} of ${EQUIPMENT_SLOTS.length} slots filled.`,
     ),
-    preview ??
-      el(
-        'ul',
-        { class: 'avatar__loadout' },
-        ...EQUIPMENT_SLOTS.map((slot) =>
-          el(
-            'li',
-            { class: 'avatar__loadout-row' },
-            el('span', { class: 'avatar__loadout-slot' }, SLOT_LABELS[slot]),
-            el(
-              'span',
-              { class: 'avatar__loadout-value' },
-              config.equipment[slot]
-                ? el('span', { class: 'avatar__loadout-name' }, config.equipment[slot] as string)
-                : el('span', { class: 'avatar__loadout-empty muted' }, 'Nothing equipped'),
-            ),
-          ),
-        ),
-      ),
+    preview,
+    slots,
   );
 }
 
-/** One inventory item: thumbnail, name, state and an equip control when owned. */
-function itemRow(item: InventoryItemView, onEquip: (itemId: string) => Promise<void>): HTMLElement {
+/**
+ * One inventory item: thumbnail, name, state and an equip control when owned.
+ *
+ * An owned item offers **Equip**; the item already worn offers **Unequip**
+ * instead, so a slot can be cleared from either the item list or the loadout.
+ * A locked item offers neither.
+ */
+function itemRow(
+  item: InventoryItemView,
+  onEquip: (itemId: string) => Promise<void>,
+  onUnequip: (slot: EquipmentSlot) => Promise<void>,
+): HTMLElement {
   const thumb = itemThumb(item.item.id);
-  const equip = item.owned
-    ? button(item.equipped ? 'Equipped' : 'Equip', {
-        variant: item.equipped ? 'secondary' : 'primary',
-        small: true,
-        disabled: item.equipped,
-        onClick: () => void onEquip(item.item.id),
-      })
-    : null;
+  const slot = item.item.slot as EquipmentSlot;
+  const control = !item.owned
+    ? null
+    : item.equipped
+      ? button('Unequip', {
+          variant: 'secondary',
+          small: true,
+          onClick: () => void onUnequip(slot),
+        })
+      : button('Equip', {
+          variant: 'primary',
+          small: true,
+          onClick: () => void onEquip(item.item.id),
+        });
 
   return el(
     'li',
@@ -172,7 +217,7 @@ function itemRow(item: InventoryItemView, onEquip: (itemId: string) => Promise<v
       'div',
       { class: 'inventory__meta' },
       el('span', { class: 'inventory__name' }, item.item.name),
-      el('span', { class: 'muted inventory__slot' }, SLOT_LABELS[item.item.slot as EquipmentSlot]),
+      el('span', { class: 'muted inventory__slot' }, SLOT_LABELS[slot]),
       el(
         'span',
         { class: 'inventory__state' },
@@ -182,7 +227,7 @@ function itemRow(item: InventoryItemView, onEquip: (itemId: string) => Promise<v
         item.unlockHint ? el('span', { class: 'muted inventory__hint' }, item.unlockHint) : null,
       ),
     ),
-    equip ? el('div', { class: 'inventory__action' }, equip) : null,
+    control ? el('div', { class: 'inventory__action' }, control) : null,
   );
 }
 
@@ -191,6 +236,7 @@ function itemsSection(
   view: InventoryView,
   characterName: string,
   onEquip: (itemId: string) => Promise<void>,
+  onUnequip: (slot: EquipmentSlot) => Promise<void>,
 ): HTMLElement {
   if (!view.characterId || view.items.length === 0) {
     return el(
@@ -207,7 +253,11 @@ function itemsSection(
     'section',
     { class: 'card' },
     el('h3', { class: 'profile__section-title' }, `Items for ${characterName}`),
-    el('ul', { class: 'inventory__list' }, ...view.items.map((item) => itemRow(item, onEquip))),
+    el(
+      'ul',
+      { class: 'inventory__list' },
+      ...view.items.map((item) => itemRow(item, onEquip, onUnequip)),
+    ),
   );
 }
 
@@ -221,6 +271,16 @@ function showInventory(view: InventoryView): void {
       await post<AvatarConfig>('/api/inventory/equip', { itemId });
       toast('Item equipped.', 'success');
       // Reload so the stored equipment is what the page reflects.
+      await load();
+    } catch (error) {
+      toast(errorText(error), 'error');
+    }
+  };
+
+  const unequip = async (slot: EquipmentSlot): Promise<void> => {
+    try {
+      await post<AvatarConfig>('/api/inventory/unequip', { slot });
+      toast('Item unequipped.', 'success');
       await load();
     } catch (error) {
       toast(errorText(error), 'error');
@@ -250,8 +310,8 @@ function showInventory(view: InventoryView): void {
           ),
         ),
       ),
-      loadoutSection(view, characterName),
-      itemsSection(view, characterName, equip),
+      loadoutSection(view, characterName, unequip),
+      itemsSection(view, characterName, equip, unequip),
     ]),
   );
 }

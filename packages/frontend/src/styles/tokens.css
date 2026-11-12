@@ -967,10 +967,59 @@ body::before {
   border-radius: var(--radius);
 }
 
+/* A badge that draws the real supplied figure (not the letter fallback). */
+.player-avatar--art {
+  background: var(--bg-3);
+}
+
 .player-avatar__img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+/*
+ * Phase 6.8.4 §5: during a round only the head is shown. The supplied figures are
+ * full-body and not aligned to a shared canvas, so the head crop is done purely
+ * in CSS — `object-fit: cover` on a square frame anchored to the top edge frames
+ * the head without generating, editing or repositioning any image file. The full
+ * crop (the winner podium) keeps the whole figure visible.
+ */
+.player-avatar--head .player-avatar__img {
+  object-fit: cover;
+  object-position: center top;
+}
+
+.player-avatar--full .player-avatar__img {
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+/*
+ * The compact in-game player display (Phase 6.8.4 §5): head portrait, nickname
+ * and — for a signed-in player with progress — the real level and XP.
+ */
+.player-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.player-badge__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.player-badge__name {
+  font-weight: var(--weight-card);
+  overflow-wrap: anywhere;
+}
+
+.player-badge__meta {
+  font-size: var(--type-label);
+  font-variant-numeric: tabular-nums;
 }
 
 .player-avatar__initial {
@@ -993,11 +1042,6 @@ body::before {
   justify-content: center;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
-}
-
-.question__who-name {
-  font-weight: var(--weight-card);
-  overflow-wrap: anywhere;
 }
 
 /* The "progress saved" block on the end screen for a signed-in player. */
@@ -2968,11 +3012,16 @@ body::before {
 
 .avatar__loadout-row {
   display: grid;
-  grid-template-columns: 130px minmax(0, 1fr);
+  grid-template-columns: 130px minmax(0, 1fr) auto;
   gap: var(--space-3);
   align-items: center;
   padding: var(--space-2) 0;
   border-bottom: var(--hairline) solid var(--border);
+}
+
+.avatar__loadout-action {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .avatar__loadout-slot {
@@ -2984,6 +3033,14 @@ body::before {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+}
+
+.avatar__loadout-name {
+  overflow-wrap: anywhere;
+}
+
+.avatar__loadout-empty {
+  font-style: italic;
 }
 
 .avatar__thumb {
