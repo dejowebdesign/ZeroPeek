@@ -1,11 +1,12 @@
 /**
- * Unit tests for the character and cosmetics catalogue (Phase 6.7).
+ * Unit tests for the character and cosmetics catalogue (Phase 6.7, Phase 6.8.4).
  *
  * These lock in the rules the server relies on:
- *   - every supplied character has a complete asset set and a full default kit;
+ *   - every supplied character has a complete asset set and a full default kit
+ *     (the *reference* kit, used by the reward matrix — not auto-equipped);
  *   - every item belongs to exactly one character and one slot;
  *   - an item is compatible only with its own character;
- *   - a character change activates the new character's default equipment;
+ *   - a character **starts** with nothing equipped (Phase 6.8.4);
  *   - an invalid character, slot or item is rejected, and a manipulated payload
  *     can never equip another character's item.
  *
@@ -114,7 +115,6 @@ describe('cosmetics catalogue', () => {
     for (const item of COSMETIC_CATALOGUE) {
       expect(item.alignment).toBe('not_aligned');
       expect(item.layerGeometry).toBeUndefined();
-      expect(item.unlockStatus).toBe('available');
     }
   });
 
@@ -129,32 +129,30 @@ describe('cosmetics catalogue', () => {
   });
 });
 
-describe('defaultAvatarConfig', () => {
-  it('activates the full default kit for a supplied character', () => {
+describe('defaultAvatarConfig (Phase 6.8.4: nothing equipped)', () => {
+  it('starts a supplied character with no equipment', () => {
     const config = defaultAvatarConfig('maya');
     expect(config.characterId).toBe('maya');
-    expect(config.equipment).toEqual({
-      visor: 'maya_visor',
-      outfit: 'maya_outfit',
-      backpack: 'maya_backpack',
-      neckAccessory: 'maya_compass',
-      wristAccessory: 'maya_wristband',
-    });
+    expect(config.equipment).toEqual({ ...EMPTY_EQUIPMENT });
   });
 
-  it('never mixes another character’s items into the default kit', () => {
-    for (const character of CHARACTER_ASSETS) {
-      for (const itemId of Object.values(defaultAvatarConfig(character.id).equipment)) {
-        expect(findCosmetic(itemId)?.characterId).toBe(character.id);
-      }
-    }
-  });
-
-  it('falls back to empty equipment for a character without artwork', () => {
+  it('starts a character without artwork with no equipment too', () => {
     expect(defaultAvatarConfig('pixel')).toEqual({
       characterId: 'pixel',
       equipment: { ...EMPTY_EQUIPMENT },
     });
+  });
+
+  it('keeps the reference kit in the catalogue, available for rewards', () => {
+    // The default kit is still defined as the character's *reference* equipment
+    // (and is what the reward matrix resolves to); it is simply not auto-worn.
+    for (const character of CHARACTER_ASSETS) {
+      for (const slot of EQUIPMENT_SLOTS) {
+        const item = findCosmetic(character.defaultEquipment[slot]);
+        expect(item?.characterId).toBe(character.id);
+        expect(item?.slot).toBe(slot);
+      }
+    }
   });
 });
 
@@ -176,19 +174,39 @@ describe('validateAvatarConfig', () => {
     expect(result.config).toEqual(mayaFull);
   });
 
-  it('accepts a character with no equipment by applying the default kit', () => {
+  it('accepts a character with no equipment by applying the empty start kit', () => {
     const result = validateAvatarConfig({ characterId: 'ethan' });
     expect(result.issues).toEqual([]);
     expect(result.config).toEqual(defaultAvatarConfig('ethan'));
+    expect(result.config?.equipment).toEqual({ ...EMPTY_EQUIPMENT });
   });
 
   it('accepts a slot explicitly set to null (nothing worn there)', () => {
     const result = validateAvatarConfig({
       characterId: 'ethan',
-      equipment: { ...defaultAvatarConfig('ethan').equipment, visor: null },
+      equipment: {
+        visor: 'ethan_visor',
+        outfit: 'ethan_outfit',
+        backpack: 'ethan_backpack',
+        neckAccessory: 'ethan_compass',
+        wristAccessory: 'ethan_wristband',
+      },
     });
     expect(result.issues).toEqual([]);
-    expect(result.config?.equipment.visor).toBeNull();
+    expect(result.config?.equipment.visor).toBe('ethan_visor');
+
+    const cleared = validateAvatarConfig({
+      characterId: 'ethan',
+      equipment: {
+        visor: null,
+        outfit: 'ethan_outfit',
+        backpack: 'ethan_backpack',
+        neckAccessory: 'ethan_compass',
+        wristAccessory: 'ethan_wristband',
+      },
+    });
+    expect(cleared.issues).toEqual([]);
+    expect(cleared.config?.equipment.visor).toBeNull();
   });
 
   it('rejects a non-object body', () => {

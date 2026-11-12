@@ -123,12 +123,14 @@ describe.skipIf(!available)('Phase 6.8.3 — progression service', () => {
     expect(result.granted).toEqual(expect.arrayContaining([alice, bob]));
 
     const profile = await prisma.playerProfile.findUnique({ where: { userId: alice } });
-    // 8,500 points + 1,500 winner bonus = 10,000 -> level 2.
+    // 8,500 points + 1,500 winner bonus = 10,000 XP. Under the Phase 6.8.4 curve
+    // the climb 1 -> 2 costs 100,000, so 10,000 XP is still level 1 — the XP is
+    // kept in full, only the displayed level is recomputed.
     expect(profile?.xp).toBe(10_000);
-    expect(profile?.level).toBe(2);
+    expect(profile?.level).toBe(1);
     const progress = await getProgressView(alice);
     expect(progress.xp).toBe(10_000);
-    expect(progress.level).toBe(2);
+    expect(progress.level).toBe(1);
   });
 
   it('pays 1000/500 to second and third and nothing to fourth', async () => {
@@ -202,22 +204,23 @@ describe.skipIf(!available)('Phase 6.8.3 — progression service', () => {
 
   it('counts several level-ups from one credit', async () => {
     const alice = await player('jumper');
-    // 100,000 points + 1,500 bonus = 101,500 -> level 11.
-    const { gameId } = await finishedGame([{ userId: alice, nickname: 'Alice', score: 100_000 }]);
+    // 310,000 points + 1,500 bonus = 311,500 -> level 3 under the Phase 6.8.4
+    // curve (1->2 = 100,000, 2->3 = 110,000, so level 3 starts at 210,000).
+    const { gameId } = await finishedGame([{ userId: alice, nickname: 'Alice', score: 310_000 }]);
     await grantProgressForGame(gameId);
     const profile = await prisma.playerProfile.findUnique({ where: { userId: alice } });
-    expect(profile?.xp).toBe(101_500);
-    expect(profile?.level).toBe(11);
+    expect(profile?.xp).toBe(311_500);
+    expect(profile?.level).toBe(3);
   });
 
   it('adds to an existing balance and level', async () => {
     const alice = await player('accumulate');
-    await prisma.playerProfile.create({ data: { userId: alice, xp: 9_000, level: 1 } });
+    await prisma.playerProfile.create({ data: { userId: alice, xp: 99_000, level: 1 } });
     const { gameId } = await finishedGame([{ userId: alice, nickname: 'Alice', score: 500 }]);
     await grantProgressForGame(gameId);
     const profile = await prisma.playerProfile.findUnique({ where: { userId: alice } });
-    // 9,000 + 500 + 1,500 = 11,000 -> level 2.
-    expect(profile?.xp).toBe(11_000);
+    // 99,000 + 500 + 1,500 = 101,000 -> level 2 (the climb 1 -> 2 costs 100,000).
+    expect(profile?.xp).toBe(101_000);
     expect(profile?.level).toBe(2);
   });
 
@@ -281,10 +284,44 @@ describe.skipIf(!available)('Phase 6.8.3 — progression service', () => {
     const { gameId } = await finishedGame([{ userId: alice, nickname: 'Alice', score: 5_000 }]);
     await grantProgressForGame(gameId);
     const view = await getProgressView(alice);
-    // 5,000 + 1,500 = 6,500 -> level 1, 3,500 to go.
+    // 5,000 + 1,500 = 6,500 -> level 1, 93,500 to go to the 100,000 climb.
     expect(view.level).toBe(1);
     expect(view.progress.xpIntoLevel).toBe(6_500);
-    expect(view.progress.xpToNextLevel).toBe(3_500);
+    expect(view.progress.xpToNextLevel).toBe(93_500);
     expect(view.achievementsUnlocked).toBeGreaterThan(0);
+  });
+
+  it('keeps the stored XP when the curve is reinterpreted (no XP is lost)', async () => {
+    // An account credited under the old (much cheaper) curve: 5,000 XP used to be
+    // level 5. The XP total must survive the curve change untouched; only the
+    // displayed level is recomputed (and the stored level column repaired).
+    const alice = await player('curve-change');
+    await prisma.playerProfile.create({ data: { userId: alice, xp: 5_000, level: 5 } });
+    const view = await getProgressView(alice);
+    expect(view.xp).toBe(5_000);
+    expect(view.level).toBe(1);
+    const profile = await prisma.playerProfile.findUnique({ where: { userId: alice } });
+    expect(profile?.xp).toBe(5_000);
+    expect(profile?.level).toBe(1);
+  });
+
+  it('grants the level reward for every level reached, idempotently', async () => {
+    const alice = await player('rewarded');
+    // Choose Ethan so the reward resolves to his items.
+    await prisma.playerProfile.create({
+      data: { userId: alice, xp: 0, level: 1, selectedCharacterId: 'ethan' },
+    });
+    // 310,000 points + 1,500 bonus = 311,500 -> level 3: outfit (L2) + backpack (L3).
+    const { gameId } = await finishedGame([{ userId: alice, nickname: 'Alice', score: 310_000 }]);
+    await grantProgressForGame(gameId);
+
+    const items = await prisma.playerInventory.findMany({ where: { userId: alice } });
+    expect(items.map((row) => row.itemId).sort()).toEqual(['ethan_backpack', 'ethan_outfit']);
+    expect(items.every((row) => row.source === 'level')).toBe(true);
+
+    // A repeated grant (and a repeat read) never duplicates a reward row.
+    await grantProgressForGame(gameId);
+    await getProgressView(alice);
+    expect(await prisma.playerInventory.count({ where: { userId: alice } })).toBe(2);
   });
 });

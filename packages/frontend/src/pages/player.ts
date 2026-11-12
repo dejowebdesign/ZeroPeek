@@ -12,12 +12,13 @@ import type {
   OwnResult,
   PlayerAnswerState,
   PlayerSync,
+  ProgressView,
   PublicPlayer,
   PublicQuestion,
 } from '@zeropeek/shared';
 
 import { get } from '../api.js';
-import { playerAvatar } from '../avatar.js';
+import { playerAvatar, playerBadge } from '../avatar.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
@@ -55,6 +56,14 @@ let repaint: (() => void) | null = null;
  * context is read, so a host signed in on the same browser stays a guest here.
  */
 let account: PlayerAccount | null = null;
+
+/**
+ * The signed-in player's own level/XP, read once at boot from `/api/progress`
+ * (Phase 6.8.4 §5). `null` for a guest or when the read fails, so the in-game
+ * player display simply omits the level line rather than inventing one. These are
+ * the server's own figures — never a client guess or a demo value.
+ */
+let myProgress: ProgressView | null = null;
 
 /** Repaint the current screen in place (used when only the host status changed). */
 function rerenderCurrent(): void {
@@ -263,8 +272,12 @@ const app: HTMLElement = appElement;
             el(
               'div',
               { class: 'question__who' },
-              playerAvatar(me?.nickname ?? 'player', me?.avatar, { size: 'sm' }),
-              el('span', { class: 'question__who-name' }, me?.nickname ?? 'player'),
+              playerBadge(
+                me?.nickname ?? 'player',
+                me?.avatar,
+                myProgress ? { level: myProgress.level, xp: myProgress.xp } : null,
+                { size: 'sm' },
+              ),
             ),
             el(
               'div',
@@ -592,6 +605,16 @@ const app: HTMLElement = appElement;
       account = me.user ? { id: me.user.id, username: me.user.username } : null;
     } catch {
       account = null;
+    }
+    // The player's own level/XP, for the in-game display (Phase 6.8.4 §5). Only
+    // read for a signed-in account; a guest has no progress to show. A failure is
+    // not fatal — the display just omits the level line.
+    if (account) {
+      try {
+        myProgress = await get<ProgressView>('/api/progress');
+      } catch {
+        myProgress = null;
+      }
     }
     if (loadSession()) rejoinStored();
     else showJoin();

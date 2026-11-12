@@ -1,11 +1,18 @@
 /**
- * Player profile surface (Phase 6.6, character picker Phase 6.6.2).
+ * Player profile surface (Phase 6.6, character picker Phase 6.6.2, split
+ * Phase 6.8.4).
  *
  * A standalone page (profile.html) for a **signed-in** account. It shows the
- * account its own display name and personal statistics, all computed on the
- * server: won games, podiums and accuracy. Nothing here is a quiz history — the
+ * account its own display name, personal statistics, level, XP progress and
+ * achievements, all computed on the server. Nothing here is a quiz history — the
  * history (old questions, answers, other players' results) stays admin-only, and
  * this page has no endpoint that could return it.
+ *
+ * Phase 6.8.4 splits the two progress surfaces cleanly: the **profile** owns the
+ * character choice, the statistics, the level/XP and the achievements, while the
+ * **inventory** (`inventory.html`) owns the items and the equipment management.
+ * The equipment editor that used to live here has been removed; the profile no
+ * longer equips or unequips anything.
  *
  * The page never invents a value. When a figure is not yet available it shows an
  * honest empty state, never a placeholder number. It is a client of the existing
@@ -21,26 +28,16 @@
 import type {
   AchievementView,
   AchievementsView,
-  AvatarConfig,
-  AvatarEquipment,
-  EquipmentSlot,
   Character,
-  InventoryView,
   ProfileStats,
   ProfileView,
   ProgressView,
 } from '@zeropeek/shared';
-import {
-  CHARACTER_CATALOGUE,
-  defaultAvatarConfig,
-  findCharacter,
-  findCharacterAssets,
-} from '@zeropeek/shared';
+import { CHARACTER_CATALOGUE, findCharacter, findCharacterAssets } from '@zeropeek/shared';
 
 import { ApiError, get, post, put, setCsrfToken } from '../api.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
-import { SLOT_LABELS, avatarPreview, availableSlots, slotItems, withSlot } from '../avatar.js';
 import {
   button,
   chip,
@@ -309,159 +306,6 @@ function characterSection(view: ProfileView): HTMLElement {
   );
 }
 
-/**
- * One slot of the avatar editor: a radio group of the character's items plus a
- * "None" option.
- *
- * Only the character's **own** items are offered (`slotItems`), so another
- * character's equipment can never appear here — the "no wrong combination" rule
- * (phase brief §16). The server validates the same rule on save.
- */
-function slotControl(
-  characterId: string,
-  slot: EquipmentSlot,
-  current: string | null,
-  onChange: (slot: EquipmentSlot, itemId: string | null) => void,
-): HTMLElement {
-  const items = slotItems(characterId, slot);
-  const options: Array<{ id: string | null; label: string; itemId: string | null }> = [
-    { id: `none`, label: 'None', itemId: null },
-    ...items.map((item) => ({ id: item.id, label: item.name, itemId: item.id })),
-  ];
-
-  const group = el('div', { class: 'avatar__slot-options' });
-  for (const option of options) {
-    const inputId = `slot-${characterId}-${slot}-${option.id}`;
-    const input = el('input', {
-      class: 'profile__radio',
-      type: 'radio',
-      name: `slot-${slot}`,
-      id: inputId,
-      value: option.id,
-      ...(option.itemId === current ? { checked: true } : {}),
-      onchange: () => onChange(slot, option.itemId),
-    });
-    group.append(
-      el(
-        'label',
-        {
-          class: `avatar__slot-option${option.itemId === current ? ' avatar__slot-option--selected' : ''}`,
-          for: inputId,
-        },
-        input,
-        el('span', { class: 'avatar__slot-option-name' }, option.label),
-      ),
-    );
-  }
-
-  return el(
-    'div',
-    { class: 'avatar__slot' },
-    el('h4', { class: 'avatar__slot-title' }, SLOT_LABELS[slot]),
-    group,
-  );
-}
-
-/**
- * The avatar editor (Phase 6.7).
- *
- * It edits the **currently chosen** character's equipment and saves through
- * `PUT /api/profile/avatar`. A live preview re-renders as slots change. The
- * editor only appears for a character with supplied artwork; for a name-only
- * character it says so honestly and offers no controls, so nothing is invented.
- */
-function avatarSection(view: ProfileView): HTMLElement {
-  const characterId = view.profile.selectedCharacterId;
-  const assets = findCharacterAssets(characterId);
-
-  if (!assets) {
-    return el(
-      'section',
-      { class: 'card' },
-      el('h3', { class: 'profile__section-title' }, 'Your avatar'),
-      emptyState(
-        'No avatar yet',
-        'Choose Ethan or Maya above to configure an avatar. The other characters get an avatar once their artwork is supplied.',
-      ),
-    );
-  }
-
-  // The working configuration: the stored one, or the character's default kit
-  // when none is stored yet. Never carries another character's items over.
-  const stored: AvatarConfig = view.profile.avatarConfig ?? defaultAvatarConfig(assets.id);
-  let working: AvatarConfig = { characterId: assets.id, equipment: { ...stored.equipment } };
-
-  const previewHost = el('div', { class: 'avatar__preview-host' });
-  const renderPreview = (): void => {
-    previewHost.replaceChildren(avatarPreview(working) ?? el('div'));
-  };
-
-  const save = button('Save avatar', { variant: 'primary', type: 'submit', disabled: true });
-  const status = el('p', { class: 'profile__save-status', role: 'status' });
-
-  const dirty = (): boolean =>
-    JSON.stringify(working.equipment) !== JSON.stringify(stored.equipment);
-
-  const refreshSave = (): void => {
-    save.disabled = !dirty();
-    status.textContent = '';
-    status.className = 'profile__save-status';
-  };
-
-  const onChange = (slot: EquipmentSlot, itemId: string | null): void => {
-    working = { characterId: assets.id, equipment: withSlot(working.equipment, slot, itemId) };
-    // Reflect the selection styling and the preview without a full re-render.
-    renderPreview();
-    refreshSave();
-  };
-
-  const slots = availableSlots(assets.id).map((slot) =>
-    slotControl(assets.id, slot, working.equipment[slot], onChange),
-  );
-
-  const form = el(
-    'form',
-    {
-      class: 'avatar__form',
-      novalidate: true,
-      onsubmit: async (event: Event) => {
-        event.preventDefault();
-        if (!dirty()) return;
-        setBusy(save, true);
-        status.textContent = '';
-        status.className = 'profile__save-status';
-        try {
-          await put<AvatarConfig>('/api/profile/avatar', working);
-          toast('Avatar saved.', 'success');
-          // Reload so the stored configuration is what the UI reflects.
-          await load();
-        } catch (error) {
-          status.className = 'profile__save-status profile__save-status--error';
-          status.textContent = errorText(error);
-          setBusy(save, false);
-        }
-      },
-    },
-    previewHost,
-    el('div', { class: 'avatar__slots' }, ...slots),
-    el('div', { class: 'profile__save' }, save, status),
-  );
-
-  renderPreview();
-
-  return el(
-    'section',
-    { class: 'card' },
-    el('h3', { class: 'profile__section-title' }, 'Your avatar'),
-    el(
-      'p',
-      { class: 'muted profile__hint' },
-      `Equip ${assets.name} with the items that belong to this figure. Items are character-exclusive and cannot be worn by another character.`,
-    ),
-    form,
-  );
-}
-
 /** A `ratio` (0..1) as a whole-number percentage. */
 function percent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`;
@@ -622,6 +466,30 @@ function claimSection(onClaimed: () => void): HTMLElement | null {
   return container;
 }
 
+/**
+ * A pointer to the inventory, where items are equipped (Phase 6.8.4).
+ *
+ * The profile no longer manages equipment; this card makes that split explicit
+ * and gives the player a direct route to the surface that does.
+ */
+function inventoryLink(): HTMLElement {
+  return el(
+    'section',
+    { class: 'card' },
+    el('h3', { class: 'profile__section-title' }, 'Your items'),
+    el(
+      'p',
+      { class: 'muted profile__hint' },
+      'Unlocked items and the equipment you wear are managed in your inventory.',
+    ),
+    el(
+      'div',
+      { class: 'profile__save' },
+      el('a', { class: 'btn btn-primary btn-sm', href: './inventory.html' }, 'Open inventory'),
+    ),
+  );
+}
+
 /** Render the full profile. */
 function showProfile(
   view: ProfileView,
@@ -637,8 +505,8 @@ function showProfile(
         progressSection(progress),
         ...(claim ? [claim] : []),
         characterSection(view),
-        avatarSection(view),
         achievementsSection(achievements),
+        inventoryLink(),
       ],
       [signOutButton()],
     ),

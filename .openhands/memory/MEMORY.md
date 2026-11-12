@@ -785,3 +785,25 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   (RIFF/WEBP signature) — renaming an asset fails the build.
 - Branch stacked on 6.6.3; PR must wait for 6.6.3 merge. Untracked ZIP in repo root is the owner's
   source package — never commit it.
+
+## Phase 6.8.4 — progression / reward matrix / inventory / presentation (awaiting approval)
+- **Level curve (binding):** `requiredXp(level) = 100000 + (level-1)*10000`; `xpForLevel` = 0/100000/
+  210000/330000… Old 10k-per-level table is dead. `xpCostForLevel` → renamed `requiredXp`.
+- `PlayerProfile.xp` is the truth; `level` is **derived on every read** and the column repaired.
+  A curve change may lower an existing account's shown level — intended, no XP lost/duplicated.
+- **Reward matrix is SLOT-based** (`shared/levelRewards.ts`): L2 outfit, L3 backpack, L4
+  neckAccessory, L5 visor, L6 wristAccessory. Item = the **chosen character's** own item in that
+  slot. L7+ has **no entry on purpose** (grants nothing, never blocks XP). Level 1 = nothing equipped;
+  `defaultAvatarConfig` returns `EMPTY_EQUIPMENT`; `unlockStatus` removed from `CosmeticItem`.
+- **`reconcileLevelRewards(userId, level, characterId)`** = the one idempotent mechanism (grant tx,
+  `PUT /api/profile`, and every progress/inventory/equip read) via `rewardItemsUpToLevel` +
+  `skipDuplicates`. New endpoint `POST /api/inventory/unequip` (body: only `slot`).
+- **Profile vs inventory (final):** profile = character + stats + level/XP + achievements (links
+  "Open inventory"); inventory = items + loadout (per-slot Unequip, per-item Equip/Unequip).
+- **Presentation:** `playerAvatar(..., {crop:'head'|'full'})` — head = CSS `object-fit:cover` top
+  (in-game/leaderboard), full = whole figure (podium). No image edited/generated. `playerBadge`
+  shows head + `Level n · x XP` (player page reads `/api/progress` once at boot, best-effort).
+- `design-system.test.ts` is a contract: every emitted class must be listed there **and** in
+  `tokens.css`. Gates: shared 165 / backend 350 / frontend 458, no migration, no schema change.
+  Report: `docs/reports/phase-6-8-4-progression-inventory-podium.md`. Never commit the owner's
+  untracked `ZeroPeek_Ethan_Maya_Charakterbibliothek.zip`.

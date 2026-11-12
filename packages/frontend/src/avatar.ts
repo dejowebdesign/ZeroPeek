@@ -87,7 +87,8 @@ export function itemThumb(itemId: string | null): HTMLElement | null {
 
 /**
  * A compact avatar badge for a player in a list — lobby roster, leaderboard,
- * beamer podium and the player's own round header (Phase 6.8.3).
+ * beamer podium and the player's own round header (Phase 6.8.3, head crop
+ * Phase 6.8.4).
  *
  * `avatarId` is the character id the **server** resolved for the seat
  * (`PublicPlayer.avatar`), never a client guess. When it names a character with
@@ -97,18 +98,25 @@ export function itemThumb(itemId: string | null): HTMLElement | null {
  * frame: an unknown or missing id always falls back to the letter badge, so a
  * guest or a character awaiting artwork still gets a tidy, legible mark.
  *
+ * `crop` selects the visible slice of the supplied figure (Phase 6.8.4 §5):
+ * `'head'` (the default) shows only the head, framed by CSS `object-fit: cover`
+ * with a top anchor, for the in-game surfaces; `'full'` shows the whole figure,
+ * for the winner podium. No image is generated or edited — only the existing
+ * file is framed.
+ *
  * The badge is decorative: the nickname sits next to it, so it is hidden from
  * assistive technology to avoid repeating the name.
  */
 export function playerAvatar(
   nickname: string,
   avatarId?: string | null,
-  options: { size?: 'sm' | 'md' | 'lg' } = {},
+  options: { size?: 'sm' | 'md' | 'lg'; crop?: 'head' | 'full' } = {},
 ): HTMLElement {
   const assets = findCharacterAssets(avatarId);
   const size = options.size ?? 'md';
+  const crop = options.crop ?? 'head';
   const frame = el('span', {
-    class: `player-avatar player-avatar--${size}${assets ? ' player-avatar--art' : ''}`,
+    class: `player-avatar player-avatar--${size} player-avatar--${crop}${assets ? ' player-avatar--art' : ''}`,
     'aria-hidden': 'true',
   });
   if (assets) {
@@ -126,6 +134,37 @@ export function playerAvatar(
     frame.append(el('span', { class: 'player-avatar__initial' }, initial));
   }
   return frame;
+}
+
+/**
+ * The compact "player display" used during a round: head portrait, nickname and
+ * — for a signed-in player with progress — the real level and XP (Phase 6.8.4
+ * §5). Values come from the caller (the server's own figures); this builder never
+ * invents a level or an XP number.
+ */
+export function playerBadge(
+  nickname: string,
+  avatarId: string | null | undefined,
+  progress: { level: number; xp: number } | null,
+  options: { size?: 'sm' | 'md' | 'lg' } = {},
+): HTMLElement {
+  return el(
+    'div',
+    { class: 'player-badge' },
+    playerAvatar(nickname, avatarId, { size: options.size ?? 'md' }),
+    el(
+      'div',
+      { class: 'player-badge__body' },
+      el('span', { class: 'player-badge__name' }, nickname),
+      progress
+        ? el(
+            'span',
+            { class: 'player-badge__meta muted' },
+            `Level ${progress.level} · ${progress.xp} XP`,
+          )
+        : null,
+    ),
+  );
 }
 
 /** One "slot: item" row for the loadout list. */

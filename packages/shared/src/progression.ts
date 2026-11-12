@@ -1,8 +1,8 @@
 /**
  * Player progression: the level curve, the XP grant and the achievement rules
- * (Phase 6.8.3).
+ * (Phase 6.8.4).
  *
- * **Binding product decisions (Phase 5c, `game-design-concept.md` §5):**
+ * **Binding product decisions:**
  *   - **XP equal the game points** a player scored for their answers. There is
  *     deliberately **no second XP formula** — the existing scoring stays the
  *     authority and this module never recomputes a point.
@@ -10,41 +10,50 @@
  *     **not** folded back into the game score: 1st +1500, 2nd +1000, 3rd +500.
  *     A **tie** gives every tied player the **same** bonus (the rank comes from
  *     the existing `rankPlayers`, which already assigns shared ranks).
- *   - **Level curve:** level 1 starts at 0 XP; the climbs from level 1 to 10 cost
- *     10,000 XP each; from level 10 to 11 the cost is 11,000, and every further
- *     climb costs 1,000 more than the previous one.
+ *   - **Level curve (Phase 6.8.4, binding):**
+ *     `requiredXp(level) = 100000 + (level - 1) * 10000`, where `level` is the
+ *     **current** level and `requiredXp` the XP still needed to climb to the
+ *     next one. Level 1 starts at 0 XP, so the climb 1 → 2 costs 100,000,
+ *     2 → 3 costs 110,000, 3 → 4 costs 120,000, and so on.
  *
  * Everything here is pure and total, so the same rules run in a unit test and on
  * the server. The server is the only place that grants XP; nothing here is ever
  * trusted from the client.
+ *
+ * **XP is never destroyed by a curve change.** The curve only reinterprets an
+ * account's stored XP total: `PlayerProfile.xp` is the truth and the level is
+ * derived from it on every read. Replacing the curve can therefore *lower* the
+ * level an existing account displays (the new climbs are far more expensive) —
+ * that is a re-interpretation, never a deletion or a duplication of XP.
  */
 
 import type { Achievement } from './achievements.js';
 import type { CosmeticItem } from './cosmetics.js';
 
-/** The XP cost to climb **from** `level` to `level + 1`. */
-export function xpCostForLevel(level: number): number {
+/**
+ * The XP needed to climb **from** `level` to `level + 1`
+ * (`game-design-concept.md` §5.4, Phase 6.8.4):
+ *
+ * `requiredXp(level) = 100000 + (level - 1) * 10000`.
+ */
+export function requiredXp(level: number): number {
   // Levels below 1 do not exist; treat them as the first climb for safety.
-  const target = Math.max(1, Math.floor(level)) + 1;
-  // Climbs into levels 2..10 cost 10,000 each.
-  if (target <= 10) return 10_000;
-  // From level 11 on the cost is 11,000 for the climb into 11, then +1,000 each:
-  // 11,000 · 12,000 · 13,000 … which is exactly `1,000 × target`.
-  return 1_000 * target;
+  const current = Math.max(1, Math.floor(level));
+  return 100_000 + (current - 1) * 10_000;
 }
 
 /**
  * The total XP required to **reach** a level. Level 1 requires 0.
  *
- * `xpForLevel(1) === 0`, `xpForLevel(2) === 10_000`, …, `xpForLevel(11) === 101_000`,
- * `xpForLevel(12) === 113_000` — matching the binding table in
+ * `xpForLevel(1) === 0`, `xpForLevel(2) === 100_000`, `xpForLevel(3) === 210_000`,
+ * `xpForLevel(4) === 330_000`, … matching the binding table in
  * `game-design-concept.md` §5.4.
  */
 export function xpForLevel(level: number): number {
   const target = Math.max(1, Math.floor(level));
   let total = 0;
   for (let step = 2; step <= target; step += 1) {
-    total += xpCostForLevel(step - 1);
+    total += requiredXp(step - 1);
   }
   return total;
 }
@@ -159,7 +168,7 @@ export interface ProgressView {
   xp: number;
   level: number;
   progress: LevelProgress;
-  /** The next level that grants a reward, or `null` while the matrix is empty. */
+  /** The next level that grants a reward, or `null` when the matrix defines none. */
   nextRewardLevel: number | null;
   /** How many achievements are unlocked, for a quick profile summary. */
   achievementsUnlocked: number;
@@ -177,9 +186,15 @@ export interface InventoryItemView {
   /** Whether it is currently equipped on the active character. */
   equipped: boolean;
   /**
+   * The level at which this item is unlocked, or `null` when it is owned or the
+   * reward matrix defines no level for it. Phase 6.8.4: a locked item states the
+   * level it unlocks at, so the condition is concrete rather than a placeholder.
+   */
+  unlockLevel: number | null;
+  /**
    * A plain-language unlock hint for a locked item, or `null` for an owned one.
-   * Never an invented requirement: while the reward matrix is unapproved this
-   * states honestly that the unlock condition is not yet defined.
+   * Never an invented requirement: it names the unlock level when the matrix
+   * defines one, and otherwise states honestly that the condition is undefined.
    */
   unlockHint: string | null;
 }

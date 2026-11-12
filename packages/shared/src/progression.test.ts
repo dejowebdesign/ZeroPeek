@@ -1,5 +1,5 @@
 /**
- * Phase 6.8.3 — the level curve, the XP grant and the placement bonus.
+ * Phase 6.8.4 — the level curve, the XP grant and the placement bonus.
  *
  * These are the binding rules from `game-design-concept.md` §5, checked against
  * the exact table the concept publishes, so the shared function and the document
@@ -12,7 +12,7 @@ import {
   levelForXp,
   levelProgress,
   placementBonus,
-  xpCostForLevel,
+  requiredXp,
   xpForLevel,
   xpGrantForGame,
 } from './progression.js';
@@ -21,37 +21,28 @@ describe('level curve (game-design-concept §5.4)', () => {
   it('matches the published cumulative table', () => {
     const table: Array<[level: number, total: number]> = [
       [1, 0],
-      [2, 10_000],
-      [3, 20_000],
-      [4, 30_000],
-      [5, 40_000],
-      [6, 50_000],
-      [7, 60_000],
-      [8, 70_000],
-      [9, 80_000],
-      [10, 90_000],
-      [11, 101_000],
-      [12, 113_000],
-      [13, 126_000],
-      [14, 140_000],
-      [15, 155_000],
+      [2, 100_000],
+      [3, 210_000],
+      [4, 330_000],
+      [5, 460_000],
+      [6, 600_000],
+      [7, 750_000],
+      [8, 910_000],
+      [9, 1_080_000],
+      [10, 1_260_000],
     ];
     for (const [level, total] of table) {
       expect(xpForLevel(level)).toBe(total);
     }
   });
 
-  it('costs 10,000 for the climbs into levels 2..10', () => {
-    for (let level = 1; level <= 9; level += 1) {
-      expect(xpCostForLevel(level)).toBe(10_000);
-    }
-  });
-
-  it('costs 11,000 into level 11 and +1,000 for each further climb', () => {
-    expect(xpCostForLevel(10)).toBe(11_000);
-    expect(xpCostForLevel(11)).toBe(12_000);
-    expect(xpCostForLevel(12)).toBe(13_000);
-    expect(xpCostForLevel(13)).toBe(14_000);
+  it('costs 100,000 + (level - 1) * 10,000 for the climb from a level', () => {
+    expect(requiredXp(1)).toBe(100_000);
+    expect(requiredXp(2)).toBe(110_000);
+    expect(requiredXp(3)).toBe(120_000);
+    expect(requiredXp(4)).toBe(130_000);
+    expect(requiredXp(5)).toBe(140_000);
+    expect(requiredXp(10)).toBe(190_000);
   });
 
   it('treats level 1 as 0 XP and never goes below it', () => {
@@ -61,46 +52,45 @@ describe('level curve (game-design-concept §5.4)', () => {
   });
 
   it('resolves the level at and just below each threshold', () => {
-    expect(levelForXp(9_999)).toBe(1);
-    expect(levelForXp(10_000)).toBe(2);
-    expect(levelForXp(99_999)).toBe(10);
-    expect(levelForXp(100_999)).toBe(10);
-    expect(levelForXp(101_000)).toBe(11);
+    expect(levelForXp(99_999)).toBe(1);
+    expect(levelForXp(100_000)).toBe(2);
+    expect(levelForXp(209_999)).toBe(2);
+    expect(levelForXp(210_000)).toBe(3);
   });
 
   it('counts several level-ups from a single large grant', () => {
-    // 100,000 XP crosses every threshold up to level 10 in one go.
-    expect(levelForXp(100_000)).toBe(10);
-    // 155,000 XP reaches level 15 in one grant.
-    expect(levelForXp(155_000)).toBe(15);
+    // 210,000 XP crosses into level 3 in one go.
+    expect(levelForXp(210_000)).toBe(3);
+    // 1,260,000 XP reaches level 10 in one grant.
+    expect(levelForXp(1_260_000)).toBe(10);
   });
 });
 
 describe('level progress', () => {
   it('reports progress inside a level and what is still needed', () => {
-    const progress = levelProgress(12_500);
+    const progress = levelProgress(150_000);
     expect(progress.level).toBe(2);
-    expect(progress.xpIntoLevel).toBe(2_500);
-    expect(progress.xpForThisLevel).toBe(10_000);
-    expect(progress.xpToNextLevel).toBe(7_500);
+    expect(progress.xpIntoLevel).toBe(50_000);
+    expect(progress.xpForThisLevel).toBe(110_000);
+    expect(progress.xpToNextLevel).toBe(60_000);
     expect(progress.nextLevel).toBe(3);
-    expect(progress.ratio).toBeCloseTo(0.25, 5);
+    expect(progress.ratio).toBeCloseTo(50_000 / 110_000, 5);
   });
 
   it('starts a fresh level with a full bar to the next one', () => {
-    const progress = levelProgress(10_000);
+    const progress = levelProgress(100_000);
     expect(progress.level).toBe(2);
     expect(progress.xpIntoLevel).toBe(0);
-    expect(progress.xpToNextLevel).toBe(10_000);
+    expect(progress.xpToNextLevel).toBe(110_000);
     expect(progress.ratio).toBe(0);
   });
 
-  it('uses the wider span once past level 10', () => {
-    const progress = levelProgress(101_500);
-    expect(progress.level).toBe(11);
-    expect(progress.xpIntoLevel).toBe(500);
-    expect(progress.xpForThisLevel).toBe(12_000);
-    expect(progress.xpToNextLevel).toBe(11_500);
+  it('uses the wider span once past level 1', () => {
+    const progress = levelProgress(310_000);
+    expect(progress.level).toBe(3);
+    expect(progress.xpIntoLevel).toBe(100_000);
+    expect(progress.xpForThisLevel).toBe(120_000);
+    expect(progress.xpToNextLevel).toBe(20_000);
   });
 });
 

@@ -191,20 +191,17 @@ export const EMPTY_AVATAR_CONFIG: AvatarConfig = {
   equipment: { ...EMPTY_EQUIPMENT },
 };
 
-/** A copy of the default equipment for a character, as an `AvatarEquipment`. */
+/**
+ * The configuration a character **starts** with: the chosen character and
+ * **nothing equipped**.
+ *
+ * Phase 6.8.4 binding rule: level 1 begins with the base character and no
+ * unlockable equipment, and an unlocked item is never equipped automatically —
+ * equipping happens only in the inventory. A character without artwork also
+ * starts with nothing equipped (there is nothing to wear yet).
+ */
 export function defaultAvatarConfig(characterId: string): AvatarConfig {
-  const assets = findCharacterAssets(characterId);
-  if (!assets) return { characterId, equipment: { ...EMPTY_EQUIPMENT } };
-  return {
-    characterId,
-    equipment: {
-      visor: assets.defaultEquipment.visor,
-      outfit: assets.defaultEquipment.outfit,
-      backpack: assets.defaultEquipment.backpack,
-      neckAccessory: assets.defaultEquipment.neckAccessory,
-      wristAccessory: assets.defaultEquipment.wristAccessory,
-    },
-  };
+  return { characterId, equipment: { ...EMPTY_EQUIPMENT } };
 }
 
 /**

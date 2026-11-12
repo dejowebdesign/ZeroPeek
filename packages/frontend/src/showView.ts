@@ -24,7 +24,7 @@ export function questionDisplayOptions(question: PublicQuestion): string[] {
   );
 }
 
-/** One beamer leaderboard row: rank, avatar, name, score. */
+/** One beamer leaderboard row: rank, head portrait, name, score. */
 export function leaderboardRow(player: PublicPlayer, index: number): HTMLElement {
   return el(
     'li',
@@ -33,7 +33,7 @@ export function leaderboardRow(player: PublicPlayer, index: number): HTMLElement
     el(
       'span',
       { class: 'leaderboard__who' },
-      playerAvatar(player.nickname, player.avatar, { size: 'md' }),
+      playerAvatar(player.nickname, player.avatar, { size: 'md', crop: 'head' }),
       el('span', { class: 'leaderboard__name' }, player.nickname),
     ),
     el('span', { class: 'leaderboard__score' }, String(player.score)),
@@ -43,14 +43,15 @@ export function leaderboardRow(player: PublicPlayer, index: number): HTMLElement
 /**
  * A podium place. `rank` is 1-based and drives the modifier class, so the
  * styling for gold, silver and bronze stays in the stylesheet. The winner's
- * avatar is shown large, so the champion is recognisable from across the room
- * (Phase 6.8.3).
+ * **full character figure** is shown large, so the champion is recognisable from
+ * across the room (Phase 6.8.4 §4). Only the existing supplied artwork is framed
+ * (`crop: 'full'`); no layer is composed and no image is generated.
  */
 export function podiumPlace(player: PublicPlayer, rank: number): HTMLElement {
   return el(
     'li',
     { class: `podium__place podium__place--${rank}` },
-    playerAvatar(player.nickname, player.avatar, { size: 'lg' }),
+    playerAvatar(player.nickname, player.avatar, { size: 'lg', crop: 'full' }),
     el('span', { class: 'podium__rank' }, String(rank)),
     el('span', { class: 'podium__name' }, player.nickname),
     el('span', { class: 'podium__score' }, String(player.score)),

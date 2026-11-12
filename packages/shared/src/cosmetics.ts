@@ -87,13 +87,6 @@ export interface LayerGeometry {
   zOrder: number;
 }
 
-/** Availability of an item to the player (unlock state). */
-export type UnlockStatus =
-  /** Equippable now — the default equipment shipped with the character. */
-  | 'available'
-  /** Reserved for the Phase 6.8 inventory/unlock system. No item uses it yet. */
-  | 'locked';
-
 /**
  * One character-exclusive cosmetic item.
  *
@@ -113,8 +106,6 @@ export interface CosmeticItem {
   slot: EquipmentSlot;
   /** Public URL of the item's own artwork (served from the frontend `public/`). */
   assetPath: string;
-  /** Unlock state. Phase 6.7 ships only `available` default equipment. */
-  unlockStatus: UnlockStatus;
   /** How far the artwork is aligned to the avatar canvas (see `AssetAlignment`). */
   alignment: AssetAlignment;
   /** Reserved alignment geometry; absent until the aligned layer set exists. */
@@ -135,7 +126,6 @@ const ETHAN_ITEMS: readonly CosmeticItem[] = [
     characterId: 'ethan',
     slot: 'visor',
     assetPath: '/characters/ethan/visor_cyber.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
   {
@@ -145,7 +135,6 @@ const ETHAN_ITEMS: readonly CosmeticItem[] = [
     characterId: 'ethan',
     slot: 'outfit',
     assetPath: '/characters/ethan/outfit_standard.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
   {
@@ -155,7 +144,6 @@ const ETHAN_ITEMS: readonly CosmeticItem[] = [
     characterId: 'ethan',
     slot: 'backpack',
     assetPath: '/characters/ethan/backpack_tech.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
   {
@@ -165,7 +153,6 @@ const ETHAN_ITEMS: readonly CosmeticItem[] = [
     characterId: 'ethan',
     slot: 'neckAccessory',
     assetPath: '/characters/ethan/compass_pendant.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
   {
@@ -175,7 +162,6 @@ const ETHAN_ITEMS: readonly CosmeticItem[] = [
     characterId: 'ethan',
     slot: 'wristAccessory',
     assetPath: '/characters/ethan/wristband_tech.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
 ];
@@ -189,7 +175,6 @@ const MAYA_ITEMS: readonly CosmeticItem[] = [
     characterId: 'maya',
     slot: 'visor',
     assetPath: '/characters/maya/visor_headset_cyber.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
   {
@@ -199,7 +184,6 @@ const MAYA_ITEMS: readonly CosmeticItem[] = [
     characterId: 'maya',
     slot: 'outfit',
     assetPath: '/characters/maya/outfit_standard.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
   {
@@ -209,7 +193,6 @@ const MAYA_ITEMS: readonly CosmeticItem[] = [
     characterId: 'maya',
     slot: 'backpack',
     assetPath: '/characters/maya/backpack_tech.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
   {
@@ -219,7 +202,6 @@ const MAYA_ITEMS: readonly CosmeticItem[] = [
     characterId: 'maya',
     slot: 'neckAccessory',
     assetPath: '/characters/maya/compass_pendant.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
   {
@@ -229,7 +211,6 @@ const MAYA_ITEMS: readonly CosmeticItem[] = [
     characterId: 'maya',
     slot: 'wristAccessory',
     assetPath: '/characters/maya/wristband_tech.webp',
-    unlockStatus: 'available',
     alignment: 'not_aligned',
   },
 ];

@@ -21,6 +21,7 @@ import {
   getAchievementsView,
   getInventoryView,
   getProgressView,
+  unequipItem,
 } from '../services/progressionService.js';
 
 export function registerProgressRoutes(app: FastifyInstance, config: AppConfig): void {
@@ -52,5 +53,15 @@ export function registerProgressRoutes(app: FastifyInstance, config: AppConfig):
   app.post('/api/inventory/equip', guard, async (request) => {
     const user = currentPlayer(request);
     return equipItem(user.id, request.body);
+  });
+
+  /**
+   * Unequip the item in one slot of the active character (Phase 6.8.4). The
+   * server clears exactly that slot of the session's own character; the client
+   * can never name a character.
+   */
+  app.post('/api/inventory/unequip', guard, async (request) => {
+    const user = currentPlayer(request);
+    return unequipItem(user.id, request.body);
   });
 }
