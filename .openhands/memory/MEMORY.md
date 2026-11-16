@@ -807,3 +807,22 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   `tokens.css`. Gates: shared 165 / backend 350 / frontend 458, no migration, no schema change.
   Report: `docs/reports/phase-6-8-4-progression-inventory-podium.md`. Never commit the owner's
   untracked `ZeroPeek_Ethan_Maya_Charakterbibliothek.zip`.
+
+## Phase 6.8.5 — clock sync & socket rate limiting (branch, awaiting approval)
+- **Clock sync is display-only; the server stays authoritative.** `shared/src/clock.ts` (pure) holds
+  the NTP offset maths: `offset = serverTime − (t1+t3)/2`, `CLOCK_SAMPLE_COUNT=5`,
+  `CLOCK_MAX_ROUND_TRIP_MS=2000`; `bestOffset` = smallest round-trip, ties → later sample, unusable
+  samples dropped (never clamped). Events `clock:ping` (c→s) / `clock:pong` (s→c) on **both** `/` and
+  `/host`. `frontend/src/clockSync.ts` measures with `performance.now()` and exposes `serverNow()`
+  (falls back to `Date.now()` before the first sample). `pages/host.ts` `startTimer`/`resumed` read it.
+- **Socket rate limiting** (`backend/src/socketRateLimit.ts`): in-memory token bucket, keyed ONLY by a
+  server-owned id — `socket:<id>` before a seat, `player:<playerId>` after; a client field never moves
+  a bucket. `SOCKET_RATE_RULES`: join 10/10s, joinByAddress 60/10s, answer 20/10s, rejoin 15/10s,
+  rejoinBySocket 20/10s. Rejection runs no handler → no score/state change. **No Redis** (per-process,
+  fine for one instance).
+- **`SOCKET_RATE_LIMITS`** (default on; **off in the `test` env** unless set) mirrors `authRateLimits` —
+  without the off-by-default the existing socket suites trip themselves. Wired into both compose files,
+  `.env.portainer.example`, PORTAINER.md, ENVIRONMENT.md.
+- Gates after 6.8.5: shared 179 / frontend 469 / backend 385 (0 skipped with a DB). No migration, no
+  schema change, no new dependency. Report: `docs/reports/phase-6-8-5-clock-sync-and-socket-rate-limit.md`;
+  roadmap §9.3; ADR 0006 updated.
