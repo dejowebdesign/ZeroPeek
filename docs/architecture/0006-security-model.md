@@ -72,6 +72,19 @@ in principle with our own implementation.
   **player** account solely through `zp_player_session` — a host cookie never links a seat.
 - **Every** incoming socket payload is schema-validated; invalid payloads are rejected with an error
   ACK. Rate limiting on hot paths (join, answer, chat-like events).
+- **Socket rate limiting (Phase 6.8.5, implemented).** The gameplay events that bypass the HTTP
+  limiter (`player:join`, `player:rejoin`, `player:answer`) are bounded by an in-memory token bucket
+  (`packages/backend/src/socketRateLimit.ts`), keyed only by a **server-owned** identity — the socket
+  id before a seat exists, the seated `playerId` afterwards. A client field is never the key, so a
+  manipulated payload cannot move a bucket. A rejected call runs no part of the handler, so it
+  changes no seat, score, phase or state. Enforcement is controlled by `SOCKET_RATE_LIMITS` (default
+  on; off in the test environment unless a suite opts in). The store is per-process; a multi-instance
+  deployment would need a shared store (Redis) — tracked, not required for the current single
+  instance.
+- **Clock synchronisation (Phase 6.8.5).** `clock:ping`/`clock:pong` (both namespaces) let a client
+  measure the server's wall clock and render the countdown against it. This is a **display**
+  correction only: the server's own deadline is unchanged and remains the sole authority for whether
+  an answer was in time.
 
 **Input & data**
 

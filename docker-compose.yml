@@ -66,6 +66,9 @@ services:
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-ZeroPeek}
       MAIL_VERIFY_TTL_HOURS: ${MAIL_VERIFY_TTL_HOURS:-24}
       AUTH_RATE_LIMITS: ${AUTH_RATE_LIMITS:-true}
+      # Socket.IO gameplay rate limits (Phase 6.8.5): bound joins,
+      # answers and rejoins per player. On by default.
+      SOCKET_RATE_LIMITS: ${SOCKET_RATE_LIMITS:-true}
     ports:
       - '${BACKEND_PORT:-3000}:3000'
     depends_on:
