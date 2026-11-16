@@ -826,3 +826,24 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
 - Gates after 6.8.5: shared 179 / frontend 469 / backend 385 (0 skipped with a DB). No migration, no
   schema change, no new dependency. Report: `docs/reports/phase-6-8-5-clock-sync-and-socket-rate-limit.md`;
   roadmap §9.3; ADR 0006 updated.
+
+## Phase 6.8.6 — CSS/contract/docs cleanup (branch `maintenance/phase-6-8-6-css-contract-docs`)
+- **Pure maintenance, no behaviour/schema/dependency change.** Removed dead CSS + 3 unused tokens,
+  merged two duplicate rule groups, aligned the docs with merged history. Base `main` @ `da36e76`.
+- **Dead-vs-kept is decided by "emitted OR documented", not by "emitted" alone.** `card--raised`,
+  `card--interactive`, `anim-shake` are emitted by no component but are documented design-system
+  utilities (`docs/design/design-system.md` §3/§7) → **keep** them and their contract entries.
+  `auth__hint` / `input--invalid` are documented nowhere → dead (drop `.auth__hint` entirely; for
+  `.input--invalid` keep the sibling `.input[aria-invalid='true']`, which IS set in `pages/admin.ts`).
+- **Unused-token test:** diff declared `--x` against every `var(--x)`. 18 show as unused; only
+  `--ease-in`, `--ease-out`, `--shadow-nav` are safe to delete. The rest are frozen Phase-0 values,
+  the brand/rarity ramp, the wireframe set (`--wire-*`, `--brand-cyan`), `--dur-show`, `--type-score`,
+  `--blur-input` — several are asserted by `design-system.test.ts`, so deleting breaks the contract.
+- **CSS source-order gotcha:** the 1440px `:root` block must keep `--player-measure` last — at ≥1440px
+  the 768/1024/1440 `min-width` blocks all match, so the widest value must win by order. `--content-max`
+  was folded into that same block.
+- **Docs rule:** historical reports keep their original "awaiting approval" body; add a dated
+  "historical snapshot" note instead of rewriting. `docs/phases.md` + roadmap §14/§19 are the living
+  status tables — update those to "Done (merged, PR #N)".
+- Gates after 6.8.6: frontend 468 (was 469; the `auth__hint` `it` left with its entry) / shared 179 /
+  backend 385 (0 skips with a DB). Report: `docs/reports/phase-6-8-6-css-contract-docs.md`.
