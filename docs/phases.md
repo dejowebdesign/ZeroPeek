@@ -42,6 +42,7 @@ Nothing is implemented until the project owner approves it.
 | 6.7   | Blockwelt character and avatar system                                        | Done (merged, PR #38/#39) – `docs/reports/phase-6-7-character-avatar-system.md`; roadmap §8                                                                                                                                                                        |
 | 6.8   | Player progression (XP, levels, achievements, inventory, guest-round claim)  | Awaiting review – `docs/reports/phase-6-8-player-progression.md`; roadmap §9                                                                                                                                                                                       |
 | 6.8.4 | Progression curve, reward matrix, inventory management, in-game presentation | Awaiting review – `docs/reports/phase-6-8-4-progression-inventory-podium.md`; roadmap §9.1; concept §5.4/§6.2b/§6.6                                                                                                                                                |
+| 6.8.5 | Clock synchronisation and socket rate limiting                               | Awaiting review – `docs/reports/phase-6-8-5-clock-sync-and-socket-rate-limit.md`; roadmap §9.3                                                                                                                                                                     |
 
 See `docs/concept/README.md` for the reading order.
 

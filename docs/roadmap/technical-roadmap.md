@@ -488,6 +488,31 @@ Vorgang beim Spielende, in einer Transaktion.
 - **Abgrenzung:** Nur die **gerade abgeschlossene** Runde; **keine** unbegrenzte nachträgliche
   Übertragung früherer Gastspiele (`game-design-concept.md` §4.4).
 
+### 9.3 Uhrensynchronisation und Socket-Rate-Limiting (Phase 6.8.5)
+
+Zwei unabhängige Härtungspunkte, umgesetzt ohne Schemaänderung und ohne neue
+Laufzeitabhängigkeit.
+
+- **Uhrzeit-Abgleich:** Der Countdown wird aus dem **Server**-`openedAt` gezeichnet, der Client
+  vergleicht das aber mit seiner eigenen Uhr. Ein kurzer Ping/Pong-Umlauf (`clock:ping` /
+  `clock:pong`, beide Namespaces) misst den Offset; die reine Mathematik liegt in
+  `shared/clock.ts` (NTP-Modell, bestes von `CLOCK_SAMPLE_COUNT = 5` Proben, verwertbar bis
+  `CLOCK_MAX_ROUND_TRIP_MS = 2000`). Der Client (`frontend/clockSync.ts`) misst mit
+  `performance.now()` und zeichnet den Countdown über `serverNow()`.
+- **Der Server bleibt maßgeblich:** Der Offset ändert nur die **Anzeige**, nie die
+  Antwortfrist; ein zu spät gesendeter zweiter Versuch wird weiterhin serverseitig abgelehnt.
+- **Rate-Limiting:** In-Memory-Token-Bucket (`backend/socketRateLimit.ts`) für die drei
+  Spielereignisse, die den HTTP-Limiter umgehen (`player:join`, `player:rejoin`,
+  `player:answer`). Schlüssel ist ausschließlich eine **serverseitige** Identität (Socket-Id vor
+  dem Sitzplatz, danach die vergebene `playerId`) – niemals ein Client-Feld. Eine Ablehnung
+  berührt keinen Zustand.
+- **Schalter:** `SOCKET_RATE_LIMITS` (Standard an; im Test aus, sofern nicht gesetzt), analog zu
+  `AUTH_RATE_LIMITS`.
+- **Nicht Teil dieser Phase:** kein getrennter Beamer-Zugang, keine Änderung an Wertung,
+  Levelkurve oder Datenmodell, kein Redis.
+
+Report: `docs/reports/phase-6-8-5-clock-sync-and-socket-rate-limit.md`.
+
 ---
 
 ## 10. Phase 6.9 – Game-Show-Modus (in der bestehenden Host-Ansicht)

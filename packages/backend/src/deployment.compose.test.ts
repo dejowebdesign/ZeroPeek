@@ -252,6 +252,28 @@ describe('auth rate-limit wiring', () => {
   });
 });
 
+describe('socket rate-limit wiring (Phase 6.8.5)', () => {
+  it('forwards SOCKET_RATE_LIMITS to the backend in both stacks', () => {
+    expect(compose).toMatch(/SOCKET_RATE_LIMITS:\s*\$\{SOCKET_RATE_LIMITS:-/);
+    expect(devCompose).toMatch(/SOCKET_RATE_LIMITS:\s*\$\{SOCKET_RATE_LIMITS:-/);
+  });
+
+  it('does not require the variable, so the default (on) applies', () => {
+    expect(required).not.toContain('SOCKET_RATE_LIMITS');
+  });
+
+  it('defaults it to true in the compose files', () => {
+    expect(compose).toMatch(/SOCKET_RATE_LIMITS:\s*\$\{SOCKET_RATE_LIMITS:-true\}/);
+    expect(devCompose).toMatch(/SOCKET_RATE_LIMITS:\s*\$\{SOCKET_RATE_LIMITS:-true\}/);
+  });
+
+  it('documents the variable in PORTAINER.md, ENVIRONMENT.md and the template', () => {
+    expect(portainerDoc).toContain('`SOCKET_RATE_LIMITS`');
+    expect(environmentDoc).toContain('`SOCKET_RATE_LIMITS`');
+    expect(envTemplate).toContain('SOCKET_RATE_LIMITS');
+  });
+});
+
 describe('preliminary deployment values (PORTAINER.md section 5.4)', () => {
   // The documented "get it running once" values must actually pass the backend
   // validation, or the copy-paste instructions start a backend that refuses to

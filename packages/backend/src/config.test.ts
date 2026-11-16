@@ -342,3 +342,18 @@ describe('auth rate limits', () => {
     expect(loadConfig({ NODE_ENV: 'test', AUTH_RATE_LIMITS: '0' }).authRateLimits).toBe(false);
   });
 });
+
+describe('socket rate limits', () => {
+  it('is on outside the test environment', () => {
+    expect(loadConfig({}).socketRateLimits).toBe(true);
+    expect(loadConfig(VALID_PRODUCTION).socketRateLimits).toBe(true);
+  });
+
+  it('is off in tests unless explicitly requested', () => {
+    expect(loadConfig({ NODE_ENV: 'test' }).socketRateLimits).toBe(false);
+    expect(loadConfig({ NODE_ENV: 'test', SOCKET_RATE_LIMITS: 'true' }).socketRateLimits).toBe(
+      true,
+    );
+    expect(loadConfig({ NODE_ENV: 'test', SOCKET_RATE_LIMITS: '0' }).socketRateLimits).toBe(false);
+  });
+});

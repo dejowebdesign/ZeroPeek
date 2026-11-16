@@ -30,11 +30,39 @@ import {
 import { resolvePlayerSession, resolveSession } from './sessions.js';
 import { grantProgressForGame } from './services/progressionService.js';
 import { issueGuestClaims } from './services/claimService.js';
+import { SocketRateLimiter } from './socketRateLimit.js';
 
 /** Room helpers. Each player also gets a personal room for private results. */
 const playerRoom = (gameId: string): string => `game:${gameId}:players`;
 const hostRoom = (gameId: string): string => `game:${gameId}:hosts`;
 const personalRoom = (playerId: string): string => `player:${playerId}`;
+
+/**
+ * Answer a `clock:ping` (Phase 6.8.5).
+ *
+ * The server stamps its own wall clock at the moment it replies and echoes the
+ * client's correlation id, so the client can pair the reply with the probe it
+ * sent and measure the round-trip itself. The clock is not rate-limited: it
+ * carries no state, is cheap, and a burst of probes is exactly how a client is
+ * meant to measure the offset. The `id` is validated but never trusted as
+ * anything more than an opaque echo, so a manipulated value can only affect the
+ * sender's own correlation.
+ */
+function answerClockPing(
+  socket: Socket,
+  payload: unknown,
+  ack: unknown,
+  serverTime: () => number = Date.now,
+): void {
+  const id = payload && typeof payload === 'object' ? (payload as { id?: unknown }).id : undefined;
+  const pong = { id: typeof id === 'string' ? id : '', serverTime: serverTime() };
+  // Emit the documented `clock:pong` event so either style of client works, and
+  // answer the ACK too when the client used one.
+  socket.emit('clock:pong', pong);
+  if (typeof ack === 'function') {
+    (ack as (result: { ok: true; data: typeof pong }) => void)({ ok: true, data: pong });
+  }
+}
 
 type AckFn<T> = (result: { ok: true; data: T } | { ok: false; error: string }) => void;
 
@@ -92,6 +120,22 @@ export interface SocketLayer {
   close: () => Promise<void>;
 }
 
+/**
+ * The client address behind a socket, used only as a coarse rate-limit backstop.
+ *
+ * `trustProxy` is on in Fastify, so a proxied deployment puts the real client
+ * address in `x-forwarded-for`; the socket upgrade does not pass through that, so
+ * the header is read here too. Only the first hop is taken (the nearest client)
+ * and it is never used as an identity, only as a second, looser bucket, so a
+ * spoofed header cannot do worse than spread a flooder's own buckets.
+ */
+function clientAddress(socket: Socket): string {
+  const header = socket.handshake.headers['x-forwarded-for'];
+  const first = Array.isArray(header) ? header[0] : header;
+  const forwarded = first?.split(',')[0]?.trim();
+  return forwarded || socket.handshake.address || 'unknown';
+}
+
 /** Attach Socket.IO to the Fastify HTTP server and wire the engine events. */
 export function attachSocketIO(
   httpServer: HttpServer,
@@ -105,6 +149,17 @@ export function attachSocketIO(
 
   const players = io.of('/');
   const hosts = io.of('/host');
+
+  /**
+   * The one rate limiter for every gameplay event (Phase 6.8.5). Shared by both
+   * namespaces, so a host and a player cannot each get a fresh allowance for the
+   * same key, and keyed by the server's own identity (socket id before a seat
+   * exists, the seated `playerId` after), never by anything a client sends.
+   *
+   * Enforcement follows `config.socketRateLimits`: on in production, off in the
+   * test environment unless a suite opts in (the same rule as the auth limits).
+   */
+  const limiter = new SocketRateLimiter({ enabled: config.socketRateLimits });
 
   /**
    * The last host-presence value announced per game, and the debounce timers.
@@ -179,6 +234,12 @@ export function attachSocketIO(
 
   hosts.on('connection', (socket: Socket) => {
     const user = socket.data.user as { id: string; username: string; role: string };
+
+    // A host measures its own clock too (the beamer countdown), so the same
+    // ping is answered here. It carries no state and is not rate-limited.
+    socket.on('clock:ping', (payload: unknown, ack: unknown) => {
+      answerClockPing(socket, payload, ack);
+    });
 
     /** Reject unless the host owns the game (admins may control any game). */
     const assertHost = async (gameId: string): Promise<void> => {
@@ -289,10 +350,23 @@ export function attachSocketIO(
   // Player namespace.
   // ---------------------------------------------------------------------------
   players.on('connection', (socket: Socket) => {
+    // The clock probe is answered for every connection, before any seat exists,
+    // so a player can measure the offset as soon as it joins the lobby.
+    socket.on('clock:ping', (payload: unknown, ack: unknown) => {
+      answerClockPing(socket, payload, ack);
+    });
+
     socket.on(
       'player:join',
       (payload: { pin?: string; nickname?: string; avatar?: string }, ack) => {
         guard(ack, async () => {
+          // Rate-limited before anything else: keyed by this socket (the only
+          // server-owned identity before a seat exists), with a looser per-address
+          // backstop so cycling reconnects cannot reset the allowance. A rejected
+          // join runs no part of the handler, so no seat, score or state changes.
+          limiter.check('join', `socket:${socket.id}`);
+          limiter.check('joinByAddress', `addr:${clientAddress(socket)}`);
+
           const pin = asString(payload?.pin, 'pin');
 
           // A registered player may be signed in on this browser through the
@@ -358,6 +432,13 @@ export function attachSocketIO(
           const gameId = asString(payload?.gameId, 'gameId');
           const playerId = asString(payload?.playerId, 'playerId');
           const token = asString(payload?.token, 'token');
+          // Keyed by the seat being reclaimed, so a reconnect storm is allowed
+          // for a real player while a loop against one seat is bounded. The seat
+          // id is a server value the client must already hold to rejoin at all.
+          // The per-socket backstop bounds a spray that names many seat ids, so
+          // it is cut off by the sender's own bucket rather than the victims'.
+          limiter.check('rejoin', `player:${playerId}`);
+          limiter.check('rejoinBySocket', `socket:${socket.id}`);
           const player = await rejoinGame(gameId, playerId, token);
           await socket.join(playerRoom(gameId));
           await socket.join(personalRoom(player.id));
@@ -379,6 +460,11 @@ export function attachSocketIO(
         const gameId = socket.data.gameId as string | undefined;
         const playerId = socket.data.playerId as string | undefined;
         if (!gameId || !playerId) throw badRequest('Join a game first.');
+        // Keyed by the seated player (a server value), never by the payload, so
+        // one player's flood cannot exhaust another's allowance and a spoofed
+        // `questionId` cannot move the bucket. The check precedes the engine, so
+        // a rejected answer changes no score and no state.
+        limiter.check('answer', `player:${playerId}`);
         const questionId = asString(payload?.questionId, 'questionId');
         return engine.submitAnswer(gameId, playerId, questionId, payload?.answer);
       });

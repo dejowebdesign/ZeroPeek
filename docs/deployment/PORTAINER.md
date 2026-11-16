@@ -150,6 +150,7 @@ from failing on one missing variable at a time.
 | `MAIL_FROM_NAME`                                     | `ZeroPeek`                | Display name shown next to `MAIL_FROM`.                                      |
 | `MAIL_VERIFY_TTL_HOURS`                              | `24`                      | How long a confirmation link stays valid.                                    |
 | `AUTH_RATE_LIMITS`                                   | `true`                    | Stricter per-route limits on the auth endpoints.                             |
+| `SOCKET_RATE_LIMITS`                                 | `true`                    | Socket.IO limits for join/answer/rejoin (Phase 6.8.5).                       |
 
 > **Exactly four values are required and must not be empty** (Compose `:?`
 > guards): `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and

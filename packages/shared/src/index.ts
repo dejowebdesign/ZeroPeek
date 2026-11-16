@@ -16,6 +16,7 @@ export * from './account.js';
 export * from './scoring.js';
 export * from './pin.js';
 export * from './events.js';
+export * from './clock.js';
 export * from './profile.js';
 export * from './cosmetics.js';
 export * from './progression.js';

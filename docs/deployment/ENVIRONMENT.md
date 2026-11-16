@@ -220,6 +220,7 @@ a loop, which only makes it worse.
 | `MAIL_FROM_NAME`        | no       | `ZeroPeek` | Display name shown next to `MAIL_FROM`.                                                                                                                              |
 | `MAIL_VERIFY_TTL_HOURS` | no       | `24`       | How long an e-mail confirmation link stays valid.                                                                                                                    |
 | `AUTH_RATE_LIMITS`      | no       | `true`     | Enforce the stricter per-route limits on the auth endpoints. Set to `false` only when a trusted proxy makes them misfire.                                            |
+| `SOCKET_RATE_LIMITS`    | no       | `true`     | Enforce the Socket.IO gameplay limits for `join`/`answer`/`rejoin` (Phase 6.8.5). Set to `false` only for a trusted, high-volume client.                             |
 
 Player self-registration (Phase 6.3) is optional and works without mail: the
 account is created, but the confirmation link cannot be sent until `SMTP_URL`

@@ -97,6 +97,14 @@ export interface AppConfig {
    * to prove they actually reject a flood.
    */
   authRateLimits: boolean;
+  /**
+   * Whether the Socket.IO gameplay rate limits (Phase 6.8.5) are enforced. On
+   * everywhere except the test environment, unless `SOCKET_RATE_LIMITS` says
+   * otherwise – the same pattern as `authRateLimits`, so the many socket suites
+   * are not tripped by their own traffic while a dedicated suite can switch the
+   * limits on and prove they reject a flood.
+   */
+  socketRateLimits: boolean;
 }
 
 /** Whether outgoing mail is configured (an SMTP URL and a sender are both set). */
@@ -425,5 +433,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       env.AUTH_RATE_LIMITS === undefined
         ? nodeEnv !== 'test'
         : readAuthRateLimits(env.AUTH_RATE_LIMITS),
+    // The socket limits follow the same rule: off in tests unless asked for, so
+    // the socket suites are not tripped by their own traffic while the dedicated
+    // rate-limit suite can turn them on.
+    socketRateLimits:
+      env.SOCKET_RATE_LIMITS === undefined
+        ? nodeEnv !== 'test'
+        : readAuthRateLimits(env.SOCKET_RATE_LIMITS),
   };
 }

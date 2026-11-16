@@ -22,6 +22,7 @@ import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
+import { ClockSync } from '../clockSync.js';
 import { playerAvatar } from '../avatar.js';
 import { leaderboardRow, podiumPlace, questionDisplayOptions } from '../showView.js';
 import {
@@ -92,6 +93,12 @@ const app: HTMLElement = appElement;
 let socket: HostSocket | null = null;
 let me: MeResponse['user'] = null;
 let timerHandle: number | null = null;
+/**
+ * The clock correction for this host socket (Phase 6.8.5). The countdown is
+ * drawn against the server's clock, so a host whose own clock is off still shows
+ * the same number as the players. `null` until the first measurement lands.
+ */
+let clock: ClockSync | null = null;
 /** The node showing the running answer count, while a question is open. */
 let answerCountNode: HTMLElement | null = null;
 /** Players seen in the lobby, used to seed the answer count before the first answer. */
@@ -129,13 +136,17 @@ function stopTimer(): void {
  *
  * The visual is the shared wireframe ring (`countdown`): the number is written
  * into `.countdown__value` and the ring's `--progress` follows the remaining
- * time. The timing itself is unchanged from before.
+ * time. The elapsed time is measured against the **server's** clock (Phase
+ * 6.8.5) via `clock`, so a host whose own clock is off still shows the same
+ * number as the players; before the first measurement lands `clock.serverNow()`
+ * falls back to the local clock, which is the previous behaviour.
  */
 function startTimer(node: HTMLElement, openedAt: number, seconds: number): void {
   stopTimer();
   const value = node.querySelector<HTMLElement>('.countdown__value');
   const tick = (): void => {
-    const elapsed = Math.floor((Date.now() - openedAt) / 1000);
+    const now = clock ? clock.serverNow() : Date.now();
+    const elapsed = Math.floor((now - openedAt) / 1000);
     const left = Math.max(0, seconds - elapsed);
     const label = `${left}s`;
     if (value) value.textContent = label;
@@ -218,6 +229,10 @@ function ensureSocket(): HostSocket {
   if (!socket) {
     const host = connectHost();
     socket = host;
+    // Measure the offset to the server clock for this socket (Phase 6.8.5). The
+    // round is fired immediately and again on every reconnect below.
+    clock = new ClockSync(host);
+    void clock.sync();
 
     attachHostHandlers(host, {
       lobby: (payload) => {
@@ -270,7 +285,11 @@ function ensureSocket(): HostSocket {
       resumed: (payload) => {
         lastLiveEventAt = Date.now();
         if (currentQuestion && currentQuestion.id === payload.questionId) {
-          const resumedAt = Date.now();
+          // The host countdown is re-anchored at the server's current instant for
+          // the remaining seconds (Phase 6.8.5), so it lines up with what the
+          // players see instead of with the host's own wall clock. The server
+          // stays authoritative for the actual deadline.
+          const resumedAt = clock ? clock.serverNow() : Date.now();
           renderHostState({
             kind: 'question',
             question: {
@@ -290,6 +309,9 @@ function ensureSocket(): HostSocket {
     host.on('connect', () => {
       const wasConnected = hasConnected;
       hasConnected = true;
+      // Re-measure the offset on every (re)connect: a reconnect may land on a
+      // different backend process, and a laptop that slept has a drifted clock.
+      void clock?.sync();
       // A reconnect must re-ask the server and must NOT be "connected" for
       // control purposes until that snapshot is on screen. Marking the
       // connection live only after the resync lands keeps the controls disabled

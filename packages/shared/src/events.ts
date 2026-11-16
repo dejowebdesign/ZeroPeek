@@ -140,6 +140,32 @@ export interface HostState {
 export type HostConnectionStatus = 'connected' | 'reconnecting' | 'offline';
 
 /**
+ * A clock-synchronisation probe (Phase 6.8.5).
+ *
+ * The countdown is derived from the server's `openedAt`, but a client can only
+ * compare that to its own clock, and client clocks drift. The client therefore
+ * measures the offset between its monotonic clock and the server's wall clock
+ * with a short ping/pong round and renders the countdown against the corrected
+ * time, so every device shows the same number.
+ *
+ * `id` is a client-generated correlation id. It is echoed verbatim in the
+ * matching `ClockPong`, so a late reply is never mistaken for the answer to a
+ * newer probe and can be discarded.
+ */
+export interface ClockPing {
+  /** Client-generated correlation id; echoed verbatim in the matching pong. */
+  id: string;
+}
+
+/** The server's answer to a `ClockPing`. */
+export interface ClockPong {
+  /** The `id` of the `ClockPing` this answers, unchanged. */
+  id: string;
+  /** The server's wall clock in ms since the Unix epoch, taken when it replied. */
+  serverTime: number;
+}
+
+/**
  * The reveal as shown to a host, in two mutually exclusive shapes (Phase 6.5.3).
  *
  * A **skipped** question is neutralised: it is never scored and its solution
@@ -188,6 +214,8 @@ export interface PlayerServerEvents {
   'game:paused': (payload: { questionId: string; remainingMs: number }) => void;
   /** The running question was resumed with this remaining time. */
   'game:resumed': (payload: { questionId: string; remainingMs: number }) => void;
+  /** The server's reply to a `clock:ping`, used to correct the local clock. */
+  'clock:pong': (payload: ClockPong) => void;
 }
 
 /** Player → server events (namespace `/`). */
@@ -213,6 +241,14 @@ export interface PlayerClientEvents {
     payload: { gameId: string; playerId: string; token: string },
     ack: Ack<PlayerSync>,
   ) => void;
+  /**
+   * Measure the server clock (Phase 6.8.5). Fire-and-forget: the server answers
+   * with a `clock:pong` event carrying the same `id`, so the client correlates
+   * the reply and measures the round-trip itself. No acknowledgement is used, so
+   * a dropped reply simply means the next probe in the round is the one that
+   * counts.
+   */
+  'clock:ping': (payload: ClockPing) => void;
 }
 
 /** Server → host events (namespace `/host`). */
@@ -228,6 +264,8 @@ export interface HostServerEvents {
   'host:paused': (payload: { questionId: string; remainingMs: number }) => void;
   /** The running question was resumed with this remaining time (Phase 6.5.3). */
   'host:resumed': (payload: { questionId: string; remainingMs: number }) => void;
+  /** The server's reply to a `clock:ping`, used to correct the local clock. */
+  'clock:pong': (payload: ClockPong) => void;
 }
 
 /** Host → server events (namespace `/host`). */
@@ -243,6 +281,11 @@ export interface HostClientEvents {
   'host:skip': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:kick': (payload: { gameId: string; playerId: string }, ack: Ack<{ ok: boolean }>) => void;
   'host:join': (payload: { gameId: string }, ack: Ack<HostState>) => void;
+  /**
+   * Measure the server clock (Phase 6.8.5). Fire-and-forget: the server answers
+   * with a `clock:pong` event carrying the same `id`. See `PlayerClientEvents`.
+   */
+  'clock:ping': (payload: ClockPing) => void;
 }
 
 /** Convenience alias used by the frontend socket wrapper. */
