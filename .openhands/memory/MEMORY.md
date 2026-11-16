@@ -874,5 +874,8 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   Fix: insert `engine.skipLead(gameId)` / `await request(host,'host:skipLead',{gameId})` right after
   every `start` (mechanical script over the test files). `hostView.test.ts` listener-count assertion
   went 8→9 (added `host:lead`). `host-sync.integration.test.ts` needed local `collect`/`settle` helpers.
-- Gates after 6.9.1: backend **397** (0 skips with DB), frontend **469**, shared **179**; typecheck +
-  build + format:check green. Report: `docs/reports/phase-6-9-1-server-show-state.md`.
+- Gates after 6.9.1: backend **399** (0 skips with DB), frontend **469**, shared **179**; typecheck +
+  build + format:check green. Report: `docs/reports/phase-6-9-1-server-show-state.md`; pre-push audit
+  `docs/reports/phase-6-9-1-pre-push-audit.md` (verdict **GO**; fixed a `format:check` CI blocker —
+  the new analysis doc was committed unformatted — a wrong report claim, and a timer test that
+  actually called `skipLead`). Every phase must add its own `docs/phases.md` row in the feature commit.
