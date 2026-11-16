@@ -7,6 +7,10 @@
 - **Status:** work complete on the branch, **awaiting owner approval** — no push, no pull request,
   no merge, no deploy yet.
 
+> **Note (added in Phase 6.8.6):** the status above is a historical snapshot from when this
+> report was written. The work has since been merged into `main` (PR #44). This report's contents
+> and test results are left unchanged.
+
 ## 0. Result in one sentence
 
 The level curve, the slot-based reward matrix and the inventory equip/unequip management are

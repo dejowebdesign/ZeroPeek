@@ -6,6 +6,10 @@
   die Übernahme einer abgeschlossenen Gastrunde (Roadmap §9)
 - **Status:** vorgelegt, wartet auf Prüfung — **kein Push/PR ohne ausdrückliche Freigabe**
 
+> **Hinweis (Phase 6.8.6):** Die Statusangabe oben ist eine historische Momentaufnahme zum
+> Erstellungszeitpunkt. Die Arbeit ist inzwischen in `main` gemergt (PR #41). Inhalt und
+> Testergebnisse dieses Berichts bleiben unverändert.
+
 > **Hinweis:** Dieser Bericht fasst die drei Teilschritte zusammen. 6.8.1 (Registrierung/parallele
 > Sitzungen) ist bereits als Commit `8ad5d8e` enthalten; 6.8.3 (XP/Level/Erfolge) als `ca04b17`;
 > 6.8.2 (Gastkonto-Übernahme, Backend **und** Frontend) und die Fortschritts-Oberflächen sind der

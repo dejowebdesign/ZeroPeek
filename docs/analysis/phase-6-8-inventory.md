@@ -5,6 +5,11 @@
 - **Status:** Analyse vorgelegt, wartet auf Freigabe der offenen Produktentscheidungen (siehe §9)
 - **Keine Codeänderung in diesem Schritt.**
 
+> **Hinweis (Phase 6.8.6):** Die Statusangabe oben ist eine historische Momentaufnahme zum
+> Erstellungszeitpunkt. Die offenen Produktentscheidungen sind inzwischen getroffen und die
+> Phase ist in `main` gemergt (PR #41). Inhalt und Testergebnisse dieser Analyse bleiben
+> unverändert.
+
 ## 1. Was bereits vorhanden ist (verifiziert im Code)
 
 ### 1.1 Identitäts- und Sessionmodell (Phase 6.6.3) — vollständig

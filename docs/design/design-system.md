@@ -66,14 +66,14 @@ leading dot, and callers pass text (`"Correct"`, `"Wrong"`, `"No answer"`). This
 
 Glass is a **paired** fill and blur. A tier is never used without its partner. Six tiers exist:
 
-| Tier    | Fill token        | Blur token       | Used for                                  |
-| ------- | ----------------- | ---------------- | ----------------------------------------- |
-| card    | `--glass-card`    | `--blur-card`    | Standard cards                            |
-| raised  | `--glass-raised`  | `--blur-raised`  | Inputs, hover, controls, `--card--raised` |
-| dialog  | `--glass-dialog`  | `--blur-dialog`  | Dialog panels, toasts                     |
-| nav     | `--glass-nav`     | `--blur-nav`     | Navigation surfaces (Phase 6.2)           |
-| input   | `--glass-input`   | `--blur-input`   | Field and track fills                     |
-| overlay | `--glass-overlay` | `--blur-overlay` | The scrim behind a dialog                 |
+| Tier    | Fill token        | Blur token       | Used for                                |
+| ------- | ----------------- | ---------------- | --------------------------------------- |
+| card    | `--glass-card`    | `--blur-card`    | Standard cards                          |
+| raised  | `--glass-raised`  | `--blur-raised`  | Inputs, hover, controls, `card--raised` |
+| dialog  | `--glass-dialog`  | `--blur-dialog`  | Dialog panels, toasts                   |
+| nav     | `--glass-nav`     | `--blur-nav`     | Navigation surfaces (Phase 6.2)         |
+| input   | `--glass-input`   | `--blur-input`   | Field and track fills                   |
+| overlay | `--glass-overlay` | `--blur-overlay` | The scrim behind a dialog               |
 
 Rules:
 

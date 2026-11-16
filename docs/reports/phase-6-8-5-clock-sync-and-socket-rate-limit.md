@@ -8,6 +8,10 @@
 - **Status:** work complete on the branch, **awaiting owner approval** — no push,
   no pull request, no merge, no deploy yet.
 
+> **Note (added in Phase 6.8.6):** the status above is a historical snapshot from when this
+> report was written. The work has since been merged into `main` (PR #45) and deployed. This
+> report's contents and test results are left unchanged.
+
 ## 0. Result in one sentence
 
 A client can now measure the server's clock and render the countdown against it,

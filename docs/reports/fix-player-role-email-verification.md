@@ -5,6 +5,10 @@
   assignment, least-privilege default role
 - **Status:** draft pull request, awaiting review (no merge, no deploy)
 
+> **Note (added in Phase 6.8.6):** the status above is a historical snapshot from when this
+> report was written. The work has since been merged into `main` (PR #42). This report's contents
+> and test results are left unchanged.
+
 ## 0. Result in one sentence
 
 An administrator can now confirm a single account's e-mail address from the admin
