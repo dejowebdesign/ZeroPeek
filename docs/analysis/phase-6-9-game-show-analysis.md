@@ -15,15 +15,15 @@
 
 ## 1. Tatsächlicher Git- und Repository-Stand
 
-| Prüfung                         | Ergebnis                                                                                  |
-| ------------------------------- | ----------------------------------------------------------------------------------------- |
-| Lokaler Branch                  | `maintenance/phase-6-8-6-css-contract-docs`                                               |
-| Lokaler HEAD                    | `8dd784d` (Commit der Phase 6.8.6)                                                        |
-| `origin/main`                   | `177b63c` – „Merge pull request #46 from …maintenance/phase-6-8-6-css-contract-docs"      |
-| Abgleich lokal ↔ `origin/main`  | Lokaler Branch liegt **hinter** `origin/main` (PR #46 wurde gemergt). Kein Reset/Rebase durchgeführt. |
-| Offene Pull Requests            | **keine** (`gh pr list --state open` → leer)                                              |
-| Arbeitsverzeichnis              | Sauber bis auf die erwartete **ungetrackte** Eigentümerdatei                              |
-| Ungetrackte Datei               | `ZeroPeek_Ethan_Maya_Charakterbibliothek.zip` (unangetastet, nicht committet)             |
+| Prüfung                        | Ergebnis                                                                                              |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Lokaler Branch                 | `maintenance/phase-6-8-6-css-contract-docs`                                                           |
+| Lokaler HEAD                   | `8dd784d` (Commit der Phase 6.8.6)                                                                    |
+| `origin/main`                  | `177b63c` – „Merge pull request #46 from …maintenance/phase-6-8-6-css-contract-docs"                  |
+| Abgleich lokal ↔ `origin/main` | Lokaler Branch liegt **hinter** `origin/main` (PR #46 wurde gemergt). Kein Reset/Rebase durchgeführt. |
+| Offene Pull Requests           | **keine** (`gh pr list --state open` → leer)                                                          |
+| Arbeitsverzeichnis             | Sauber bis auf die erwartete **ungetrackte** Eigentümerdatei                                          |
+| Ungetrackte Datei              | `ZeroPeek_Ethan_Maya_Charakterbibliothek.zip` (unangetastet, nicht committet)                         |
 
 **Wichtig für die Umsetzung:** Phase 6.8.6 ist gemergt; `main` enthält den Bereinigungs-Stand. Der
 lokale Checkout ist noch auf dem alten Stand, was für diese reine Analyse ohne Belang ist. Ein späterer
@@ -52,14 +52,14 @@ Es gibt **keine** separate Beamer-Surface und **keine** separate Route. Der Beam
 
 ### 2.2 Vorhandene Host-Bildschirme (`pages/host.ts`)
 
-| Bildschirm     | Funktion                | Rendert                                                            |
-| -------------- | ----------------------- | ------------------------------------------------------------------ |
-| Lobby          | `showLobby(pin, …)`     | PIN, Beitritts-URL (`location.origin + '/'`), wachsende Spielerliste |
-| Frage          | `showQuestion(...)`     | Frage, „Question x of y", Countdown-Ring, Antwortanzahl, Optionen  |
-| Auflösung      | `showReveal(reveal)`    | `revealBody(reveal)` (Lösung + Verteilung oder „skipped")          |
-| Rangliste      | `showBoard(players)`    | `leaderboard--show`                                                |
-| Podium/Ende    | `showPodium(players)`   | Klassisches 3er-Podium + Rest-Rangliste                            |
-| Report         | `showReport(id)`        | HTTP-Report eines beendeten Spiels                                 |
+| Bildschirm  | Funktion              | Rendert                                                              |
+| ----------- | --------------------- | -------------------------------------------------------------------- |
+| Lobby       | `showLobby(pin, …)`   | PIN, Beitritts-URL (`location.origin + '/'`), wachsende Spielerliste |
+| Frage       | `showQuestion(...)`   | Frage, „Question x of y", Countdown-Ring, Antwortanzahl, Optionen    |
+| Auflösung   | `showReveal(reveal)`  | `revealBody(reveal)` (Lösung + Verteilung oder „skipped")            |
+| Rangliste   | `showBoard(players)`  | `leaderboard--show`                                                  |
+| Podium/Ende | `showPodium(players)` | Klassisches 3er-Podium + Rest-Rangliste                              |
+| Report      | `showReport(id)`      | HTTP-Report eines beendeten Spiels                                   |
 
 Der Einstieg ist **`renderHostState(input)`**: Es entscheidet anhand der **Server-Phase**
 (`hostScreen(state)` aus `hostView.ts`) welcher Bildschirm erscheint — nie anhand lokalen Zustands.
@@ -118,16 +118,16 @@ nach `BOARD_MS = 6000` (`engine.ts:110–111`).
 
 Fan-out in `packages/backend/src/socket.ts` (`engine.on(...)`):
 
-| Engine-Event | Host-Namespace (`/host`)     | Player-Namespace (`/`)            |
-| ------------ | ---------------------------- | --------------------------------- |
-| `lobby`      | `host:lobby {pin, players}`  | `game:state {phase:'lobby', …}`   |
-| `question`   | `host:question (PublicQuestion)` | `game:question (PublicQuestion)` |
-| `answers`    | `host:answers {questionId, answered, total}` | – (nur Host)          |
-| `reveal`     | `host:reveal (HostReveal)`   | `game:reveal` (pro Spieler privat) |
-| `board`      | `host:board {players}`       | `game:board {players}`            |
-| `ended`      | `host:ended {players}`       | `game:ended` (pro Spieler privat) |
-| `paused`     | `host:paused {questionId, remainingMs}` | `game:paused {…}`      |
-| `resumed`    | `host:resumed {questionId, remainingMs}` | `game:resumed {…}`    |
+| Engine-Event | Host-Namespace (`/host`)                     | Player-Namespace (`/`)             |
+| ------------ | -------------------------------------------- | ---------------------------------- |
+| `lobby`      | `host:lobby {pin, players}`                  | `game:state {phase:'lobby', …}`    |
+| `question`   | `host:question (PublicQuestion)`             | `game:question (PublicQuestion)`   |
+| `answers`    | `host:answers {questionId, answered, total}` | – (nur Host)                       |
+| `reveal`     | `host:reveal (HostReveal)`                   | `game:reveal` (pro Spieler privat) |
+| `board`      | `host:board {players}`                       | `game:board {players}`             |
+| `ended`      | `host:ended {players}`                       | `game:ended` (pro Spieler privat)  |
+| `paused`     | `host:paused {questionId, remainingMs}`      | `game:paused {…}`                  |
+| `resumed`    | `host:resumed {questionId, remainingMs}`     | `game:resumed {…}`                 |
 
 Zusätzlich: `clock:pong` (Clock-Sync, Phase 6.8.5), `game:host` (Host-Präsenz an Spieler),
 `game:kicked`, `game:claimable`, `host:error`.
@@ -141,7 +141,7 @@ Zusätzlich: `clock:pong` (Clock-Sync, Phase 6.8.5), `game:host` (Host-Präsenz 
 ### 3.4 Reconnect-Zustände (bereits phase-aware)
 
 - **Host:** `HostState` (`events.ts:113–137`): `gameId, pin, phase, question, reveal, players,
-  podium, answers, paused, skipped`. Wird bei `host:create`/`host:join` geliefert.
+podium, answers, paused, skipped`. Wird bei `host:create`/`host:join` geliefert.
 - **Spieler:** `PlayerSync` (`events.ts:80–98`).
 
 **Wichtig:** `HostState` und `PublicQuestion` liefern bereits **`phase`, `question.index`,
@@ -150,20 +150,20 @@ Zusätzlich: `clock:pong` (Clock-Sync, Phase 6.8.5), `game:host` (Host-Präsenz 
 
 ### 3.5 Nutzbare vorhandene Payload-Felder für die Show
 
-| Bedarf der Show            | Vorhandenes Feld                                   | Quelle                         |
-| -------------------------- | -------------------------------------------------- | ------------------------------ |
-| Fragenposition             | `PublicQuestion.index`, `.total`                   | `engine.publicQuestion`        |
-| Restzeit / Ring            | `PublicQuestion.openedAt`, `.timeLimit`, `.remainingMs`, `.paused` + Clock-Sync | `engine` + `clockSync.ts` |
-| Antworttexte               | `PublicQuestion.display.options` (bzw. `items`, …) | `questionDisplay`              |
-| Antwortverteilung          | `HostReveal.distribution` (nur Host)               | `engine.revealInternal`        |
-| Richtige Lösung            | `HostReveal.question` (nur ab Reveal)              | `engine`                       |
-| Teilnehmer / Rang          | `PublicPlayer[]` (`nickname, avatar, score, connected`) | `engine.leaderboard`      |
-| Podium (Top 3)             | `HostState.podium` / `host:ended`                  | `engine.hostState`             |
-| Host-Präsenz               | `game:host`                                        | `socket.ts`                    |
-| **Kategorie**              | ❌ fehlt in `PublicQuestion`                        | –                              |
-| **Punkteänderung**         | ❌ fehlt als Delta (nur `OwnResult.points` an den Spieler selbst) | –             |
-| **Rangverschiebung**       | ❌ fehlt als Delta (nur absolute Reihenfolge)       | –                              |
-| **Start-Countdown**        | ❌ keine `lead`-Phase, kein Event                   | –                              |
+| Bedarf der Show      | Vorhandenes Feld                                                                | Quelle                    |
+| -------------------- | ------------------------------------------------------------------------------- | ------------------------- |
+| Fragenposition       | `PublicQuestion.index`, `.total`                                                | `engine.publicQuestion`   |
+| Restzeit / Ring      | `PublicQuestion.openedAt`, `.timeLimit`, `.remainingMs`, `.paused` + Clock-Sync | `engine` + `clockSync.ts` |
+| Antworttexte         | `PublicQuestion.display.options` (bzw. `items`, …)                              | `questionDisplay`         |
+| Antwortverteilung    | `HostReveal.distribution` (nur Host)                                            | `engine.revealInternal`   |
+| Richtige Lösung      | `HostReveal.question` (nur ab Reveal)                                           | `engine`                  |
+| Teilnehmer / Rang    | `PublicPlayer[]` (`nickname, avatar, score, connected`)                         | `engine.leaderboard`      |
+| Podium (Top 3)       | `HostState.podium` / `host:ended`                                               | `engine.hostState`        |
+| Host-Präsenz         | `game:host`                                                                     | `socket.ts`               |
+| **Kategorie**        | ❌ fehlt in `PublicQuestion`                                                    | –                         |
+| **Punkteänderung**   | ❌ fehlt als Delta (nur `OwnResult.points` an den Spieler selbst)               | –                         |
+| **Rangverschiebung** | ❌ fehlt als Delta (nur absolute Reihenfolge)                                   | –                         |
+| **Start-Countdown**  | ❌ keine `lead`-Phase, kein Event                                               | –                         |
 
 ---
 
@@ -172,21 +172,21 @@ Zusätzlich: `clock:pong` (Clock-Sync, Phase 6.8.5), `game:host` (Host-Präsenz 
 **Regel:** Es werden **keine** neuen Game-States erfunden, wenn ein bestehender Zustand genügt.
 „Anzeige-Szene" = rein clientseitige Darstellung auf Basis vorhandener Daten.
 
-| #  | Szene                  | Serverzustand / Phase | Vorhandene Daten | Fehlende Daten | Neue Server-Funktion? | Neue Socket-Events? | Neue Frontend-Komponenten | Übergang zu |
-| -- | ---------------------- | --------------------- | ---------------- | -------------- | --------------------- | ------------------- | ------------------------- | ----------- |
-| 1  | Begrüßung (Welcome)    | – (clientseitig)      | Logo (`public/logo.png`), Titel | Hintergrundbild | nein | nein | `showWelcome` | → 2 |
-| 2  | Spielerbeitritt        | `lobby`               | `pin`, `players[]`, `location.origin` | Avatar-Wand-Anim. | nein | nein | `showJoin` (PIN groß + URL + Wand) | → 3 |
-| 3  | Teilnehmerübersicht    | `lobby`               | `players[]` | Raster-Darstellung | nein | nein | `showParticipants` (Grid) | → 4 |
-| 4  | Start-Countdown        | **`lead` (neu)**      | – (nur Host-Aktion `host:start`) | **alles** | **ja** (`lead`-Phase) | **ja** (`host:lead`/`game:lead`) | `showStartCountdown` | → 5 |
-| 5  | Fragenanzeige          | `question`            | `text`, `index`, `total` | **`category`** | **ja** (Feld ergänzen) | nein (Feld in `PublicQuestion`) | `showQuestion` (erweitert) | → 6/7 |
-| 6  | Antwortmöglichkeiten   | `question`            | `display.options` | – | nein | nein | `showOptions` (aus `questionDisplayOptions`) | → 7 |
-| 7  | Countdown              | `question`            | `openedAt`, `timeLimit`, Clock-Sync | – | nein | nein | vorhandener `countdown()` | → 8 |
-| 8  | Antwortauflösung       | `reveal`              | `HostReveal.distribution`, Lösung | – | nein | nein | `showReveal` (erweitert) | → 9/10 |
-| 9  | Punktevergabe          | `reveal`              | `players[]` (neue Scores) | **Punktedeltas** | **ja** (Delta berechnen) | **ja** (`host:points` o. Erw.) | `showPoints` (Animation) | → 10 |
-| 10 | Zwischenrangliste      | `board`               | `players[]` (absolute Reihenfolge) | **Rangdeltas** | **ja** (Vorrang merken) | **ja** (`host:board` erweitern) | `showBoard` (Rangwechsel) | → 11/5 |
-| 11 | Finalrunde             | **❌ kein State**      | – | **alles** | **Entscheidung nötig** | ggf. neu | `showFinalRound` | → 12 |
-| 12 | Gewinnerpodium         | `end`                 | `podium`/`players[]`, Avatare | (Feinschliff) | nein | nein | `showPodium` (erweitert) | → 13 |
-| 13 | Abschluss              | `end`                 | `reportService.gameReport` (HTTP) | Show-Statistik-Subset | ⚠️ ggf. | nein | `showOutro` | → 1 |
+| #   | Szene                | Serverzustand / Phase | Vorhandene Daten                      | Fehlende Daten        | Neue Server-Funktion?    | Neue Socket-Events?              | Neue Frontend-Komponenten                    | Übergang zu |
+| --- | -------------------- | --------------------- | ------------------------------------- | --------------------- | ------------------------ | -------------------------------- | -------------------------------------------- | ----------- |
+| 1   | Begrüßung (Welcome)  | – (clientseitig)      | Logo (`public/logo.png`), Titel       | Hintergrundbild       | nein                     | nein                             | `showWelcome`                                | → 2         |
+| 2   | Spielerbeitritt      | `lobby`               | `pin`, `players[]`, `location.origin` | Avatar-Wand-Anim.     | nein                     | nein                             | `showJoin` (PIN groß + URL + Wand)           | → 3         |
+| 3   | Teilnehmerübersicht  | `lobby`               | `players[]`                           | Raster-Darstellung    | nein                     | nein                             | `showParticipants` (Grid)                    | → 4         |
+| 4   | Start-Countdown      | **`lead` (neu)**      | – (nur Host-Aktion `host:start`)      | **alles**             | **ja** (`lead`-Phase)    | **ja** (`host:lead`/`game:lead`) | `showStartCountdown`                         | → 5         |
+| 5   | Fragenanzeige        | `question`            | `text`, `index`, `total`              | **`category`**        | **ja** (Feld ergänzen)   | nein (Feld in `PublicQuestion`)  | `showQuestion` (erweitert)                   | → 6/7       |
+| 6   | Antwortmöglichkeiten | `question`            | `display.options`                     | –                     | nein                     | nein                             | `showOptions` (aus `questionDisplayOptions`) | → 7         |
+| 7   | Countdown            | `question`            | `openedAt`, `timeLimit`, Clock-Sync   | –                     | nein                     | nein                             | vorhandener `countdown()`                    | → 8         |
+| 8   | Antwortauflösung     | `reveal`              | `HostReveal.distribution`, Lösung     | –                     | nein                     | nein                             | `showReveal` (erweitert)                     | → 9/10      |
+| 9   | Punktevergabe        | `reveal`              | `players[]` (neue Scores)             | **Punktedeltas**      | **ja** (Delta berechnen) | **ja** (`host:points` o. Erw.)   | `showPoints` (Animation)                     | → 10        |
+| 10  | Zwischenrangliste    | `board`               | `players[]` (absolute Reihenfolge)    | **Rangdeltas**        | **ja** (Vorrang merken)  | **ja** (`host:board` erweitern)  | `showBoard` (Rangwechsel)                    | → 11/5      |
+| 11  | Finalrunde           | **❌ kein State**     | –                                     | **alles**             | **Entscheidung nötig**   | ggf. neu                         | `showFinalRound`                             | → 12        |
+| 12  | Gewinnerpodium       | `end`                 | `podium`/`players[]`, Avatare         | (Feinschliff)         | nein                     | nein                             | `showPodium` (erweitert)                     | → 13        |
+| 13  | Abschluss            | `end`                 | `reportService.gameReport` (HTTP)     | Show-Statistik-Subset | ⚠️ ggf.                  | nein                             | `showOutro`                                  | → 1         |
 
 **Kernaussagen:**
 
@@ -276,17 +276,17 @@ Socket-Event nötig ist oder der Host den HTTP-Report lädt, ist eine **Detailen
 Alle in `packages/shared/src/events.ts`. Änderungen sind **additiv** (optionale Felder / neue Events),
 bestehende Verträge bleiben gültig.
 
-| Contract                       | Änderung                                                                 | Grund                     |
-| ------------------------------ | ------------------------------------------------------------------------ | ------------------------- |
-| `PublicQuestion`               | `category?: string`, `difficulty?: string`                               | Szene 5 (Kategorie)       |
-| `HostState`                    | `lead: { endsAt: number } \| null` (o. ä.)                               | Szene 4 (Reconnect)       |
-| `PlayerSync`                   | (optional) `lead`-Feld                                                   | Konsistenz Spieler/Beamer |
-| `HostServerEvents`             | `host:lead` (Countdown-Start)                                            | Szene 4                   |
-| `PlayerServerEvents`           | `game:lead` (Countdown-Start)                                            | Szene 4                   |
-| `HostServerEvents`             | `host:points {questionId, deltas:[{playerId, points, score}]}` (Vorschlag) | Szene 9                 |
-| `HostServerEvents`             | `host:board` um `previousRank`/`rankDelta` erweitern (o. neues `host:ranks`) | Szene 10             |
-| `HostClientEvents`             | (optional) `host:startNow`/`host:skipLead`                               | Szene 4 (Countdown überspringen) |
-| `HostEventHandlers` (`hostView.ts`) | Handler für neue Events ergänzen; `attachHostHandlers`-Liste erweitern | Anbindung            |
+| Contract                            | Änderung                                                                     | Grund                            |
+| ----------------------------------- | ---------------------------------------------------------------------------- | -------------------------------- |
+| `PublicQuestion`                    | `category?: string`, `difficulty?: string`                                   | Szene 5 (Kategorie)              |
+| `HostState`                         | `lead: { endsAt: number } \| null` (o. ä.)                                   | Szene 4 (Reconnect)              |
+| `PlayerSync`                        | (optional) `lead`-Feld                                                       | Konsistenz Spieler/Beamer        |
+| `HostServerEvents`                  | `host:lead` (Countdown-Start)                                                | Szene 4                          |
+| `PlayerServerEvents`                | `game:lead` (Countdown-Start)                                                | Szene 4                          |
+| `HostServerEvents`                  | `host:points {questionId, deltas:[{playerId, points, score}]}` (Vorschlag)   | Szene 9                          |
+| `HostServerEvents`                  | `host:board` um `previousRank`/`rankDelta` erweitern (o. neues `host:ranks`) | Szene 10                         |
+| `HostClientEvents`                  | (optional) `host:startNow`/`host:skipLead`                                   | Szene 4 (Countdown überspringen) |
+| `HostEventHandlers` (`hostView.ts`) | Handler für neue Events ergänzen; `attachHostHandlers`-Liste erweitern       | Anbindung                        |
 
 **Nicht ändern:** bestehende Event-Namen und Payload-Felder (Bestandsschutz); die öffentlichen
 Shared-Event-Deklarationen werden **nur additiv** erweitert.
@@ -302,23 +302,23 @@ Shared-Event-Deklarationen werden **nur additiv** erweitert.
 
 **Neu zu bauen (Vorschlag):**
 
-| Komponente                | Zweck                                                        | Szene | Abhängigkeit            |
-| ------------------------- | ------------------------------------------------------------ | ----- | ----------------------- |
-| Szenen-Controller         | Bildschirmwahl aus `HostState` (erweitertes `hostScreen`)     | alle  | –                       |
-| `showWelcome`             | Logo/Titel                                                    | 1     | Hintergrundbild (Block D) |
-| `showJoin`                | PIN groß + URL + **Avatar-Wand**                              | 2     | – (QR ausdrücklich aus) |
-| `showParticipants`        | Teilnehmer-Raster                                             | 3     | –                       |
-| `showStartCountdown`      | 3–2–1–Los! aus `lead`                                         | 4     | `lead`-Event (§5.1)     |
-| `showQuestion` (erweitert) | + Kategorie + Position                                       | 5     | `category` (§5.2)       |
-| `showOptions`             | Große, nummerierte Antwortfläche                              | 6     | –                       |
-| Timer-Ring (vorhanden)    | `countdown()` + Clock-Sync                                    | 7     | –                       |
-| `showReveal` (erweitert)  | Lösung + Verteilungsbalken                                    | 8     | –                       |
-| `showPoints`              | Punkteanimation je Avatar                                     | 9     | Punktedeltas (§5.3)     |
-| `showBoard` (erweitert)   | Rangwechsel animiert                                          | 10    | Rangdeltas (§5.4)       |
-| `showFinalRound`          | Finalrunden-Ankündigung                                       | 11    | **Entscheidung** (§5.5) |
-| `showPodium` (erweitert)  | Sieger-Podium (3 Plätze, bestehende Reihenfolge)              | 12    | –                       |
-| `showOutro`               | Dank/Statistik/Ausblick                                       | 13    | Report-Subset (§5.6)    |
-| **Steuerleiste umschaltbar** | Host-Steuerung ein-/ausblenden für den Beamer-Betrieb      | alle  | –                       |
+| Komponente                   | Zweck                                                     | Szene | Abhängigkeit              |
+| ---------------------------- | --------------------------------------------------------- | ----- | ------------------------- |
+| Szenen-Controller            | Bildschirmwahl aus `HostState` (erweitertes `hostScreen`) | alle  | –                         |
+| `showWelcome`                | Logo/Titel                                                | 1     | Hintergrundbild (Block D) |
+| `showJoin`                   | PIN groß + URL + **Avatar-Wand**                          | 2     | – (QR ausdrücklich aus)   |
+| `showParticipants`           | Teilnehmer-Raster                                         | 3     | –                         |
+| `showStartCountdown`         | 3–2–1–Los! aus `lead`                                     | 4     | `lead`-Event (§5.1)       |
+| `showQuestion` (erweitert)   | + Kategorie + Position                                    | 5     | `category` (§5.2)         |
+| `showOptions`                | Große, nummerierte Antwortfläche                          | 6     | –                         |
+| Timer-Ring (vorhanden)       | `countdown()` + Clock-Sync                                | 7     | –                         |
+| `showReveal` (erweitert)     | Lösung + Verteilungsbalken                                | 8     | –                         |
+| `showPoints`                 | Punkteanimation je Avatar                                 | 9     | Punktedeltas (§5.3)       |
+| `showBoard` (erweitert)      | Rangwechsel animiert                                      | 10    | Rangdeltas (§5.4)         |
+| `showFinalRound`             | Finalrunden-Ankündigung                                   | 11    | **Entscheidung** (§5.5)   |
+| `showPodium` (erweitert)     | Sieger-Podium (3 Plätze, bestehende Reihenfolge)          | 12    | –                         |
+| `showOutro`                  | Dank/Statistik/Ausblick                                   | 13    | Report-Subset (§5.6)      |
+| **Steuerleiste umschaltbar** | Host-Steuerung ein-/ausblenden für den Beamer-Betrieb     | alle  | –                         |
 
 **Wiederverwendung von `podiumPlace`:** Die bestehende Podium-Logik (Platz 1 mittig/höchste, Platz 2
 links, Platz 3 rechts) ist bereits in `showView.podiumPlace` + CSS umgesetzt und wird **beibehalten**.
@@ -327,19 +327,19 @@ links, Platz 3 rechts) ist bereits in `showView.podiumPlace` + CSS umgesetzt und
 
 ## 8. Technische Risiken und Abhängigkeiten
 
-| # | Risiko                                            | Wirkung | Gegenmaßnahme                                                          |
-| - | ------------------------------------------------- | ------- | ---------------------------------------------------------------------- |
-| R1 | `lead`-Phase berührt Zustandsmaschine + Recovery   | Regression | Gezielte Engine-Tests (Reihenfolge, Reconnect, Recovery), §11          |
-| R2 | Doppelte Punkte/Rangdeltas                        | Falsche Show | Deltas **einmal** pro Frage berechnen; idempotent aus DB-Zeilen        |
-| R3 | Widersprüchliche Szenen Host ↔ Beamer              | Vertrauensverlust | Ein Szenen-Controller aus **einem** `HostState`; keine Client-Phase    |
-| R4 | Performance der Animationen (Beamer)              | Ruckeln | Nur `transform`/`opacity`; `prefers-reduced-motion`; Show-Skala        |
-| R5 | `backdrop-filter` teuer auf schwachen Geräten     | Langsam | Glasflächen begrenzen; auf Beamer reduzieren (Konzept §9)              |
-| R6 | Fehlende Hintergrund-Assets (Block D)             | Optik unvollständig | Bis dahin vorhandenen Wireframe-Backdrop nutzen; **keine** Platzhalter |
-| R7 | Fehlende Charaktere (pixel/bee/dr-obscura/o-bot)  | Avatar-Wand/Podium unvollständig | Vorhandene Ethan/Maya + Badge-Fallback; Rest anfordern |
-| R8 | Design-System: Show-Palette vs. bestehende Tokens | Inkonsistenz | Show nutzt vorhandene Tokens; neue Show-Tokens nur mit Freigabe (§12)  |
-| R9 | Neue Events umgehen Rate-Limit                    | Missbrauch | Neue Client-Events in `SOCKET_RATE_RULES` prüfen/aufnehmen            |
-| R10 | Steuerleiste verdeckt Anzeige                     | Bedienfehler | Umschaltbar, im Beamer-Betrieb zurücktretend                            |
-| R11 | Reconnect während `lead`                          | Hängt im Countdown | `HostState.lead` + Recovery-Timer (§5.1)                               |
+| #   | Risiko                                            | Wirkung                          | Gegenmaßnahme                                                          |
+| --- | ------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------- |
+| R1  | `lead`-Phase berührt Zustandsmaschine + Recovery  | Regression                       | Gezielte Engine-Tests (Reihenfolge, Reconnect, Recovery), §11          |
+| R2  | Doppelte Punkte/Rangdeltas                        | Falsche Show                     | Deltas **einmal** pro Frage berechnen; idempotent aus DB-Zeilen        |
+| R3  | Widersprüchliche Szenen Host ↔ Beamer             | Vertrauensverlust                | Ein Szenen-Controller aus **einem** `HostState`; keine Client-Phase    |
+| R4  | Performance der Animationen (Beamer)              | Ruckeln                          | Nur `transform`/`opacity`; `prefers-reduced-motion`; Show-Skala        |
+| R5  | `backdrop-filter` teuer auf schwachen Geräten     | Langsam                          | Glasflächen begrenzen; auf Beamer reduzieren (Konzept §9)              |
+| R6  | Fehlende Hintergrund-Assets (Block D)             | Optik unvollständig              | Bis dahin vorhandenen Wireframe-Backdrop nutzen; **keine** Platzhalter |
+| R7  | Fehlende Charaktere (pixel/bee/dr-obscura/o-bot)  | Avatar-Wand/Podium unvollständig | Vorhandene Ethan/Maya + Badge-Fallback; Rest anfordern                 |
+| R8  | Design-System: Show-Palette vs. bestehende Tokens | Inkonsistenz                     | Show nutzt vorhandene Tokens; neue Show-Tokens nur mit Freigabe (§12)  |
+| R9  | Neue Events umgehen Rate-Limit                    | Missbrauch                       | Neue Client-Events in `SOCKET_RATE_RULES` prüfen/aufnehmen             |
+| R10 | Steuerleiste verdeckt Anzeige                     | Bedienfehler                     | Umschaltbar, im Beamer-Betrieb zurücktretend                           |
+| R11 | Reconnect während `lead`                          | Hängt im Countdown               | `HostState.lead` + Recovery-Timer (§5.1)                               |
 
 **Abhängigkeiten (verbindlich):**
 
@@ -357,16 +357,16 @@ Quelle: `docs/assets/ASSET-BRIEFING.md` (Blöcke D, F, G) und `docs/assets/CHARA
 
 ### 9.1 Hintergrundbilder (Block D) — **fehlen vollständig** → **Blocker für die endgültige Optik**
 
-| Asset-ID (Briefing)          | Szene(n) | Format                    | Auflösung (Vorschlag) | Transparenz | Zielpfad                                        |
-| ---------------------------- | -------- | ------------------------- | --------------------- | ----------- | ----------------------------------------------- |
-| `beamer-welcome-background`  | 1        | WebP/AVIF (PNG Rückfall)  | 2560 × 1440 (16:9)    | nein        | `packages/frontend/public/backgrounds/*.webp`  |
-| `beamer-lobby-background`    | 2/3      | WebP/AVIF                 | 2560 × 1440           | nein        | dito                                            |
-| `beamer-reveal-background`   | 8/9      | WebP/AVIF                 | 2560 × 1440           | nein        | dito                                            |
-| `beamer-board-background`    | 10       | WebP/AVIF                 | 2560 × 1440           | nein        | dito                                            |
-| `beamer-final-background`    | 11       | WebP/AVIF                 | 2560 × 1440           | nein        | dito                                            |
-| `beamer-podium-background`   | 12       | WebP/AVIF                 | 2560 × 1440           | nein        | dito                                            |
-| `beamer-outro-background`    | 13       | WebP/AVIF                 | 2560 × 1440           | nein        | dito                                            |
-| `login-background`           | Login    | WebP/AVIF                 | 2560 × 1440           | nein        | dito (nicht 6.9)                                |
+| Asset-ID (Briefing)         | Szene(n) | Format                   | Auflösung (Vorschlag) | Transparenz | Zielpfad                                      |
+| --------------------------- | -------- | ------------------------ | --------------------- | ----------- | --------------------------------------------- |
+| `beamer-welcome-background` | 1        | WebP/AVIF (PNG Rückfall) | 2560 × 1440 (16:9)    | nein        | `packages/frontend/public/backgrounds/*.webp` |
+| `beamer-lobby-background`   | 2/3      | WebP/AVIF                | 2560 × 1440           | nein        | dito                                          |
+| `beamer-reveal-background`  | 8/9      | WebP/AVIF                | 2560 × 1440           | nein        | dito                                          |
+| `beamer-board-background`   | 10       | WebP/AVIF                | 2560 × 1440           | nein        | dito                                          |
+| `beamer-final-background`   | 11       | WebP/AVIF                | 2560 × 1440           | nein        | dito                                          |
+| `beamer-podium-background`  | 12       | WebP/AVIF                | 2560 × 1440           | nein        | dito                                          |
+| `beamer-outro-background`   | 13       | WebP/AVIF                | 2560 × 1440           | nein        | dito                                          |
+| `login-background`          | Login    | WebP/AVIF                | 2560 × 1440           | nein        | dito (nicht 6.9)                              |
 
 Stil (verbindlich, `game-design-concept.md` §10.5): sehr dunkel, Wireframe-Linien, dezente
 geometrische Architektur; **keine** gerenderten 3D-Objekte, **keine** grellen Neonflächen. Regel:
@@ -374,14 +374,14 @@ Frage/Antworten bleiben **immer** im Vordergrund; zentrale Fläche kontrastarm g
 
 ### 9.2 Charaktere (Block B) — **teilweise vorhanden**
 
-| Figur        | Status                                                       | Zielpfad                                          |
-| ------------ | ------------------------------------------------------------ | ------------------------------------------------- |
-| `ethan`      | ✅ Artwork vorhanden (`public/characters/ethan/*.webp`)      | –                                                 |
-| `maya`       | ✅ Artwork vorhanden (`public/characters/maya/*.webp`)       | –                                                 |
-| `pixel`      | ❌ fehlt (`awaiting_assets`)                                  | `public/characters/pixel/pixel-base.png`          |
-| `bee`        | ❌ fehlt                                                      | `public/characters/bee/bee-base.png`              |
-| `dr-obscura` | ❌ fehlt (Podium-/Show-Element)                               | `public/characters/dr-obscura/dr-obscura-base.png`|
-| `o-bot`      | ❌ fehlt (ggf. mehrere Typen)                                 | `public/characters/o-bot/o-bot-base.png`          |
+| Figur        | Status                                                  | Zielpfad                                           |
+| ------------ | ------------------------------------------------------- | -------------------------------------------------- |
+| `ethan`      | ✅ Artwork vorhanden (`public/characters/ethan/*.webp`) | –                                                  |
+| `maya`       | ✅ Artwork vorhanden (`public/characters/maya/*.webp`)  | –                                                  |
+| `pixel`      | ❌ fehlt (`awaiting_assets`)                            | `public/characters/pixel/pixel-base.png`           |
+| `bee`        | ❌ fehlt                                                | `public/characters/bee/bee-base.png`               |
+| `dr-obscura` | ❌ fehlt (Podium-/Show-Element)                         | `public/characters/dr-obscura/dr-obscura-base.png` |
+| `o-bot`      | ❌ fehlt (ggf. mehrere Typen)                           | `public/characters/o-bot/o-bot-base.png`           |
 
 Anforderung: 1:1, PNG (RGBA, Transparenz zwingend), Vorschlag 1024 × 1024, Blockwelt/Voxel-Stil,
 einheitlicher Ankerpunkt. **Keine** erfundenen Figuren.
@@ -447,7 +447,7 @@ Produktentscheidung vorliegt.
 
 - **`lead`-Phase:** `start` → `lead` → nach Ablauf `question`; Reconnect in `lead` stellt Countdown
   wieder her; Recovery nach „Neustart" armen den `lead`-Timer neu.
-  *Bestandsschutz:* `engine.integration.test.ts` erwartet heute `['question','reveal','board']` als
+  _Bestandsschutz:_ `engine.integration.test.ts` erwartet heute `['question','reveal','board']` als
   Reihenfolge nach `start` (`engine.integration.test.ts:116–141`) — dieser Test muss die neue
   `lead`-Stufe berücksichtigen (Testanpassung, kein Vertragsbruch).
 - **Punktedeltas:** genau ein Delta je Spieler und Frage; Summe der Deltas == Score-Differenz;

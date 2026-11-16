@@ -464,6 +464,39 @@ describe.skipIf(!available)('game engine integration', () => {
       expect(questions).toHaveLength(1);
     });
 
+    it('concurrent skips open exactly one question (the transition is serialised)', async () => {
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      const questions: string[] = [];
+      engine.on('question', () => questions.push('question'));
+      await engine.start(gameId);
+
+      // Four skips racing the phase lock: exactly one may win, the rest must be
+      // refused, and only one question may be opened.
+      const results = await Promise.allSettled([
+        engine.skipLead(gameId),
+        engine.skipLead(gameId),
+        engine.skipLead(gameId),
+        engine.skipLead(gameId),
+      ]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(questions).toHaveLength(1);
+      expect((await engine.get(gameId)).phase).toBe('question');
+    });
+
+    it('a countdown that elapses after the game ended cannot open a question', async () => {
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      const questions: string[] = [];
+      engine.on('question', () => questions.push('question'));
+      await engine.start(gameId);
+      // End during the countdown, leaving the lead timer armed. Wait past the
+      // full window so the stale timer definitely fires: it must find a game that
+      // has already left `lead` and do nothing.
+      await engine.end(gameId);
+      await new Promise((resolve) => setTimeout(resolve, 5600));
+      expect(questions).toHaveLength(0);
+      expect((await engine.get(gameId)).phase).toBe('end');
+    }, 20_000);
+
     it('re-arms the countdown for the remaining time after a cold reload', async () => {
       const { gameId } = await freshGame(['Ada', 'Bob']);
       await engine.start(gameId);
@@ -477,16 +510,15 @@ describe.skipIf(!available)('game engine integration', () => {
       expect(after.endsAt).toBe(before.endsAt);
     });
 
-    it('advances from the countdown to the first question via the timer', async () => {
+    it('opens the first question on its own when the countdown elapses', async () => {
       const { gameId } = await freshGame(['Ada', 'Bob']);
       const questionSeen = new Promise<void>((resolve) => engine.on('question', () => resolve()));
       await engine.start(gameId);
-      // Skip rather than wait the full window; the timer path is covered by the
-      // recovery test above, which re-arms the same timeout.
-      await engine.skipLead(gameId);
+      // No skip: the server-owned countdown must open the question by itself.
       await questionSeen;
       expect((await engine.get(gameId)).phase).toBe('question');
-    });
+      expect(engine.publicQuestion(await engine.get(gameId)).id).toBe(QUIZ.questions[0]!.id);
+    }, 15_000);
   });
 
   it('sends the optional category and difficulty labels without the solution (Phase 6.9.1)', async () => {

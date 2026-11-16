@@ -121,14 +121,14 @@ new phase changed.
 
 ### Verification (all green)
 
-| Check                  | Result                                                           |
-| ---------------------- | ---------------------------------------------------------------- |
-| `npm run typecheck`    | pass                                                             |
-| Backend tests          | 23 files, **397 passed** (with PostgreSQL)                       |
-| Frontend tests         | 16 files, **469 passed**                                         |
-| Shared tests           | 9 files, **179 passed**                                          |
-| `npm run build`        | pass                                                             |
-| `npm run format:check` | pass (except the pre-existing untracked analysis doc, unchanged) |
+| Check                  | Result                                                      |
+| ---------------------- | ----------------------------------------------------------- |
+| `npm run typecheck`    | pass                                                        |
+| Backend tests          | 23 files, **399 passed** (with PostgreSQL)                  |
+| Frontend tests         | 16 files, **469 passed**                                    |
+| Shared tests           | 9 files, **179 passed**                                     |
+| `npm run build`        | pass                                                        |
+| `npm run format:check` | pass (the analysis doc is formatted as part of this branch) |
 
 ## 5. Risks and their handling
 
