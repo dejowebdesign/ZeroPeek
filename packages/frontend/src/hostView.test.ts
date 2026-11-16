@@ -42,6 +42,9 @@ function state(overrides: Partial<HostState> = {}): HostState {
     answers: null,
     paused: false,
     skipped: false,
+    lead: null,
+    points: null,
+    ranks: null,
     ...overrides,
   };
 }
@@ -90,6 +93,15 @@ describe('hostScreen', () => {
     ).toBe('reveal');
     expect(hostScreen(state({ phase: 'board' }))).toBe('board');
     expect(hostScreen(state({ phase: 'end' }))).toBe('end');
+    // The start countdown (Phase 6.9.1) has its own screen when it carries a window.
+    expect(
+      hostScreen(
+        state({
+          phase: 'lead',
+          lead: { startedAt: 0, endsAt: 5000, durationSeconds: 5, skippable: true },
+        }),
+      ),
+    ).toBe('lead');
   });
 
   it('falls back to a safe screen when phase data is missing', () => {
@@ -97,6 +109,8 @@ describe('hostScreen', () => {
     expect(hostScreen(state({ phase: 'reveal' }))).toBe('question');
     // A `question` with no question shows the lobby.
     expect(hostScreen(state({ phase: 'question' }))).toBe('lobby');
+    // A `lead` with no countdown shows the lobby, never a blank screen.
+    expect(hostScreen(state({ phase: 'lead' }))).toBe('lobby');
   });
 
   function question() {
@@ -129,6 +143,8 @@ describe('hostScreen', () => {
 describe('hostActions', () => {
   it('offers exactly the transitions the engine allows per phase', () => {
     expect(hostActions('lobby').map((a) => a.id)).toEqual(['start']);
+    // The start countdown (Phase 6.9.1) offers only a skip.
+    expect(hostActions('lead').map((a) => a.id)).toEqual(['skipLead']);
     // A running question can be revealed, paused and skipped.
     expect(hostActions('question').map((a) => a.id)).toEqual(['reveal', 'pause', 'skip']);
     expect(hostActions('reveal').map((a) => a.id)).toEqual(['board']);
@@ -308,14 +324,16 @@ describe('attachHostHandlers', () => {
     const handlers = handlersFor();
     attachHostHandlers(socket, handlers);
 
+    socket.emit('host:lead', { endsAt: 1000, durationSeconds: 3 });
     socket.emit('host:question', { id: 'q1' });
     socket.emit('host:answers', { questionId: 'q1', answered: 1, total: 2 });
-    socket.emit('host:reveal', { question: {}, distribution: {} });
-    socket.emit('host:board', { players: [] });
+    socket.emit('host:reveal', { question: {}, distribution: {}, points: [] });
+    socket.emit('host:board', { players: [], ranks: [] });
     socket.emit('host:ended', { players: [] });
     socket.emit('host:paused', { questionId: 'q1', remainingMs: 5000 });
     socket.emit('host:resumed', { questionId: 'q1', remainingMs: 5000 });
 
+    expect(handlers.lead).toHaveBeenCalledTimes(1);
     expect(handlers.question).toHaveBeenCalledTimes(1);
     expect(handlers.answers).toHaveBeenCalledTimes(1);
     expect(handlers.reveal).toHaveBeenCalledTimes(1);
@@ -333,7 +351,7 @@ describe('attachHostHandlers', () => {
     detach();
     socket.emit('host:lobby', { pin: '1', players: [] });
     expect(lobby).not.toHaveBeenCalled();
-    expect(socket.offCalls.count).toBe(8);
+    expect(socket.offCalls.count).toBe(9);
 
     attachHostHandlers(socket, handlersFor({ lobby }));
     socket.emit('host:lobby', { pin: '1', players: [] });
@@ -383,6 +401,7 @@ describe('attachHostHandlers', () => {
 function handlersFor(overrides: Partial<HostEventHandlers> = {}): HostEventHandlers {
   return {
     lobby: vi.fn(),
+    lead: vi.fn(),
     question: vi.fn(),
     answers: vi.fn(),
     reveal: vi.fn(),

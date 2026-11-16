@@ -30,13 +30,16 @@ import {
   type GamePhase,
   type HostReveal,
   type HostState,
+  type LeadState,
   type OwnResult,
+  type PointsDelta,
   type PublicPlayer,
   type PublicQuestion,
   type Question,
   type Quiz,
   type PlayerAnswerState,
   type PlayerSync,
+  type RankDelta,
   type RankablePlayer,
   type ScoringSettings,
 } from '@zeropeek/shared';
@@ -88,6 +91,10 @@ interface RuntimeGame {
   remainingMs: number | null;
   /** The question id the host skipped, so it is never scored (Phase 6.5.3). */
   skippedQuestionId: string | null;
+  /** Server timestamp (ms) the `lead` countdown started, or null. */
+  leadStartedAt: number | null;
+  /** Server timestamp (ms) the `lead` countdown ends, or null. */
+  leadEndsAt: number | null;
   players: Map<string, RuntimePlayer>;
   /** Answer tally for the current question: questionId -> option key -> count. */
   distribution: Map<string, number>;
@@ -97,10 +104,11 @@ interface RuntimeGame {
 /** Event payloads emitted by the engine. */
 export interface EngineEvents {
   lobby: [{ gameId: string; pin: string; players: PublicPlayer[] }];
+  lead: [{ gameId: string; lead: LeadState }];
   question: [{ gameId: string; question: PublicQuestion }];
   answers: [{ gameId: string; questionId: string; answered: number; total: number }];
-  reveal: [{ gameId: string; reveal: HostReveal }];
-  board: [{ gameId: string; players: PublicPlayer[] }];
+  reveal: [{ gameId: string; reveal: HostReveal; points: PointsDelta[] }];
+  board: [{ gameId: string; players: PublicPlayer[]; ranks: RankDelta[] }];
   ended: [{ gameId: string; players: PublicPlayer[] }];
   paused: [{ gameId: string; questionId: string; remainingMs: number }];
   resumed: [{ gameId: string; questionId: string; remainingMs: number }];
@@ -109,6 +117,15 @@ export interface EngineEvents {
 /** How long the reveal and board screens stay before auto-advance (ms). */
 export const REVEAL_MS = 6000;
 export const BOARD_MS = 6000;
+
+/**
+ * The server-authoritative start countdown (Phase 6.9.1). After `start` the game
+ * sits in the `lead` phase for this window before the first question opens, so
+ * every client can show the same 5→0 countdown and the transition is owned by
+ * the server alone. A host may skip it early.
+ */
+export const LEAD_SECONDS = 5;
+export const LEAD_MS = LEAD_SECONDS * 1000;
 
 /**
  * The full run time of a question, in ms: the visible limit plus the grace
@@ -264,6 +281,8 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       pausedAt: null,
       remainingMs: null,
       skippedQuestionId: null,
+      leadStartedAt: null,
+      leadEndsAt: null,
       players: new Map(),
       distribution: new Map(),
       timer: null,
@@ -310,6 +329,8 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       pausedAt: null,
       remainingMs: null,
       skippedQuestionId: null,
+      leadStartedAt: null,
+      leadEndsAt: null,
       players: new Map(),
       distribution: new Map(),
       timer: null,
@@ -354,7 +375,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     // (a `reveal` and its `skipped`, a `paused` and its `resumed`) have no defined
     // order and a "latest event" lookup would be a coin flip.
     const events = await prisma.gameEvent.findMany({
-      where: { gameId: runtime.id, type: { in: ['question', 'paused', 'resumed', 'skipped'] } },
+      where: {
+        gameId: runtime.id,
+        type: { in: ['lead', 'question', 'paused', 'resumed', 'skipped'] },
+      },
       select: { type: true, data: true, createdAt: true },
     });
     const forQuestion = (type: string) =>
@@ -370,6 +394,34 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     // runs before the phase guard so a restart during `reveal`/`board` still
     // marks the question as skipped.
     runtime.skippedQuestionId = question && forQuestion('skipped').length > 0 ? question.id : null;
+
+    // The start countdown (Phase 6.9.1). Its window is rebuilt from the `lead`
+    // event's server `endsAt`, so a restart mid-countdown re-arms for the
+    // *remaining* time and never restarts the countdown at the full window; if it
+    // has already expired it advances at once. There is exactly one `lead` event
+    // per game, so the newest is the only one.
+    if (runtime.phase === 'lead') {
+      const leadEvents = events.filter((event) => event.type === 'lead');
+      const endsAt = leadEvents
+        .map((event) => (event.data as { endsAt?: number }).endsAt)
+        .filter((value): value is number => typeof value === 'number')
+        .sort((a, b) => b - a)[0];
+      const resolvedEndsAt = endsAt ?? Date.now() + LEAD_MS;
+      runtime.leadStartedAt = resolvedEndsAt - LEAD_MS;
+      runtime.leadEndsAt = resolvedEndsAt;
+      const remainingMs = resolvedEndsAt - Date.now();
+      if (remainingMs <= 0) {
+        // Deferred: the runtime is not registered in `games` until `load` returns.
+        setTimeout(() => {
+          void this.advanceFromLead(runtime.id).catch(() => undefined);
+        }, 0);
+        return;
+      }
+      runtime.timer = setTimeout(() => {
+        void this.advanceFromLead(runtime.id).catch(() => undefined);
+      }, remainingMs);
+      return;
+    }
 
     // Restart recovery per phase. A process that dies mid-question, mid-reveal or
     // mid-board leaves no timer behind, so every phase with an automatic
@@ -459,6 +511,11 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       text: question.text,
       timeLimit: question.timeLimit,
       display: questionDisplay(question),
+      // The optional category and difficulty labels are display metadata, not
+      // solution fields, so they are safe to send before the reveal (Phase 6.9.1).
+      // Each is only set when present, so a question without one adds no key.
+      ...(question.category === undefined ? {} : { category: question.category }),
+      ...(question.difficulty === undefined ? {} : { difficulty: question.difficulty }),
       openedAt: game.openedAt ?? Date.now(),
       index: game.currentIndex,
       total: game.quiz.questions.length,
@@ -471,6 +528,70 @@ export class GameEngine extends EventEmitter<EngineEvents> {
   leaderboard(game: RuntimeGame): PublicPlayer[] {
     const ranked = rankPlayers([...game.players.values()].map(rankable), game.settings.tieBreak);
     return ranked.map((entry) => publicPlayer(game.players.get(entry.id)!));
+  }
+
+  /** The current ranking as playerId → 1-based rank, derived from the leaderboard. */
+  private rankByPlayer(game: RuntimeGame): Map<string, number> {
+    const ranks = new Map<string, number>();
+    this.leaderboard(game).forEach((player, index) => ranks.set(player.id, index + 1));
+    return ranks;
+  }
+
+  /**
+   * Per-player score changes for the current question (Phase 6.9.1).
+   *
+   * Read from the persisted `playerAnswer` rows, so the same values are produced
+   * after a restart as live: `delta` is the sum of the rows' points (a regular
+   * question has one row per player; a skip zeroes them, so the delta is the
+   * refund). `previousScore = score - delta` reconstructs the pre-question value
+   * and never touches the authoritative running total. Idempotent by
+   * construction — it only reads, so re-emitting a reveal cannot double anything.
+   */
+  private async pointsDeltas(game: RuntimeGame, questionId: string): Promise<PointsDelta[]> {
+    const rows = await prisma.playerAnswer.findMany({
+      where: { gameId: game.id, questionId },
+      select: { playerId: true, points: true },
+    });
+    const byPlayer = new Map<string, number>();
+    for (const row of rows)
+      byPlayer.set(row.playerId, (byPlayer.get(row.playerId) ?? 0) + row.points);
+    return [...game.players.values()].map((player) => {
+      const delta = byPlayer.get(player.id) ?? 0;
+      return {
+        playerId: player.id,
+        previousScore: player.score - delta,
+        delta,
+        score: player.score,
+      };
+    });
+  }
+
+  /**
+   * Per-player rank movements for the current question (Phase 6.9.1).
+   *
+   * `previousRank` is derived from the same ranking the reveal/board shows, with
+   * each player's own delta removed from their score, so it is the position
+   * *before* this question was scored. Deterministic and reconstructable: it is a
+   * pure function of the current scores and the persisted deltas.
+   */
+  private async rankDeltas(game: RuntimeGame, questionId: string): Promise<RankDelta[]> {
+    const deltas = await this.pointsDeltas(game, questionId);
+    const deltaById = new Map(deltas.map((entry) => [entry.playerId, entry.delta]));
+    const previous = rankPlayers(
+      [...game.players.values()].map((player) => ({
+        ...rankable(player),
+        score: player.score - (deltaById.get(player.id) ?? 0),
+      })),
+      game.settings.tieBreak,
+    );
+    const previousRankById = new Map(previous.map((entry) => [entry.id, entry.rank]));
+    const currentRankById = this.rankByPlayer(game);
+    return deltas.map((entry) => ({
+      playerId: entry.playerId,
+      previousRank: previousRankById.get(entry.playerId) ?? 1,
+      rank: currentRankById.get(entry.playerId) ?? 1,
+      score: entry.score,
+    }));
   }
 
   private clearTimer(game: RuntimeGame): void {
@@ -643,7 +764,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     return 'question';
   }
 
-  /** Start the game: freeze the quiz, leave the lobby and open the first question. */
+  /** Start the game: freeze the quiz, leave the lobby and begin the start countdown. */
   async start(gameId: string): Promise<GamePhase> {
     return this.withPhaseLock(gameId, () => this.startInternal(gameId));
   }
@@ -653,16 +774,98 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     if (game.phase !== 'lobby') throw conflict('The game has already started.');
     if (game.players.size === 0) throw conflict('Nobody has joined yet.');
 
-    // Freeze the quiz **before** the first question opens (Phase 6.4). The copy
-    // is committed in one transaction with the start stamp, so from here on the
-    // run reads the snapshot and a later quiz edit or delete cannot touch it.
-    // If this throws, the game stays in the lobby and nothing is frozen.
+    // Freeze the quiz **before** the countdown opens (Phase 6.4). The copy is
+    // committed in one transaction with the start stamp, so from here on the run
+    // reads the snapshot and a later quiz edit or delete cannot touch it. If this
+    // throws, the game stays in the lobby and nothing is frozen.
     const snapshot = await startWithSnapshot(gameId);
     game.quiz = snapshotToQuiz(snapshot.quiz);
     game.currentIndex = -1;
-    // The snapshot is in place, so it is safe to leave the lobby now.
-    game.phase = 'question';
-    return this.advance(gameId, game);
+    // The snapshot is in place, so it is safe to leave the lobby now. The first
+    // question is opened by the `lead` countdown (Phase 6.9.1).
+    return this.enterLead(gameId, game);
+  }
+
+  /**
+   * Enter the server-authoritative start countdown (Phase 6.9.1).
+   *
+   * The window is fixed (`LEAD_MS`) and its start/end are server timestamps, so
+   * every client renders the same countdown and the transition to `question` is
+   * owned by the server. The timer is the same single `game.timer` the rest of
+   * the engine uses — no second timer infrastructure.
+   */
+  private async enterLead(gameId: string, game: RuntimeGame): Promise<GamePhase> {
+    this.clearTimer(game);
+    const startedAt = Date.now();
+    game.phase = 'lead';
+    game.leadStartedAt = startedAt;
+    game.leadEndsAt = startedAt + LEAD_MS;
+    game.openedAt = null;
+    game.paused = false;
+    game.pausedAt = null;
+    game.remainingMs = null;
+    game.skippedQuestionId = null;
+
+    await setPhase(gameId, 'lead', game.currentIndex);
+    await logEvent(gameId, 'lead', { endsAt: game.leadEndsAt });
+
+    this.emit('lead', { gameId, lead: this.leadState(game)! });
+
+    game.timer = setTimeout(() => {
+      void this.advanceFromLead(gameId).catch(() => undefined);
+    }, LEAD_MS);
+
+    return 'lead';
+  }
+
+  /** The countdown window as the host and players render it, or null outside `lead`. */
+  leadState(game: RuntimeGame): LeadState | null {
+    if (game.phase !== 'lead' || game.leadStartedAt === null || game.leadEndsAt === null) {
+      return null;
+    }
+    return {
+      startedAt: game.leadStartedAt,
+      endsAt: game.leadEndsAt,
+      durationSeconds: LEAD_SECONDS,
+      skippable: true,
+    };
+  }
+
+  /**
+   * Open the first question once the countdown is over (Phase 6.9.1). Idempotent
+   * against a duplicate timer callback or a host skip racing the timer: both call
+   * this, and only the first wins the phase guard, so `question` is entered
+   * exactly once.
+   */
+  private async advanceFromLead(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, async () => {
+      const game = await this.get(gameId);
+      // A game that has already left `lead` (skipped, or the timer fired twice)
+      // is left untouched, so a late callback can never open a second question.
+      if (game.phase !== 'lead') return game.phase;
+      this.clearTimer(game);
+      game.leadStartedAt = null;
+      game.leadEndsAt = null;
+      return this.advance(gameId, game);
+    });
+  }
+
+  /**
+   * Skip the start countdown and open the first question at once (Phase 6.9.1).
+   *
+   * Only legal in `lead`: from any other phase this is refused, so a stale or
+   * duplicated skip cannot move the game. A duplicate skip is a harmless no-op
+   * because `advanceFromLead` only acts while the game is still in `lead`.
+   */
+  async skipLead(gameId: string): Promise<GamePhase> {
+    return this.withPhaseLock(gameId, async () => {
+      const game = await this.get(gameId);
+      if (game.phase !== 'lead') throw conflict('There is no countdown to skip.');
+      this.clearTimer(game);
+      game.leadStartedAt = null;
+      game.leadEndsAt = null;
+      return this.advance(gameId, game);
+    });
   }
 
   /**
@@ -809,7 +1012,15 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       podium: null,
       placement: null,
       skipped: false,
+      lead: null,
     };
+
+    // The start countdown (Phase 6.9.1): a player who reconnects during it sees
+    // the remaining time rather than the lobby. The timestamps are the server's,
+    // so the client renders the same countdown it would have had live.
+    if (game.phase === 'lead') {
+      return { ...empty, board: this.leaderboard(game), lead: this.leadState(game) };
+    }
 
     if (game.phase === 'lobby') {
       return { ...empty, board: this.leaderboard(game) };
@@ -886,7 +1097,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * expose the solution — but only from the reveal onwards, mirroring exactly
    * when `host:reveal` fires, so a reconnect cannot leak the answer early.
    */
-  hostState(game: RuntimeGame): HostState {
+  async hostState(game: RuntimeGame): Promise<HostState> {
     const roster = [...game.players.values()].map(publicPlayer);
     const empty: HostState = {
       gameId: game.id,
@@ -899,7 +1110,16 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       answers: null,
       paused: false,
       skipped: false,
+      lead: null,
+      points: null,
+      ranks: null,
     };
+
+    // The start countdown (Phase 6.9.1): a host that reconnects mid-countdown
+    // renders the remaining time from the server timestamps instead of restarting.
+    if (game.phase === 'lead') {
+      return { ...empty, players: roster, lead: this.leadState(game) };
+    }
 
     if (game.phase === 'lobby') {
       return { ...empty, players: roster };
@@ -920,6 +1140,9 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const skipped = game.skippedQuestionId === question.id;
 
     if (game.phase === 'reveal') {
+      // The reveal state carries the same per-player deltas the live
+      // `host:reveal` broadcasts (Phase 6.9.1), rebuilt from the persisted rows.
+      const points = await this.pointsDeltas(game, question.id);
       return {
         ...empty,
         question: this.publicQuestion(game),
@@ -928,11 +1151,18 @@ export class GameEngine extends EventEmitter<EngineEvents> {
           : { skipped: false, question, distribution: Object.fromEntries(game.distribution) },
         answers,
         skipped,
+        points,
+        ranks: await this.rankDeltas(game, question.id),
       };
     }
 
     if (game.phase === 'board') {
-      return { ...empty, players: this.leaderboard(game), skipped };
+      return {
+        ...empty,
+        players: this.leaderboard(game),
+        skipped,
+        ranks: await this.rankDeltas(game, question.id),
+      };
     }
 
     return { ...empty, question: this.publicQuestion(game), answers, paused: game.paused };
@@ -1018,11 +1248,17 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       await logEvent(gameId, 'skipped', { questionId: question.id });
     }
 
+    // Read the per-player score changes from the persisted rows (Phase 6.9.1).
+    // For a skip the rows were just zeroed by `refundQuestion`, so the delta is
+    // the refund; for a regular reveal it is the points each answer earned.
+    const points = await this.pointsDeltas(game, question.id);
+
     this.emit('reveal', {
       gameId,
       reveal: skipped
         ? skippedReveal(question)
         : { skipped: false, question, distribution: Object.fromEntries(game.distribution) },
+      points,
     });
 
     game.timer = setTimeout(() => {
@@ -1189,7 +1425,11 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     game.remainingMs = null;
     game.phase = 'board';
     await setPhase(gameId, 'board', game.currentIndex);
-    this.emit('board', { gameId, players: this.leaderboard(game) });
+    // The rank movements for the question just scored (Phase 6.9.1), derived from
+    // the same persisted deltas the reveal used, so the two screens always agree.
+    const question = this.currentQuestion(game);
+    const ranks = question ? await this.rankDeltas(game, question.id) : [];
+    this.emit('board', { gameId, players: this.leaderboard(game), ranks });
 
     game.timer = setTimeout(() => {
       void this.next(gameId).catch(() => undefined);

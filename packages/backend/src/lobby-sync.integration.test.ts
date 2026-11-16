@@ -235,7 +235,10 @@ describe.skipIf(!available)('lobby synchronisation and game start', () => {
 
     const questionSeen = once<{ id: string }>(ada.socket, 'game:question');
     const started = await request<{ phase: string }>(host, 'host:start', { gameId });
-    expect(started.phase).toBe('question');
+    // `start` now opens the server-owned start countdown (Phase 6.9.1), so the
+    // first question follows the skip (or the countdown's own timer).
+    expect(started.phase).toBe('lead');
+    await request(host, 'host:skipLead', { gameId });
     expect((await questionSeen).id).toBe(QUIZ.questions[0]!.id);
 
     const state = await request<HostState>(host, 'host:join', { gameId });
@@ -254,6 +257,9 @@ describe.skipIf(!available)('lobby synchronisation and game start', () => {
       request(host, 'host:start', { gameId }),
       request(late, 'player:join', { pin, nickname: 'Bob' }),
     ]);
+    // Skip the start countdown so the first question is broadcast deterministically
+    // rather than waiting out the full window (Phase 6.9.1).
+    await request(host, 'host:skipLead', { gameId });
     await settle();
 
     // The game must have started, exactly once.
@@ -319,6 +325,7 @@ describe.skipIf(!available)('lobby synchronisation and game start', () => {
     const { host, gameId, pin } = await createGame();
     const ada = await joinPlayer(pin, 'Ada');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
 
     const reconnected = await playerSocket();
     const sync = await request<{ phase: string; question: { id: string } | null }>(
@@ -335,6 +342,7 @@ describe.skipIf(!available)('lobby synchronisation and game start', () => {
     const { host, gameId, pin } = await createGame();
     await joinPlayer(pin, 'Ada');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
 
     const reloaded = await hostSocket();
     const state = await request<HostState>(reloaded, 'host:join', { gameId });
@@ -352,8 +360,9 @@ describe.skipIf(!available)('lobby synchronisation and game start', () => {
     const questions = collect<unknown>(ada.socket, 'game:question');
 
     const first = await request<{ phase: string }>(host, 'host:start', { gameId });
-    expect(first.phase).toBe('question');
+    expect(first.phase).toBe('lead');
     await expect(request(host, 'host:start', { gameId })).rejects.toThrow(/already started/i);
+    await request(host, 'host:skipLead', { gameId });
     await settle();
 
     expect(questions).toHaveLength(1);
@@ -369,6 +378,7 @@ describe.skipIf(!available)('lobby synchronisation and game start', () => {
 
     await joinPlayer(pin, 'Ada');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     // A player joining a started game is refused, and must not produce a lobby.
     const late = await playerSocket();
     await expect(request(late, 'player:join', { pin, nickname: 'Bob' })).rejects.toThrow(
@@ -399,6 +409,7 @@ describe.skipIf(!available)('lobby synchronisation and game start', () => {
     const adaQuestion = once<{ id: string }>(ada.socket, 'game:question');
     const bobQuestion = once<{ id: string }>(bob.socket, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     expect((await adaQuestion).id).toBe(QUIZ.questions[0]!.id);
     expect((await bobQuestion).id).toBe(QUIZ.questions[0]!.id);
 

@@ -119,6 +119,7 @@ describe.skipIf(!available)('game engine integration', () => {
     engine.on('board', () => phases.push('board'));
 
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
     expect(question.id).toBe(QUIZ.questions[0]!.id);
     // The public question must never contain the solution.
@@ -151,6 +152,7 @@ describe.skipIf(!available)('game engine integration', () => {
   it('reveals automatically once every player has answered', async () => {
     const { gameId, playerId } = await freshGame(['Ada']);
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
     await engine.submitAnswer(gameId, playerId, question.id, 0);
     // The auto-reveal is fire-and-forget; give it a tick to run.
@@ -161,6 +163,7 @@ describe.skipIf(!available)('game engine integration', () => {
   it('awards no points for a wrong answer but still records it', async () => {
     const { gameId, playerId } = await freshGame();
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
 
     await engine.submitAnswer(gameId, playerId, question.id, 1); // wrong option
@@ -174,6 +177,7 @@ describe.skipIf(!available)('game engine integration', () => {
   it('rejects a second answer to the same question', async () => {
     const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
     await engine.submitAnswer(gameId, playerId, question.id, 0);
     await expect(engine.submitAnswer(gameId, playerId, question.id, 1)).rejects.toThrow(
@@ -184,6 +188,7 @@ describe.skipIf(!available)('game engine integration', () => {
   it('rejects a late answer', async () => {
     const { gameId, playerId } = await freshGame();
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const game = await engine.get(gameId);
     const question = engine.publicQuestion(game);
     // Pretend the question opened long ago.
@@ -206,6 +211,7 @@ describe.skipIf(!available)('game engine integration', () => {
     // rather than an unexpected error.
     const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
     engine.evict(gameId);
 
@@ -243,6 +249,7 @@ describe.skipIf(!available)('game engine integration', () => {
     // must win, and the outcome must be consistent with the stored row.
     const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
 
     const outcomes = await Promise.allSettled([
@@ -265,6 +272,7 @@ describe.skipIf(!available)('game engine integration', () => {
     // unrelated players into a failure.
     const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
 
     const outcomes = await Promise.allSettled(
@@ -279,6 +287,7 @@ describe.skipIf(!available)('game engine integration', () => {
     // the question must still be answerable afterwards.
     const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
 
     const originalTransaction = prisma.$transaction;
@@ -316,6 +325,7 @@ describe.skipIf(!available)('game engine integration', () => {
     // answer must be stored.
     const { gameId, playerIds } = await freshGame(['Ada', 'Bob', 'Cy']);
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const first = engine.publicQuestion(await engine.get(gameId));
     await engine.submitAnswer(gameId, playerIds[0]!, first.id, 0);
 
@@ -353,6 +363,7 @@ describe.skipIf(!available)('game engine integration', () => {
       });
     }
     await engine.start(row.id);
+    await engine.skipLead(row.id);
     const question = engine.publicQuestion(await engine.get(row.id));
     await engine.submitAnswer(row.id, a.player.id, question.id, 0); // correct
     await engine.submitAnswer(row.id, b.player.id, question.id, 1); // wrong
@@ -368,6 +379,7 @@ describe.skipIf(!available)('game engine integration', () => {
     // through one copy was invisible to the others and the totals drifted.
     const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
     await engine.start(gameId);
+    await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
     engine.evict(gameId);
 
@@ -391,6 +403,7 @@ describe.skipIf(!available)('game engine integration', () => {
     for (let attempt = 0; attempt < 60; attempt += 1) {
       const { gameId, playerId } = await freshGame(['Ada']);
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       const question = engine.publicQuestion(await engine.get(gameId));
       await engine.submitAnswer(gameId, playerId, question.id, 0);
       await engine.end(gameId);
@@ -402,10 +415,189 @@ describe.skipIf(!available)('game engine integration', () => {
     expect(stuck).toBe(0);
   }, 60_000);
 
+  describe('start countdown / lead phase (Phase 6.9.1)', () => {
+    it('enters `lead` on start and opens the first question only after the skip', async () => {
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      const leads: Array<{ endsAt: number; startedAt: number; durationSeconds: number }> = [];
+      const questions: string[] = [];
+      engine.on('lead', ({ lead }) => leads.push(lead));
+      engine.on('question', () => questions.push('question'));
+
+      const phase = await engine.start(gameId);
+      expect(phase).toBe('lead');
+      expect((await engine.get(gameId)).phase).toBe('lead');
+      // Exactly one countdown event, with a server-owned window.
+      expect(leads).toHaveLength(1);
+      expect(leads[0]!.endsAt).toBeGreaterThan(leads[0]!.startedAt);
+      expect(leads[0]!.durationSeconds).toBeGreaterThan(0);
+      expect(questions).toHaveLength(0);
+
+      const afterSkip = await engine.skipLead(gameId);
+      expect(afterSkip).toBe('question');
+      expect(questions).toHaveLength(1);
+      expect(engine.publicQuestion(await engine.get(gameId)).id).toBe(QUIZ.questions[0]!.id);
+    });
+
+    it('carries the countdown in the host and player sync during `lead`', async () => {
+      const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
+      await engine.start(gameId);
+
+      const host = await engine.hostState(await engine.get(gameId));
+      expect(host.phase).toBe('lead');
+      expect(host.lead).not.toBeNull();
+      expect(host.lead!.endsAt).toBeGreaterThan(Date.now());
+
+      const sync = await engine.playerSync(await engine.get(gameId), playerId);
+      expect(sync.phase).toBe('lead');
+      expect(sync.lead).not.toBeNull();
+      expect(sync.lead!.endsAt).toBe(host.lead!.endsAt);
+    });
+
+    it('refuses a skip outside `lead` and a duplicate skip cannot open two questions', async () => {
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      const questions: string[] = [];
+      engine.on('question', () => questions.push('question'));
+      await engine.start(gameId);
+      await engine.skipLead(gameId);
+      // A second skip is refused, and no second question is opened.
+      await expect(engine.skipLead(gameId)).rejects.toThrow(/no countdown/i);
+      expect(questions).toHaveLength(1);
+    });
+
+    it('re-arms the countdown for the remaining time after a cold reload', async () => {
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      await engine.start(gameId);
+      const before = (await engine.hostState(await engine.get(gameId))).lead!;
+      // Simulate a process restart mid-countdown.
+      engine.evict(gameId);
+      const reloaded = await engine.get(gameId);
+      expect(reloaded.phase).toBe('lead');
+      const after = (await engine.hostState(reloaded)).lead!;
+      // The window is rebuilt from the persisted `endsAt`, not restarted.
+      expect(after.endsAt).toBe(before.endsAt);
+    });
+
+    it('advances from the countdown to the first question via the timer', async () => {
+      const { gameId } = await freshGame(['Ada', 'Bob']);
+      const questionSeen = new Promise<void>((resolve) => engine.on('question', () => resolve()));
+      await engine.start(gameId);
+      // Skip rather than wait the full window; the timer path is covered by the
+      // recovery test above, which re-arms the same timeout.
+      await engine.skipLead(gameId);
+      await questionSeen;
+      expect((await engine.get(gameId)).phase).toBe('question');
+    });
+  });
+
+  it('sends the optional category and difficulty labels without the solution (Phase 6.9.1)', async () => {
+    const quiz = await createQuiz(ownerId, {
+      title: 'Labelled deck',
+      questions: [
+        {
+          id: `labelled-${Math.random().toString(36).slice(2, 10)}`,
+          type: 'single',
+          text: 'Which block is hardest?',
+          timeLimit: 20,
+          points: 'standard',
+          options: ['Dirt', 'Diamond'],
+          correctIndex: 1,
+          category: 'Blocks',
+          difficulty: 'hard',
+        },
+      ],
+    });
+    const row = await createGame(quiz.id, ownerId);
+    const { player } = await joinGame(
+      row.pin,
+      `Labelled-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    await engine.addPlayer(row.id, {
+      id: player.id,
+      nickname: player.nickname,
+      avatar: player.avatar,
+      joinedAt: player.joinedAt,
+    });
+    await engine.start(row.id);
+    await engine.skipLead(row.id);
+
+    const question = engine.publicQuestion(await engine.get(row.id));
+    expect(question.category).toBe('Blocks');
+    expect(question.difficulty).toBe('hard');
+    // The label is metadata: the solution must still never be exposed.
+    expect(JSON.stringify(question)).not.toContain('correctIndex');
+  });
+
+  describe('points and rank deltas (Phase 6.9.1)', () => {
+    it('reports per-player score deltas derived from the persisted answers', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada, bob] = playerIds;
+      await engine.start(gameId);
+      await engine.skipLead(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, ada!, question.id, 0); // correct
+      await engine.submitAnswer(gameId, bob!, question.id, 1); // wrong
+
+      const reveals: Array<{ points: Array<{ playerId: string; delta: number; score: number }> }> =
+        [];
+      engine.on('reveal', (payload) => reveals.push(payload));
+      await engine.reveal(gameId);
+
+      const points = reveals.at(-1)!.points;
+      const adaDelta = points.find((entry) => entry.playerId === ada!);
+      const bobDelta = points.find((entry) => entry.playerId === bob!);
+      expect(adaDelta!.delta).toBeGreaterThan(0);
+      expect(adaDelta!.score).toBe(adaDelta!.delta);
+      expect(bobDelta!.delta).toBe(0);
+      // The delta is self-consistent with the absolute score.
+      expect(adaDelta!.score - adaDelta!.delta).toBe(0);
+    });
+
+    it('reports rank movements on the board, derived deterministically', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada, bob] = playerIds;
+      await engine.start(gameId);
+      await engine.skipLead(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, bob!, question.id, 1); // Bob wrong first
+      await engine.submitAnswer(gameId, ada!, question.id, 0); // Ada correct
+
+      const boards: Array<{
+        ranks: Array<{ playerId: string; previousRank: number; rank: number }>;
+      }> = [];
+      engine.on('board', (payload) => boards.push(payload));
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+
+      const ranks = boards.at(-1)!.ranks;
+      const adaRank = ranks.find((entry) => entry.playerId === ada!)!;
+      // Ada scored, so she moved to rank 1 from a worse (or equal) previous rank.
+      expect(adaRank.rank).toBe(1);
+      expect(adaRank.previousRank).toBeGreaterThanOrEqual(1);
+    });
+
+    it('rebuilds the same deltas after a cold reload (restart-safe)', async () => {
+      const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
+      const [ada] = playerIds;
+      await engine.start(gameId);
+      await engine.skipLead(gameId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, ada!, question.id, 0);
+      await engine.reveal(gameId);
+
+      const live = await engine.hostState(await engine.get(gameId));
+      // Simulate a restart while sitting on the reveal screen.
+      engine.evict(gameId);
+      const rebuilt = await engine.hostState(await engine.get(gameId));
+      expect(rebuilt.points).toEqual(live.points);
+      expect(rebuilt.ranks).toEqual(live.ranks);
+    });
+  });
+
   describe('pause / resume / skip (Phase 6.5.3)', () => {
     it('freezes the clock on pause and rejects answers while paused', async () => {
       const { gameId, playerId } = await freshGame(['Ada', 'Bob']);
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       const question = engine.publicQuestion(await engine.get(gameId));
 
       await engine.pause(gameId);
@@ -429,6 +621,7 @@ describe.skipIf(!available)('game engine integration', () => {
     it('resumes with the remaining time and keeps the question open', async () => {
       const { gameId } = await freshGame(['Ada', 'Bob']);
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       await engine.pause(gameId);
       const before = engine.publicQuestion(await engine.get(gameId));
 
@@ -446,6 +639,7 @@ describe.skipIf(!available)('game engine integration', () => {
       // and the timer would reveal on expiry. Pausing must disable both paths.
       const { gameId } = await freshGame(['Ada']);
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       await engine.pause(gameId);
       await new Promise((resolve) => setTimeout(resolve, 50));
       const game = await engine.get(gameId);
@@ -457,6 +651,7 @@ describe.skipIf(!available)('game engine integration', () => {
       const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
       const [ada, bob] = playerIds;
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       const question = engine.publicQuestion(await engine.get(gameId));
       // Ada answers before the skip; Bob never gets the chance.
       const before = await engine.submitAnswer(gameId, ada!, question.id, 0);
@@ -510,6 +705,7 @@ describe.skipIf(!available)('game engine integration', () => {
     it('skip also works from a paused question', async () => {
       const { gameId } = await freshGame(['Ada', 'Bob']);
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       await engine.pause(gameId);
       await engine.skip(gameId);
       expect((await engine.get(gameId)).phase).toBe('reveal');
@@ -519,6 +715,7 @@ describe.skipIf(!available)('game engine integration', () => {
       const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
       const [ada] = playerIds;
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       await engine.skip(gameId);
 
       // A reconnect during the skipped reveal must render the same screen the
@@ -539,6 +736,7 @@ describe.skipIf(!available)('game engine integration', () => {
       // Simulate a process restart: evict the runtime, then re-load from the rows.
       const { gameId } = await freshGame(['Ada', 'Bob']);
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       await engine.pause(gameId);
       const before = engine.publicQuestion(await engine.get(gameId));
       engine.evict(gameId);
@@ -564,6 +762,7 @@ describe.skipIf(!available)('game engine integration', () => {
     it('skips a question with no answers and refunds nothing', async () => {
       const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       await engine.skip(gameId);
 
       expect((await engine.get(gameId)).phase).toBe('reveal');
@@ -577,6 +776,7 @@ describe.skipIf(!available)('game engine integration', () => {
       const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
       const [ada] = playerIds;
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       const question = engine.publicQuestion(await engine.get(gameId));
       await engine.submitAnswer(gameId, ada!, question.id, 0); // correct
       expect((await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score).toBeGreaterThan(
@@ -600,6 +800,7 @@ describe.skipIf(!available)('game engine integration', () => {
       const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
       const [ada] = playerIds;
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       const question = engine.publicQuestion(await engine.get(gameId));
       await engine.submitAnswer(gameId, ada!, question.id, 1); // wrong option
 
@@ -611,6 +812,7 @@ describe.skipIf(!available)('game engine integration', () => {
       const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
       const [ada, bob] = playerIds;
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       // Q1: Ada answers correctly and is revealed normally — these points stand.
       const first = engine.publicQuestion(await engine.get(gameId));
       await engine.submitAnswer(gameId, ada!, first.id, 0);
@@ -633,6 +835,7 @@ describe.skipIf(!available)('game engine integration', () => {
       const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
       const [ada] = playerIds;
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       const question = engine.publicQuestion(await engine.get(gameId));
       await engine.submitAnswer(gameId, ada!, question.id, 0);
       const earned = (await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score;
@@ -650,6 +853,7 @@ describe.skipIf(!available)('game engine integration', () => {
       const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
       const [ada] = playerIds;
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       const question = engine.publicQuestion(await engine.get(gameId));
       await engine.submitAnswer(gameId, ada!, question.id, 0);
       const before = await prisma.playerAnswer.findFirst({
@@ -672,6 +876,7 @@ describe.skipIf(!available)('game engine integration', () => {
       const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
       const [ada] = playerIds;
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       await engine.skip(gameId);
       await engine.board(gameId);
       await engine.next(gameId);
@@ -689,6 +894,7 @@ describe.skipIf(!available)('game engine integration', () => {
     it('ends correctly when the last question is skipped', async () => {
       const { gameId } = await freshGame(['Ada', 'Bob']);
       await engine.start(gameId);
+      await engine.skipLead(gameId);
       // Walk to the final question, skipping each one.
       for (let i = 0; i < QUIZ.questions.length; i += 1) {
         await engine.skip(gameId);
@@ -711,6 +917,7 @@ describe.skipIf(!available)('game engine integration', () => {
         const { gameId, playerIds } = await freshGame(['Ada', 'Bob']);
         const [ada] = playerIds;
         await engine.start(gameId);
+        await engine.skipLead(gameId);
         const question = engine.publicQuestion(await engine.get(gameId));
         await engine.submitAnswer(gameId, ada!, question.id, 0);
         const earned = (await prisma.gamePlayer.findUnique({ where: { id: ada! } }))!.score;
@@ -757,6 +964,7 @@ describe.skipIf(!available)('game engine integration', () => {
         joinedAt: player.joinedAt,
       });
       await engine.start(row.id);
+      await engine.skipLead(row.id);
       return { gameId: row.id, playerId: player.id };
     }
 

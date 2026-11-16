@@ -513,6 +513,36 @@ Laufzeitabhängigkeit.
 
 Report: `docs/reports/phase-6-8-5-clock-sync-and-socket-rate-limit.md`.
 
+### 9.4 Serverzustände und Event-Verträge der Show (Phase 6.9.1)
+
+Das Fundament des Game-Show-Modus: die echte `lead`-Phase, die optionalen Frage-Labels und die
+Punkte-/Rangdeltas. **Additiv, ohne Schemaänderung, ohne neue Abhängigkeit.**
+
+- **`lead`-Phase (echt, serverseitig):** `start` wechselt in `lead` und öffnet erst nach dem
+  Countdown die erste Frage. Fenster fest (`LEAD_SECONDS = 5`); der Server besitzt Übergang und
+  Timing, der Client zeichnet nur. Eigener Timer über das bestehende `game.timer`.
+- **Wiederverwendung der Uhrsynchronisation (6.8.5):** Der Countdown wird aus den
+  Server-`startedAt`/`endsAt` gegen `clock.serverNow()` gezeichnet — **keine** zweite
+  Uhrensynchronisation.
+- **Recovery (R11):** Eine beim Neustart offene `lead`-Phase armt ihren Timer über das persistierte
+  `endsAt` **für die Restzeit** neu (kein Neustart bei voller Fensterlänge); ein bereits abgelaufenes
+  Fenster schaltet sofort weiter.
+- **Countdown überspringen:** Host-Befehl `host:skipLead`, **nur** in `lead`; ein doppelter Aufruf
+  ist ein No-op. `advanceFromLead` und `skipLead` laufen unter der Phasensperre, sodass genau
+  **eine** Frage geöffnet wird.
+- **Frage-Labels:** `PublicQuestion` trägt optional `category`/`difficulty` — Anzeigemetadaten,
+  **kein** Lösungsfeld; sie werden erst mit der Frage gesendet, nie die Lösung vor dem Reveal.
+- **Punkte-/Rangdeltas:** `host:reveal` trägt `points`, `host:board` trägt `ranks`. Beide werden
+  aus den persistierten `playerAnswer`-Zeilen gelesen (idempotent, nur lesend), sind reine
+  **Darstellung** und nie eine Punktequelle; die absoluten Werte bleiben maßgeblich.
+- **Rate-Limit (R9):** `host:skipLead` ist ein **Host**-Befehl (sitzungsgeschützt wie `host:skip`);
+  das neue Spieler-Ereignis `game:lead` ist ausschließlich Server→Client, also wurde **kein** neuer
+  client-erreichbarer Spielereignispfad eingeführt.
+- **Nicht Teil dieser Phase:** keine Show-Szene, kein Hintergrundbild, keine neue CSS, keine
+  Schemaänderung, keine Migration.
+
+Report: `docs/reports/phase-6-9-1-server-show-state.md`.
+
 ---
 
 ## 10. Phase 6.9 – Game-Show-Modus (in der bestehenden Host-Ansicht)

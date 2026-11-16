@@ -212,6 +212,7 @@ describe.skipIf(!available)('host / player identity separation', () => {
     // The host socket drives the game; the guest socket receives its events.
     const questionSeen = once<{ id: string }>(guest.socket, 'game:question');
     await request(hostSocket, 'host:start', { gameId });
+    await request(hostSocket, 'host:skipLead', { gameId });
     expect((await questionSeen).id).toBeTruthy();
   }, 30_000);
 
@@ -354,6 +355,7 @@ describe.skipIf(!available)('host / player identity separation', () => {
     // has no host commands, so the host socket remains the only one that drives.
     const questionSeen = once<{ id: string }>(signedIn.socket, 'game:question');
     await request(hostSocket, 'host:start', { gameId });
+    await request(hostSocket, 'host:skipLead', { gameId });
     expect((await questionSeen).id).toBeTruthy();
     // The seat is linked to the player account, and only that account.
     const row = await prisma.gamePlayer.findUnique({ where: { id: signedIn.playerId } });
@@ -392,6 +394,7 @@ describe.skipIf(!available)('host / player identity separation', () => {
 
     const questionSeen = once<{ id: string }>(player.socket, 'game:question');
     await request(hostSocket, 'host:start', { gameId });
+    await request(hostSocket, 'host:skipLead', { gameId });
     const question = await questionSeen;
     expect(question.id).toBeTruthy();
 
@@ -462,6 +465,7 @@ describe.skipIf(!available)('host / player identity separation', () => {
     const { host: hostSocket, gameId, pin } = await createGame(host.cookie);
     const questionSeen = once<{ id: string }>((await join(pin, 'x')).socket, 'game:question');
     await request(hostSocket, 'host:start', { gameId });
+    await request(hostSocket, 'host:skipLead', { gameId });
     expect((await questionSeen).id).toBeTruthy();
   }, 30_000);
 

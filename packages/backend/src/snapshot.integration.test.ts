@@ -99,6 +99,7 @@ describe.skipIf(!available)('game snapshot integration', () => {
       joinedAt: player.joinedAt,
     });
     await engine.start(row.id);
+    await engine.skipLead(row.id);
     return { gameId: row.id, playerId: player.id };
   }
 
@@ -223,6 +224,7 @@ describe.skipIf(!available)('game snapshot integration', () => {
       });
     }
     await engine.start(row.id);
+    await engine.skipLead(row.id);
     const question = engine.publicQuestion(await engine.get(row.id));
     await engine.submitAnswer(row.id, ada.player.id, question.id, 0);
     await engine.skip(row.id);

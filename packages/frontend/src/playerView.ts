@@ -14,7 +14,7 @@ import { playerAvatar } from './avatar.js';
 import { chip, notice } from './ui.js';
 
 /** Which player screen a reconnect state maps to. */
-export type PlayerScreen = 'lobby' | 'question' | 'reveal' | 'board' | 'end';
+export type PlayerScreen = 'lobby' | 'lead' | 'question' | 'reveal' | 'board' | 'end';
 
 /**
  * Decide which screen a `PlayerSync` must render.
@@ -30,6 +30,10 @@ export function screenForSync(sync: PlayerSync): PlayerScreen {
   if (sync.phase === 'end') return 'end';
   if (sync.phase === 'board') return 'board';
   if (sync.phase === 'reveal') return 'reveal';
+  // The start countdown (Phase 6.9.1): a player who reconnects during it is shown
+  // the countdown, not the lobby. Without a countdown in the state it falls back
+  // to the lobby, so a malformed snapshot never blanks the player.
+  if (sync.phase === 'lead') return sync.lead ? 'lead' : 'lobby';
   // `question` (and any phase that carries an open question): the private result
   // is only set from the reveal onwards.
   if (sync.answer?.result) return 'reveal';

@@ -187,6 +187,7 @@ describe.skipIf(!available)('player reconnect state sync', () => {
     const { gameId, players, host } = await newGame(['Ada', 'Bob']);
     const questionSeen = once<{ id: string }>(players[0]!.socket, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const liveQuestion = await questionSeen;
 
     const sync = await rejoin(players[0]!, gameId);
@@ -210,6 +211,7 @@ describe.skipIf(!available)('player reconnect state sync', () => {
     const { gameId, players, host } = await newGame(['Ada', 'Bob']);
     const questionSeen = once<{ id: string }>(players[0]!.socket, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await questionSeen;
 
     await request(players[0]!.socket, 'player:answer', { questionId: question.id, answer: 0 });
@@ -236,6 +238,7 @@ describe.skipIf(!available)('player reconnect state sync', () => {
     const { gameId, players, host } = await newGame(['Ada', 'Bob']);
     const questionSeen = once<{ id: string }>(players[0]!.socket, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await questionSeen;
 
     // Ada answers correctly, Bob does not answer at all.
@@ -262,6 +265,7 @@ describe.skipIf(!available)('player reconnect state sync', () => {
     const { gameId, players, host } = await newGame(['Ada', 'Bob']);
     const questionSeen = once<{ id: string }>(players[0]!.socket, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await questionSeen;
 
     await request(players[0]!.socket, 'player:answer', { questionId: question.id, answer: 0 });
@@ -278,6 +282,7 @@ describe.skipIf(!available)('player reconnect state sync', () => {
     const { gameId, players, host } = await newGame(['Ada', 'Bob']);
     const questionSeen = once<{ id: string }>(players[0]!.socket, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await questionSeen;
 
     await request(players[0]!.socket, 'player:answer', { questionId: question.id, answer: 0 });
@@ -320,6 +325,7 @@ describe.skipIf(!available)('player reconnect state sync', () => {
     const { gameId, players, host } = await newGame(['Ada', 'Bob']);
     const questionSeen = once<{ id: string }>(players[0]!.socket, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await questionSeen;
 
     // Reconnect three times in a row, then answer once.
@@ -349,6 +355,7 @@ describe.skipIf(!available)('player reconnect state sync', () => {
       'game:question',
     );
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await questionSeen;
 
     await request(players[0]!.socket, 'player:answer', { questionId: question.id, answer: 0 });
@@ -382,6 +389,7 @@ describe.skipIf(!available)('player reconnect state sync', () => {
     const { gameId, players, host } = await newGame(['Ada', 'Bob']);
     const questionSeen = once<{ id: string }>(players[0]!.socket, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     await questionSeen;
 
     // Backdate the open question past its limit, then simulate a restart.

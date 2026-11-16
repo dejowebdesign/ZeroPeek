@@ -51,6 +51,16 @@ function request<T>(socket: Socket, event: string, payload: unknown): Promise<T>
   });
 }
 
+/** Collect every payload for `event`, so a test can assert on the sequence. */
+function collect<T = unknown>(socket: Socket, event: string): T[] {
+  const seen: T[] = [];
+  socket.on(event, (payload: T) => seen.push(payload));
+  return seen;
+}
+
+/** Give the event loop a moment for the last broadcasts to arrive. */
+const settle = (ms = 80): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 const QUIZ: Quiz = {
   id: '00000000-0000-4000-8000-0000000000e1',
   title: 'Host sync test',
@@ -204,6 +214,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
     await joinPlayer(pin, 'Ada');
 
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const before = await request<HostState>(host, 'host:join', { gameId });
     expect(before.phase).toBe('question');
     expect(before.question?.id).toBe(QUIZ.questions[0]!.id);
@@ -230,6 +241,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
     const ada = await joinPlayer(pin, 'Ada');
 
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await request<HostState>(host, 'host:join', { gameId });
     await request(ada.socket, 'player:answer', {
       questionId: question.question!.id,
@@ -258,6 +270,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
     const bob = await joinPlayer(pin, 'Bob');
 
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await request<HostState>(host, 'host:join', { gameId });
     await request(ada.socket, 'player:answer', { questionId: question.question!.id, answer: 0 });
     await request(bob.socket, 'player:answer', { questionId: question.question!.id, answer: 1 });
@@ -282,6 +295,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
     const ada = await joinPlayer(pin, 'Ada');
 
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     await request(host, 'host:end', { gameId });
 
     const reloaded = await hostSocket();
@@ -346,6 +360,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
       const ada = await joinPlayer(pin, 'Ada');
 
       await request(host, 'host:start', { gameId });
+      await request(host, 'host:skipLead', { gameId });
       const question = await request<HostState>(host, 'host:join', { gameId });
 
       // Answer and end in the same tick: the answer triggers the auto-reveal.
@@ -368,6 +383,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
     const ada = await joinPlayer(pin, 'Ada');
 
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const paused = once<{ questionId: string; remainingMs: number }>(host, 'host:paused');
     const playerPaused = once<{ questionId: string }>(ada.socket, 'game:paused');
     await request(host, 'host:pause', { gameId });
@@ -409,6 +425,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
     await joinPlayer(pin, 'Bob');
 
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await request<HostState>(host, 'host:join', { gameId });
     await request(ada.socket, 'player:answer', { questionId: question.question!.id, answer: 0 });
 
@@ -441,6 +458,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
     const ada = await joinPlayer(pin, 'Ada');
     await joinPlayer(pin, 'Bob');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const open = await request<HostState>(host, 'host:join', { gameId });
     await request(ada.socket, 'player:answer', { questionId: open.question!.id, answer: 0 });
 
@@ -475,6 +493,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
     const ada = await joinPlayer(pin, 'Ada');
     await joinPlayer(pin, 'Bob');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const open = await request<HostState>(host, 'host:join', { gameId });
     await request(ada.socket, 'player:answer', { questionId: open.question!.id, answer: 0 });
 
@@ -509,6 +528,7 @@ describe.skipIf(!available)('host state synchronisation', () => {
 
     // A kick is a lobby-only action.
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     await expect(request(host, 'host:kick', { gameId, playerId: bob.playerId })).rejects.toThrow(
       /lobby/i,
     );
@@ -524,5 +544,94 @@ describe.skipIf(!available)('host state synchronisation', () => {
       request(host, 'host:kick', { gameId, playerId: '00000000-0000-4000-8000-00000000dead' }),
     ).rejects.toThrow(/not in this game/i);
     host.disconnect();
+  }, 20_000);
+
+  // --- Phase 6.9.1: server-owned start countdown and show-event contracts -------
+
+  it('M – start opens a server-owned countdown the host and players both receive', async () => {
+    const { host, gameId, pin } = await createGame();
+    const ada = await joinPlayer(pin, 'Ada');
+
+    const hostLead = once<{ endsAt: number; startedAt: number; durationSeconds: number }>(
+      host,
+      'host:lead',
+    );
+    const playerLead = once<{ endsAt: number; startedAt: number }>(ada.socket, 'game:lead');
+    const started = await request<{ phase: string }>(host, 'host:start', { gameId });
+
+    expect(started.phase).toBe('lead');
+    const h = await hostLead;
+    const p = await playerLead;
+    // Both surfaces get the identical server window, so they count down together.
+    expect(h.endsAt).toBe(p.endsAt);
+    expect(h.endsAt).toBeGreaterThan(h.startedAt);
+    expect(h.durationSeconds).toBeGreaterThan(0);
+
+    // A host that reconnects mid-countdown renders the remaining time, not a restart.
+    const reloaded = await hostSocket();
+    const state = await request<HostState>(reloaded, 'host:join', { gameId });
+    expect(state.phase).toBe('lead');
+    expect(state.lead?.endsAt).toBe(h.endsAt);
+
+    host.disconnect();
+    ada.socket.disconnect();
+    reloaded.disconnect();
+  }, 20_000);
+
+  it('N – skipping the countdown opens the first question, once', async () => {
+    const { host, gameId, pin } = await createGame();
+    const ada = await joinPlayer(pin, 'Ada');
+    const questions = collect<{ id: string }>(host, 'host:question');
+
+    await request(host, 'host:start', { gameId });
+    const skipped = await request<{ phase: string }>(host, 'host:skipLead', { gameId });
+    expect(skipped.phase).toBe('question');
+    await settle();
+    expect(questions).toHaveLength(1);
+    expect(questions[0]!.id).toBe(QUIZ.questions[0]!.id);
+
+    // A second skip is refused, so no second question can be opened.
+    await expect(request(host, 'host:skipLead', { gameId })).rejects.toThrow(/no countdown/i);
+    await settle();
+    expect(questions).toHaveLength(1);
+
+    host.disconnect();
+    ada.socket.disconnect();
+  }, 20_000);
+
+  it('O – the reveal carries point deltas and the board carries rank movements', async () => {
+    const { host, gameId, pin } = await createGame();
+    const ada = await joinPlayer(pin, 'Ada');
+    const bob = await joinPlayer(pin, 'Bob');
+
+    await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
+    const open = await request<HostState>(host, 'host:join', { gameId });
+    await request(ada.socket, 'player:answer', { questionId: open.question!.id, answer: 0 });
+    await request(bob.socket, 'player:answer', { questionId: open.question!.id, answer: 1 });
+
+    const reveal = once<{ points: Array<{ playerId: string; delta: number; score: number }> }>(
+      host,
+      'host:reveal',
+    );
+    const board = once<{ ranks: Array<{ playerId: string; rank: number }> }>(host, 'host:board');
+    await request(host, 'host:reveal', { gameId });
+    await request(host, 'host:board', { gameId });
+
+    const points = (await reveal).points;
+    const adaDelta = points.find((entry) => entry.playerId === ada.playerId);
+    const bobDelta = points.find((entry) => entry.playerId === bob.playerId);
+    expect(adaDelta!.delta).toBeGreaterThan(0);
+    expect(bobDelta!.delta).toBe(0);
+    // The deltas are self-consistent with the absolute scores.
+    expect(adaDelta!.score - adaDelta!.delta).toBe(0);
+
+    const ranks = (await board).ranks;
+    const adaRank = ranks.find((entry) => entry.playerId === ada.playerId);
+    expect(adaRank!.rank).toBe(1);
+
+    host.disconnect();
+    ada.socket.disconnect();
+    bob.socket.disconnect();
   }, 20_000);
 });

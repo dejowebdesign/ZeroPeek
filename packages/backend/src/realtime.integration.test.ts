@@ -157,6 +157,7 @@ describe.skipIf(!available)('realtime end-to-end', () => {
     const adaQuestion = once<{ id: string }>(ada, 'game:question');
     const bobQuestion = once<{ id: string }>(bob, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const question = await adaQuestion;
     await bobQuestion;
     expect(question.id).toBe(QUIZ.questions[0]!.id);

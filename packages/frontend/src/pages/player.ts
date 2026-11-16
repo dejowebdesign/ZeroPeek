@@ -9,6 +9,7 @@
 
 import type {
   HostPresence,
+  LeadState,
   OwnResult,
   PlayerAnswerState,
   PlayerSync,
@@ -22,6 +23,7 @@ import { playerAvatar, playerBadge } from '../avatar.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
+import { ClockSync } from '../clockSync.js';
 import { questionInput, questionPrompt } from '../questionView.js';
 import {
   endProgressActions,
@@ -30,7 +32,7 @@ import {
   lobbyRoster,
   screenForSync,
 } from '../playerView.js';
-import { button, chip, errorText, field, notice, setBusy, spinner } from '../ui.js';
+import { button, chip, countdown, errorText, field, notice, setBusy, spinner } from '../ui.js';
 import { saveClaim } from '../claim.js';
 
 const STORAGE_KEY = 'zeropeek.player';
@@ -117,6 +119,20 @@ const app: HTMLElement = appElement;
 
 {
   const socket: PlayerSocket = connectPlayer();
+  // Clock correction for the start countdown (Phase 6.9.1), reusing the Phase
+  // 6.8.5 sync. The countdown is drawn against the server's clock so every device
+  // shows the same number; the server still decides when the question opens.
+  const clock = new ClockSync(socket);
+  void clock.sync();
+  /** The interval driving the player's start countdown, or null when idle. */
+  let leadTimer: number | null = null;
+
+  function stopLeadTimer(): void {
+    if (leadTimer !== null) {
+      clearInterval(leadTimer);
+      leadTimer = null;
+    }
+  }
 
   /** Show the join form. A signed-in player is asked for the PIN only. */
   function showJoin(message?: string): void {
@@ -198,6 +214,7 @@ const app: HTMLElement = appElement;
 
   /** Show the waiting room until the host starts. */
   function showWaiting(players: PublicPlayer[] = []): void {
+    stopLeadTimer();
     const session = loadSession();
     render(
       app,
@@ -230,8 +247,48 @@ const app: HTMLElement = appElement;
     );
   }
 
+  /**
+   * The start countdown (Phase 6.9.1). Reuses the shared wireframe ring and the
+   * server's own `endsAt`, so a player sees the same countdown the host and beamer
+   * show and a reconnect mid-countdown continues it rather than restarting.
+   */
+  function showLead(lead: LeadState): void {
+    stopLeadTimer();
+    currentQuestion = null;
+    const timer = countdown(Math.ceil(lead.durationSeconds), 1);
+    render(
+      app,
+      shell(
+        'lobby',
+        el(
+          'section',
+          { class: 'centered' },
+          el(
+            'div',
+            { class: 'card lobby anim-fade-in' },
+            el('h1', { class: 'join__title' }, 'Get ready!'),
+            el('p', { class: 'muted' }, 'The first question starts in'),
+            timer,
+          ),
+        ),
+      ),
+    );
+    const value = timer.querySelector<HTMLElement>('.countdown__value');
+    const total = Math.max(1, lead.durationSeconds);
+    const tick = (): void => {
+      const remainingMs = Math.max(0, lead.endsAt - clock.serverNow());
+      const left = Math.ceil(remainingMs / 1000);
+      if (value) value.textContent = String(left);
+      timer.style.setProperty('--progress', String(Math.min(1, remainingMs / (total * 1000))));
+      if (remainingMs <= 0) stopLeadTimer();
+    };
+    tick();
+    leadTimer = window.setInterval(tick, 250);
+  }
+
   /** Show an open question. `prior` carries a reconnect's existing answer. */
   function showQuestion(question: PublicQuestion, prior?: PlayerAnswerState | null): void {
+    stopLeadTimer();
     currentQuestion = question;
     currentPrior = prior ?? null;
     let submitted = prior?.answered === true;
@@ -475,6 +532,10 @@ const app: HTMLElement = appElement;
    */
   function renderSync(sync: PlayerSync): void {
     switch (screenForSync(sync)) {
+      case 'lead':
+        if (sync.lead) showLead(sync.lead);
+        else showWaiting(sync.board ?? []);
+        break;
       case 'question':
         if (sync.question) showQuestion(sync.question, sync.answer);
         else showWaiting(sync.board ?? []);
@@ -513,6 +574,9 @@ const app: HTMLElement = appElement;
   socket.on('game:state', (payload) => {
     if (payload.phase === 'lobby') showWaiting(payload.players);
   });
+  // The start countdown (Phase 6.9.1). The server timestamps are rendered against
+  // the clock sync, so every device counts down together.
+  socket.on('game:lead', (lead) => showLead(lead));
   socket.on('game:question', (question) => showQuestion(question));
   socket.on('game:reveal', (payload) => showResult(payload.questionId, payload.result));
   socket.on('game:board', (payload) => showBoard(payload.players));
@@ -587,6 +651,9 @@ const app: HTMLElement = appElement;
 
   let hasConnected = false;
   socket.on('connect', () => {
+    // Re-measure the offset on every (re)connect: a reconnect may land on a
+    // different backend process, and a device that slept has a drifted clock.
+    void clock.sync();
     // The first connect is handled by the boot below; a later connect is an
     // automatic reconnect and must re-establish the game membership.
     if (hasConnected) rejoinStored();

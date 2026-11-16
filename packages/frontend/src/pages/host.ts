@@ -13,6 +13,7 @@ import {
   type HostConnectionStatus,
   type HostReveal,
   type HostState,
+  type LeadState,
   type PublicPlayer,
   type PublicQuestion,
   type QuestionType,
@@ -158,6 +159,32 @@ function startTimer(node: HTMLElement, openedAt: number, seconds: number): void 
   timerHandle = window.setInterval(tick, 250);
 }
 
+/**
+ * Render the start countdown into `node` (Phase 6.9.1).
+ *
+ * The number is derived from the server's own `endsAt`, measured against the
+ * server clock (`clock.serverNow()`), so the host shows the same countdown the
+ * players see and a reconnect mid-countdown resumes the remaining time instead
+ * of restarting. Nothing here decides the phase: the transition to `question`
+ * arrives as its own server event.
+ */
+function startLeadTimer(node: HTMLElement, lead: LeadState): void {
+  stopTimer();
+  const value = node.querySelector<HTMLElement>('.countdown__value');
+  const total = Math.max(1, lead.durationSeconds);
+  const tick = (): void => {
+    const now = clock ? clock.serverNow() : Date.now();
+    const remainingMs = Math.max(0, lead.endsAt - now);
+    const left = Math.ceil(remainingMs / 1000);
+    if (value) value.textContent = String(left);
+    else node.textContent = String(left);
+    node.style.setProperty('--progress', String(Math.min(1, remainingMs / (total * 1000))));
+    if (remainingMs <= 0) stopTimer();
+  };
+  tick();
+  timerHandle = window.setInterval(tick, 250);
+}
+
 /** The login screen. */
 function showLogin(message?: string): void {
   stopTimer();
@@ -238,6 +265,10 @@ function ensureSocket(): HostSocket {
       lobby: (payload) => {
         lastLiveEventAt = Date.now();
         renderHostState({ kind: 'lobby', pin: payload.pin, players: payload.players });
+      },
+      lead: (lead) => {
+        lastLiveEventAt = Date.now();
+        renderHostState({ kind: 'lead', lead });
       },
       question: (question) => {
         lastLiveEventAt = Date.now();
@@ -368,6 +399,7 @@ async function resync(): Promise<void> {
 /** The events a host screen can be rendered from, live or on reconnect. */
 type HostRender =
   | { kind: 'lobby'; pin: string; players: PublicPlayer[] }
+  | { kind: 'lead'; lead: LeadState }
   | {
       kind: 'question';
       question: PublicQuestion;
@@ -389,6 +421,7 @@ function renderHostState(input: HostRender): void {
     activeGame = { id: input.state.gameId, pin: input.state.pin };
     const screen = hostScreen(input.state);
     if (screen === 'lobby') return showLobby(input.state.pin, input.state.players ?? []);
+    if (screen === 'lead' && input.state.lead) return showLead(input.state.lead);
     if (screen === 'reveal' && input.state.reveal) return showReveal(input.state.reveal);
     if (screen === 'board') return showBoard(input.state.players ?? []);
     if (screen === 'end') return showPodium(input.state.players ?? input.state.podium ?? []);
@@ -399,6 +432,8 @@ function renderHostState(input: HostRender): void {
   switch (input.kind) {
     case 'lobby':
       return showLobby(input.pin, input.players);
+    case 'lead':
+      return showLead(input.lead);
     case 'question':
       return showQuestion(input.question, input.answers);
     case 'reveal':
@@ -779,6 +814,39 @@ async function send(event: string): Promise<void> {
   } catch (error) {
     toast(errorText(error), 'error');
   }
+}
+
+/**
+ * The start-countdown screen (Phase 6.9.1). It reuses the existing beamer board
+ * and wireframe countdown ring — no new layout — and shows the same server-owned
+ * countdown the players see. The host can skip it; the server decides the
+ * transition either way.
+ */
+function showLead(lead: LeadState): void {
+  answerCountNode = null;
+  currentQuestion = null;
+  currentAnswers = null;
+  const timer = countdown(Math.ceil(lead.durationSeconds), 1);
+
+  render(
+    app,
+    el(
+      'section',
+      { class: 'centered show' },
+      el(
+        'div',
+        { class: 'show__board card anim-fade-in' },
+        connectionBanner(),
+        el('h2', { class: 'show__title' }, 'Get ready!'),
+        el('p', { class: 'show__meta muted' }, 'The first question starts in'),
+        timer,
+        controlsFor('lead'),
+      ),
+    ),
+  );
+
+  startLeadTimer(timer, lead);
+  setConnection(connection);
 }
 
 /** The beamer question screen with a live timer and a running answer count. */

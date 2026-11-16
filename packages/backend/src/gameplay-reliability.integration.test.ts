@@ -129,6 +129,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
       ids.push(player.id);
     }
     await engine.start(row.id);
+    await engine.skipLead(row.id);
     return { gameId: row.id, playerIds: ids };
   }
 
