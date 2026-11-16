@@ -276,6 +276,7 @@ describe.skipIf(!available)('clock synchronisation (Phase 6.8.5)', () => {
 
     const question = once<{ id: string }>(player, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const q = await question;
 
     await request(player, 'player:answer', { questionId: q.id, answer: 0 });
@@ -429,6 +430,7 @@ describe.skipIf(!available)('socket rate limiting (Phase 6.8.5)', () => {
 
     const question = once<{ id: string }>(player, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const q = await question;
 
     // One legitimate answer.
@@ -470,6 +472,7 @@ describe.skipIf(!available)('socket rate limiting (Phase 6.8.5)', () => {
 
     const question = once<{ id: string }>(ada, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const q = await question;
 
     // Exhaust Ada's allowance with duplicate answers.
@@ -600,6 +603,7 @@ describe.skipIf(!available)('socket rate limiting (Phase 6.8.5)', () => {
 
     const question = once<{ id: string }>(player, 'game:question');
     await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
     const q = await question;
 
     // Answers carrying a bogus extra `playerId` field are still counted against

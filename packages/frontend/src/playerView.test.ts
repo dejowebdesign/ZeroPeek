@@ -187,6 +187,7 @@ describe('screenForSync', () => {
       podium: null,
       placement: null,
       skipped: false,
+      lead: null,
       ...overrides,
     };
   }
@@ -215,6 +216,13 @@ describe('screenForSync', () => {
 
   it('falls back to the lobby only when the question phase carries no question', () => {
     expect(screenForSync(sync({ phase: 'question', question: null }))).toBe('lobby');
+  });
+
+  it('shows the start countdown while in `lead` (Phase 6.9.1)', () => {
+    const lead = { startedAt: 0, endsAt: 5000, durationSeconds: 5, skippable: true };
+    expect(screenForSync(sync({ phase: 'lead', lead }))).toBe('lead');
+    // A `lead` with no window falls back to the lobby rather than blanking.
+    expect(screenForSync(sync({ phase: 'lead', lead: null }))).toBe('lobby');
   });
 
   it('shows the reveal screen for a skipped question', () => {

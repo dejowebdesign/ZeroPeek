@@ -317,6 +317,10 @@ export function attachSocketIO(
       'host:skip',
       command((id) => engine.skip(id)),
     );
+    socket.on(
+      'host:skipLead',
+      command((id) => engine.skipLead(id)),
+    );
 
     socket.on('host:kick', (payload: { gameId?: string; playerId?: string }, ack) => {
       guard(ack, async () => {
@@ -489,6 +493,14 @@ export function attachSocketIO(
     players.to(playerRoom(gameId)).emit('game:state', { phase: 'lobby', players: list });
   });
 
+  engine.on('lead', ({ gameId, lead }) => {
+    // The start countdown (Phase 6.9.1). The same server timestamps go to the host
+    // and to every player, so all surfaces render the identical countdown; the
+    // transition to `question` is broadcast separately when the engine opens it.
+    hosts.to(hostRoom(gameId)).emit('host:lead', lead);
+    players.to(playerRoom(gameId)).emit('game:lead', lead);
+  });
+
   engine.on('question', ({ gameId, question }) => {
     hosts.to(hostRoom(gameId)).emit('host:question', question);
     players.to(playerRoom(gameId)).emit('game:question', question);
@@ -498,8 +510,8 @@ export function attachSocketIO(
     hosts.to(hostRoom(payload.gameId)).emit('host:answers', payload);
   });
 
-  engine.on('reveal', ({ gameId, reveal }) => {
-    hosts.to(hostRoom(gameId)).emit('host:reveal', reveal);
+  engine.on('reveal', ({ gameId, reveal, points }) => {
+    hosts.to(hostRoom(gameId)).emit('host:reveal', { ...reveal, points });
     // A skipped reveal carries no solution, so `sendPlayerResults` only needs the
     // question id and the fact that the question was neutralised.
     void sendPlayerResults(io, gameId, reveal.question.id, reveal.skipped).catch(() => undefined);
@@ -515,8 +527,8 @@ export function attachSocketIO(
     players.to(playerRoom(gameId)).emit('game:resumed', { questionId, remainingMs });
   });
 
-  engine.on('board', ({ gameId, players: list }) => {
-    hosts.to(hostRoom(gameId)).emit('host:board', { players: list });
+  engine.on('board', ({ gameId, players: list, ranks }) => {
+    hosts.to(hostRoom(gameId)).emit('host:board', { players: list, ranks });
     players.to(playerRoom(gameId)).emit('game:board', { players: list });
   });
 

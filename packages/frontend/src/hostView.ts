@@ -15,10 +15,13 @@ import type {
   HostConnectionStatus,
   HostReveal,
   HostState,
+  LeadState,
+  PointsDelta,
   PublicPlayer,
   PublicQuestion,
   Question,
   QuestionType,
+  RankDelta,
 } from '@zeropeek/shared';
 import { questionDisplay } from '@zeropeek/shared';
 
@@ -27,7 +30,7 @@ import { questionResult, solutionText } from './questionView.js';
 import { chip } from './ui.js';
 
 /** Which host screen a state maps to. */
-export type HostScreen = 'lobby' | 'question' | 'reveal' | 'board' | 'end';
+export type HostScreen = 'lobby' | 'lead' | 'question' | 'reveal' | 'board' | 'end';
 
 /** The `sessionStorage` key holding the game a reload should resume. */
 export const GAME_KEY = 'zeropeek.host.game';
@@ -76,13 +79,16 @@ export function hostScreen(state: HostState): HostScreen {
   if (state.phase === 'end') return 'end';
   if (state.phase === 'board') return 'board';
   if (state.phase === 'reveal') return state.reveal ? 'reveal' : 'question';
+  // The start countdown (Phase 6.9.1). It falls back to the lobby if the state
+  // somehow carries no countdown, so a malformed snapshot never blanks the host.
+  if (state.phase === 'lead') return state.lead ? 'lead' : 'lobby';
   if (state.phase === 'question') return state.question ? 'question' : 'lobby';
   return 'lobby';
 }
 
 /** A control the host may use in the current phase. */
 export type HostActionId =
-  'start' | 'pause' | 'resume' | 'skip' | 'reveal' | 'board' | 'next' | 'end' | 'home';
+  'start' | 'skipLead' | 'pause' | 'resume' | 'skip' | 'reveal' | 'board' | 'next' | 'end' | 'home';
 
 export interface HostAction {
   id: HostActionId;
@@ -110,6 +116,11 @@ export function hostActions(phase: GamePhase, paused = false, type?: QuestionTyp
   switch (phase) {
     case 'lobby':
       return [{ id: 'start', label: 'Start game', variant: 'primary' }];
+    case 'lead':
+      // The start countdown (Phase 6.9.1): the only host control is to skip it.
+      // The engine refuses a skip from any other phase, so the button is offered
+      // only where it is legal.
+      return [{ id: 'skipLead', label: 'Skip countdown', variant: 'primary' }];
     case 'question':
       // A paused question may only resume or be skipped: `engine.reveal` returns
       // unchanged while paused, so offering Reveal here would be a dead button.
@@ -180,10 +191,11 @@ export function canAct(status: HostConnectionStatus): boolean {
 /** The events a host socket delivers, as consumed by the page. */
 export interface HostEventHandlers {
   lobby: (payload: { pin: string; players: PublicPlayer[] }) => void;
+  lead: (lead: LeadState) => void;
   question: (question: PublicQuestion) => void;
   answers: (payload: { questionId: string; answered: number; total: number }) => void;
-  reveal: (payload: HostReveal) => void;
-  board: (payload: { players: PublicPlayer[] }) => void;
+  reveal: (payload: HostReveal & { points: PointsDelta[] }) => void;
+  board: (payload: { players: PublicPlayer[]; ranks: RankDelta[] }) => void;
   ended: (payload: { players: PublicPlayer[] }) => void;
   paused: (payload: { questionId: string; remainingMs: number }) => void;
   resumed: (payload: { questionId: string; remainingMs: number }) => void;
@@ -244,6 +256,7 @@ export function attachHostHandlers(
 
   const listeners: Array<[string, RawListener]> = [
     ['host:lobby', forward((h) => h.lobby as RawListener)],
+    ['host:lead', forward((h) => h.lead as RawListener)],
     ['host:question', forward((h) => h.question as RawListener)],
     ['host:answers', forward((h) => h.answers as RawListener)],
     ['host:reveal', forward((h) => h.reveal as RawListener)],

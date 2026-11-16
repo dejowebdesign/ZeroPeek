@@ -34,6 +34,17 @@ export interface PublicQuestion {
   timeLimit: number;
   /** Type-specific display data with all solution fields removed. */
   display: Record<string, unknown>;
+  /**
+   * The question's optional category label (Phase 6.9.1), copied verbatim from
+   * the question. Display metadata only — like `text` it is never a solution
+   * field, so it is safe to send before the reveal.
+   */
+  category?: string;
+  /**
+   * The question's optional difficulty label (Phase 6.9.1), copied verbatim from
+   * the question. Display metadata only, like `category`.
+   */
+  difficulty?: string;
   /** Server timestamp (ms) when the question opened, for clock-independent timing. */
   openedAt: number;
   index: number;
@@ -46,6 +57,62 @@ export interface PublicQuestion {
    * clock and resume continues from the same point.
    */
   remainingMs: number | null;
+}
+
+/**
+ * The server-authoritative start countdown (Phase 6.9.1).
+ *
+ * After the host starts a game the engine enters the `lead` phase for a fixed,
+ * server-owned window before the first question opens. The client renders the
+ * countdown against these server timestamps (corrected by the Phase 6.8.5
+ * clock sync); it never owns the timing, and the actual transition is decided by
+ * the server alone. `endsAt - startedAt` is the full window, so a client can
+ * compute the remaining time without a second source of truth.
+ */
+export interface LeadState {
+  /** Server timestamp (ms) the countdown started. */
+  startedAt: number;
+  /** Server timestamp (ms) the countdown ends and the first question opens. */
+  endsAt: number;
+  /** The full countdown window in seconds. */
+  durationSeconds: number;
+  /** Whether the host may still skip the countdown (always true while in `lead`). */
+  skippable: boolean;
+}
+
+/**
+ * One player's score change for the revealed question (Phase 6.9.1).
+ *
+ * Presentation only: the absolute `score` stays the authoritative value, and a
+ * delta is never a source of points. `previousScore + delta === score`, so the
+ * change is self-consistent and can be recomputed server-side from the stored
+ * answer row after a restart.
+ */
+export interface PointsDelta {
+  playerId: string;
+  /** The player's score before this question was scored. */
+  previousScore: number;
+  /** Points awarded for this question (negative after a skip refund). */
+  delta: number;
+  /** The player's score after this question was scored. */
+  score: number;
+}
+
+/**
+ * One player's rank movement for the current ranking (Phase 6.9.1).
+ *
+ * Presentation only: the absolute ordering stays the authoritative value and is
+ * never computed on the client. `previousRank` is the position before the
+ * revealed question's points were applied, so a rise shows as a smaller number.
+ */
+export interface RankDelta {
+  playerId: string;
+  /** The player's rank before the current question was scored (1-based). */
+  previousRank: number;
+  /** The player's rank after the current question was scored (1-based). */
+  rank: number;
+  /** The player's current score, the value the rank is derived from. */
+  score: number;
 }
 
 /** Result of the player's own answer, sent privately after the reveal. */
@@ -95,6 +162,13 @@ export interface PlayerSync {
    * being shown a correct/wrong verdict.
    */
   skipped: boolean;
+  /**
+   * The start countdown, only in the `lead` phase (Phase 6.9.1). A player who
+   * reconnects during the countdown sees the remaining time instead of the
+   * lobby; the timestamps come from the server and the client renders against
+   * the clock sync.
+   */
+  lead: LeadState | null;
 }
 
 /**
@@ -134,6 +208,24 @@ export interface HostState {
    * (Phase 6.5.3). Only ever true in `reveal`.
    */
   skipped: boolean;
+  /**
+   * The start countdown, only in the `lead` phase (Phase 6.9.1). Carries the
+   * server timestamps so a host that reconnects mid-countdown renders the
+   * remaining time instead of restarting it.
+   */
+  lead: LeadState | null;
+  /**
+   * Per-player score changes for the revealed question, only in `reveal`
+   * (Phase 6.9.1). Presentation only; the absolute scores in `players` remain
+   * the authoritative values.
+   */
+  points: PointsDelta[] | null;
+  /**
+   * Per-player rank movements for the current ranking, only in `reveal` and
+   * `board` (Phase 6.9.1). Presentation only; the ordering in `players` remains
+   * the authoritative value.
+   */
+  ranks: RankDelta[] | null;
 }
 
 /** The host's own connection state, as shown in the control bar. */
@@ -193,6 +285,11 @@ export type HostPresence = 'connected' | 'reconnecting';
 export interface PlayerServerEvents {
   'game:joined': (payload: { playerId: string; gameId: string; nickname: string }) => void;
   'game:state': (payload: { phase: GamePhase; players: PublicPlayer[] }) => void;
+  /**
+   * The start countdown began (Phase 6.9.1). Sent once when the engine enters
+   * `lead`; the player renders the countdown against these server timestamps.
+   */
+  'game:lead': (payload: LeadState) => void;
   'game:question': (payload: PublicQuestion) => void;
   'game:reveal': (payload: { questionId: string; result: OwnResult; skipped?: boolean }) => void;
   'game:board': (payload: { players: PublicPlayer[] }) => void;
@@ -254,10 +351,24 @@ export interface PlayerClientEvents {
 /** Server → host events (namespace `/host`). */
 export interface HostServerEvents {
   'host:lobby': (payload: { pin: string; players: PublicPlayer[] }) => void;
+  /**
+   * The start countdown began (Phase 6.9.1). Sent once when the engine enters
+   * `lead`; carries the server timestamps the host renders the countdown against.
+   */
+  'host:lead': (payload: LeadState) => void;
   'host:question': (payload: PublicQuestion) => void;
   'host:answers': (payload: { questionId: string; answered: number; total: number }) => void;
-  'host:reveal': (payload: HostReveal) => void;
-  'host:board': (payload: { players: PublicPlayer[] }) => void;
+  /**
+   * The revealed question, plus the per-player score changes for it (Phase
+   * 6.9.1). `points` is presentation only and is always in step with the
+   * absolute scores in the accompanying `host:board`.
+   */
+  'host:reveal': (payload: HostReveal & { points: PointsDelta[] }) => void;
+  /**
+   * The leaderboard, plus the per-player rank movements (Phase 6.9.1). `ranks`
+   * is presentation only; `players` stays the authoritative ordering.
+   */
+  'host:board': (payload: { players: PublicPlayer[]; ranks: RankDelta[] }) => void;
   'host:ended': (payload: { players: PublicPlayer[] }) => void;
   'host:error': (payload: { message: string }) => void;
   /** The running question was paused; the timer is frozen (Phase 6.5.3). */
@@ -279,6 +390,13 @@ export interface HostClientEvents {
   'host:pause': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:resume': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:skip': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
+  /**
+   * Skip the start countdown and open the first question at once (Phase 6.9.1).
+   * Only legal in the `lead` phase; a call from any other phase is rejected with
+   * the usual conflict, and a duplicate call is a no-op that leaves the phase
+   * unchanged. The engine still owns the transition.
+   */
+  'host:skipLead': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:kick': (payload: { gameId: string; playerId: string }, ack: Ack<{ ok: boolean }>) => void;
   'host:join': (payload: { gameId: string }, ack: Ack<HostState>) => void;
   /**
