@@ -110,7 +110,6 @@
   --inset-light: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --shadow-raised: var(--inset-light), 0 24px 60px -24px rgba(0, 0, 0, 0.75);
   --shadow-dialog: 0 30px 80px -30px rgba(0, 0, 0, 0.85);
-  --shadow-nav: 0 8px 30px -12px rgba(0, 0, 0, 0.6);
   --shadow-btn: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 8px 18px -10px rgba(0, 0, 0, 0.8);
 
   /* Focus ring, shared by every interactive element. */
@@ -179,8 +178,6 @@
      reuses one of these or is added here with a reason. */
   --dur-slow: 400ms;
   --dur-show: 600ms;
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);
 
   /* Wireframe backdrop. Deliberately faint: it must never compete with the
      content, and it is static (no permanent animation). */
@@ -499,7 +496,6 @@ body::before {
 }
 
 /** Invalid input: danger border plus a field-level message below it. */
-.input--invalid,
 .input[aria-invalid='true'] {
   border-color: color-mix(in srgb, var(--bad) 65%, transparent);
 }
@@ -704,13 +700,6 @@ body::before {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-}
-
-.question__timer {
-  display: inline-block;
-  font-size: 2rem;
-  font-variant-numeric: tabular-nums;
-  margin-bottom: var(--space-3);
 }
 
 .question__solution {
@@ -1233,6 +1222,7 @@ body::before {
 
 .editor__question {
   padding: var(--space-4);
+  cursor: grab;
 }
 
 .editor__question-head {
@@ -1281,37 +1271,6 @@ body::before {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.9rem;
-}
-
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: grid;
-  place-items: center;
-  padding: var(--space-5);
-  background: var(--glass-overlay);
-  backdrop-filter: blur(var(--blur-overlay));
-  -webkit-backdrop-filter: blur(var(--blur-overlay));
-}
-
-.overlay__panel {
-  width: min(560px, 100%);
-  max-height: 80dvh;
-  overflow: auto;
-  background: var(--glass-dialog);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-dialog);
-  backdrop-filter: blur(var(--blur-dialog));
-  -webkit-backdrop-filter: blur(var(--blur-dialog));
-}
-
-.overlay__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  justify-content: flex-end;
-  margin-top: var(--space-4);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1651,7 +1610,6 @@ body::before {
 @supports not (backdrop-filter: blur(1px)) {
   .card,
   .card--raised,
-  .overlay__panel,
   .dialog__panel,
   .toast,
   .countdown::before {
@@ -1662,7 +1620,6 @@ body::before {
 @media (prefers-reduced-transparency: reduce) {
   .card,
   .card--raised,
-  .overlay__panel,
   .dialog__panel,
   .toast,
   .countdown::before {
@@ -1733,15 +1690,7 @@ body::before {
   }
 }
 
-/* Wide and beamer: larger gutters and a wider measure for long lists. */
-@media (min-width: 1440px) {
-  :root {
-    --content-max: 1320px;
-  }
-}
-
 /* ---------- beamer / show surface (concept §9.5) ---------- */
-
 /**
  * The host page doubles as the beamer. `.show` is the presentation surface: it
  * sizes itself from the viewport (`--show-measure`, `--show-gap`) and scales its
@@ -2388,8 +2337,11 @@ body::before {
   }
 }
 
+/* Wide and beamer: larger gutters and a wider measure for long lists; the
+   player measure steps to its widest value at the same breakpoint. */
 @media (min-width: 1440px) {
   :root {
+    --content-max: 1320px;
     --player-measure: 1000px;
   }
 }
@@ -2539,11 +2491,6 @@ body::before {
   background: var(--grad);
 }
 
-.auth__hint {
-  margin: var(--space-2) 0 0;
-  font-size: var(--type-help);
-}
-
 /* ---------- result / confirmation screens ---------- */
 
 .auth__icon {
@@ -2686,10 +2633,6 @@ body::before {
 /* Drag-and-drop affordance: the whole card is the handle, so the cursor and the
    lifted/over states are the only feedback needed. ↑/↓ remain the keyboard
    path. */
-.editor__question {
-  cursor: grab;
-}
-
 .editor__question--dragging {
   opacity: 0.55;
 }
@@ -2977,12 +2920,6 @@ body::before {
   background: var(--glass-card);
 }
 
-.avatar__form {
-  display: grid;
-  gap: var(--space-4);
-  margin-top: var(--space-4);
-}
-
 .avatar__preview {
   display: grid;
   grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
@@ -3052,64 +2989,8 @@ body::before {
   background: var(--glass-card);
 }
 
-.avatar__slots {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-4);
-}
-
-.avatar__slot-title {
-  margin: 0 0 var(--space-2);
-  font-size: var(--type-card);
-}
-
-.avatar__slot-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.avatar__slot-option {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--tap);
-  padding: 0 var(--space-4);
-  border: var(--hairline) solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--glass-card);
-  cursor: pointer;
-  transition:
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
-}
-
-.avatar__slot-option:hover {
-  border-color: var(--border-strong);
-}
-
-.avatar__slot-option:has(.profile__radio:focus-visible) {
-  outline: var(--focus-width) solid var(--accent-2);
-  outline-offset: 2px;
-}
-
-.avatar__slot-option--selected {
-  border-color: var(--accent-2);
-  background: var(--surface-2);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .avatar__slot-option {
-    transition: none;
-  }
-}
-
 @media (max-width: 767px) {
   .avatar__preview {
-    grid-template-columns: 1fr;
-  }
-
-  .avatar__slots {
     grid-template-columns: 1fr;
   }
 }

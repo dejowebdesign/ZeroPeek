@@ -6,6 +6,10 @@
   end-of-round offer, and the profile/inventory overlap.
 - **Status:** draft pull request, awaiting review (no merge, no deploy)
 
+> **Note (added in Phase 6.8.6):** the status above is a historical snapshot from when this
+> report was written. The work has since been merged into `main` (PR #43). This report's contents
+> and test results are left unchanged.
+
 ## 0. Result in one sentence
 
 A signed-in player now joins a round under their own account name and avatar, is

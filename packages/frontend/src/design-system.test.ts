@@ -221,7 +221,6 @@ describe('design-system components', () => {
     'auth__strength',
     'auth__strength-bar',
     'auth__strength-bar--on',
-    'auth__hint',
     'auth__icon',
     'auth__icon--ok',
     'auth__icon--warn',
@@ -395,9 +394,11 @@ describe('application shell layout (Phase 6.2.1)', () => {
   it('steps the player measure by viewport and caps it on a large screen', () => {
     expect(tokens).toMatch(/@media \(min-width: 768px\) \{\s*:root \{\s*--player-measure: 90%;/);
     expect(tokens).toMatch(/@media \(min-width: 1024px\) \{\s*:root \{\s*--player-measure: 78%;/);
-    expect(tokens).toMatch(
-      /@media \(min-width: 1440px\) \{\s*:root \{\s*--player-measure: 1000px;/,
-    );
+    // The widest step shares the 1440px breakpoint with the content cap, so both
+    // live in one block (Phase 6.8.6); the player value must stay last to win.
+    const wide = tokens.slice(tokens.indexOf('@media (min-width: 1440px)'));
+    expect(wide).toContain('--content-max: 1320px;');
+    expect(wide).toContain('--player-measure: 1000px;');
   });
 
   it('applies the player measure to the centred content, not the card', () => {
@@ -559,12 +560,19 @@ describe('avatar editor surface (Phase 6.7)', () => {
     );
   });
 
-  it('keeps the slot options tap-sized and drops motion when asked', () => {
-    const option = tokens.slice(tokens.indexOf('.avatar__slot-option {'));
-    expect(option).toContain('min-height: var(--tap)');
-    expect(tokens).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{\s*\.avatar__slot-option \{\s*transition: none;/,
-    );
+  it('keeps the removed slot editor out of the stylesheet', () => {
+    // The equipment editor moved to the inventory (Phase 6.8.4), so the profile
+    // no longer renders slot radios. The rules that styled them are gone too;
+    // `profile.test.ts` asserts the DOM side of the same removal.
+    for (const gone of [
+      '.avatar__form',
+      '.avatar__slots',
+      '.avatar__slot-title',
+      '.avatar__slot-options',
+      '.avatar__slot-option',
+    ]) {
+      expect(tokens).not.toContain(`${gone} {`);
+    }
   });
 
   it('does not fabricate a layer stack: the figure is a single supplied image', () => {
@@ -572,7 +580,7 @@ describe('avatar editor surface (Phase 6.7)', () => {
     // absolute positioning of equipment over the figure.
     const preview = tokens.slice(
       tokens.indexOf('.avatar__preview {'),
-      tokens.indexOf('.avatar__slots {'),
+      tokens.indexOf('.avatar__thumb {'),
     );
     expect(preview).not.toContain('position: absolute');
   });

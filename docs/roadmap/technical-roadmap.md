@@ -608,18 +608,18 @@ game-design-concept §15.
 
 ## 14. Querschnittsthemen (in mehreren Phasen)
 
-| Thema                               | Phasen     | Vorschlag                                                                         |
-| ----------------------------------- | ---------- | --------------------------------------------------------------------------------- |
-| Tests erweitern (E2E, visuell)      | ab 6.2     | Playwright einführen (heute nur im README genannt, nicht vorhanden)               |
-| Socket-Rate-Limit (R-6)             | ab 6.3/6.9 | Limit für `join`/`answer`/`rejoin`                                                |
-| Clock-Sync (R-7)                    | 6.9        | Ping/Pong-Versatz, siehe game-design-concept §12.3                                |
-| Zustandswiederherstellung (R-4/5)   | 6.5/6.9    | Reconnect liefert aktuellen Zustand; Neustart rekonstruiert                       |
-| R-3 (Historieverlust)               | 6.4        | **entschärft** durch Quiz-Snapshot (verbindlich, §6.4 / game-design-concept §8.7) |
-| Gastkonto-Übernahme                 | 6.8        | Einmaliger, kurzlebiger Übernahmenachweis; kein Fremdzugriff                      |
-| Barrierefreiheit                    | alle       | Kontrast, Fokus, `prefers-reduced-motion`, Tastatur                               |
-| Dokumentation                       | alle       | ADRs für neue Entscheidungen; Konzept aktuell halten                              |
-| **Performance-Budgets**             | alle       | §16 – als Abnahmekriterium prüfen                                                 |
-| **Lasttest** (`tools/loadtest.mjs`) | ab 6.5/6.9 | Nach Realtime-Änderungen erneut fahren (Regressionsschutz)                        |
+| Thema                               | Phasen               | Vorschlag                                                                         |
+| ----------------------------------- | -------------------- | --------------------------------------------------------------------------------- |
+| Tests erweitern (E2E, visuell)      | ab 6.2               | Playwright einführen (heute nur im README genannt, nicht vorhanden)               |
+| Socket-Rate-Limit (R-6)             | **6.8.5** (erledigt) | Token-Bucket für `player:join`/`player:rejoin`/`player:answer`; siehe §9.3        |
+| Clock-Sync (R-7)                    | **6.8.5** (erledigt) | Ping/Pong-Versatz (`clock:ping`/`clock:pong`), siehe §9.3                         |
+| Zustandswiederherstellung (R-4/5)   | 6.5/6.9              | Reconnect liefert aktuellen Zustand; Neustart rekonstruiert                       |
+| R-3 (Historieverlust)               | 6.4                  | **entschärft** durch Quiz-Snapshot (verbindlich, §6.4 / game-design-concept §8.7) |
+| Gastkonto-Übernahme                 | 6.8                  | Einmaliger, kurzlebiger Übernahmenachweis; kein Fremdzugriff                      |
+| Barrierefreiheit                    | alle                 | Kontrast, Fokus, `prefers-reduced-motion`, Tastatur                               |
+| Dokumentation                       | alle                 | ADRs für neue Entscheidungen; Konzept aktuell halten                              |
+| **Performance-Budgets**             | alle                 | §16 – als Abnahmekriterium prüfen                                                 |
+| **Lasttest** (`tools/loadtest.mjs`) | ab 6.5/6.9           | Nach Realtime-Änderungen erneut fahren (Regressionsschutz)                        |
 
 ---
 
@@ -718,7 +718,7 @@ Host/Beamer kombiniert (verbindlich), Audio nur Host (verbindlich).
 | 1   | Charakter-Assets (Referenzdateien)                                                              | 6.7, 6.9, 6.10 |
 | 2   | Beamer-Grafiken (kombinierte Ansicht bleibt)                                                    | 6.10           |
 | 3   | Audio-Assets                                                                                    | 6.11           |
-| 4   | Clock-Sync                                                                                      | 6.9            |
+| 4   | ~~Clock-Sync~~ **umgesetzt in 6.8.5** (R-7; siehe §9.3)                                         | –              |
 | 5   | Redis-Adapter oder bewusst eine Instanz                                                         | 6.12, Betrieb  |
 | 6   | ~~Pause/Überspringen~~ **umgesetzt in 6.5.3**; Skip **neutralisiert** die Frage (Punkte zurück) | 6.5            |
 | 7   | Katalog in `shared` oder DB                                                                     | 6.7, 6.8       |
