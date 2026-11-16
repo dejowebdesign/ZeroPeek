@@ -133,11 +133,11 @@ Limits (`SOCKET_RATE_RULES` in `packages/backend/src/socketRateLimit.ts`):
 All suites green with a real PostgreSQL reachable (`TEST_DATABASE_URL` /
 `DATABASE_URL`), no skips:
 
-| Package  | Before 6.8.5 | After 6.8.5 | New tests                                                                                                                  |
-| -------- | ------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
-| shared   | 165          | 179         | `clock.test.ts` (+14)                                                                                                      |
-| frontend | 458          | 469         | `clockSync.test.ts` (+11)                                                                                                  |
-| backend  | 350          | 385         | `socketRateLimit.test.ts` (+13), `clock-ratelimit.integration.test.ts` (+16), config (+2), deployment compose (+4)         |
+| Package  | Before 6.8.5 | After 6.8.5 | New tests                                                                                                          |
+| -------- | ------------ | ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| shared   | 165          | 179         | `clock.test.ts` (+14)                                                                                              |
+| frontend | 458          | 469         | `clockSync.test.ts` (+11)                                                                                          |
+| backend  | 350          | 385         | `socketRateLimit.test.ts` (+13), `clock-ratelimit.integration.test.ts` (+16), config (+2), deployment compose (+4) |
 
 (The backend baseline of 350 is the full total; the DB-backed suites report as
 skipped without a database, so with one reachable every one of the 385 runs.)
