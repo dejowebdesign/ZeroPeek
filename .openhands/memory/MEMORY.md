@@ -847,3 +847,32 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   status tables — update those to "Done (merged, PR #N)".
 - Gates after 6.8.6: frontend 468 (was 469; the `auth__hint` `it` left with its entry) / shared 179 /
   backend 385 (0 skips with a DB). Report: `docs/reports/phase-6-8-6-css-contract-docs.md`.
+
+## Phase 6.9.1 — server show state (`feat/phase-6-9-1-server-show-state`, from `main` @ `177b63c`)
+- **`lead` is now a REAL server phase, not a client timer.** `engine.startInternal` → `enterLead`
+  (`LEAD_SECONDS = 5`, `LEAD_MS`); only `advanceFromLead`/`skipLead` leave it, both under
+  `withPhaseLock` and both guard `phase === 'lead'`, so exactly ONE question opens. Uses the existing
+  single `game.timer`. New engine event `lead` → fan-out `host:lead` / `game:lead`.
+- **Recovery rebuilds the REMAINING window, never restarts it:** `load()` reads the persisted `lead`
+  event's `endsAt` (added `'lead'` to the recovery event-type filter) and re-arms `game.timer` for
+  `endsAt − Date.now()`; already-expired → advance via `setTimeout(…,0)` (deferred because the runtime
+  isn't in `games` until `load` returns).
+- **Countdown is drawn from server `startedAt`/`endsAt` against the existing Phase 6.8.5
+  `ClockSync`** (`clock.serverNow()`), NOT a second clock. Player `pages/player.ts` now owns a
+  `ClockSync` and re-syncs on every `connect`; host uses the existing `clock`.
+- **`host:skipLead`** is a HOST command (session-guarded like `host:skip`), legal only in `lead`;
+  duplicate is a `conflict` (not a silent no-op at the socket layer — the *engine* refuses). No new
+  client-reachable PLAYER event was added (`game:lead` is server→client only), so no rate-limit change.
+- **Additive contracts only** (`packages/shared/src/events.ts`): `PublicQuestion.category?/difficulty?`
+  (display metadata, forwarded by `publicQuestion`, never a solution field); `LeadState`, `PointsDelta`,
+  `RankDelta`; `PlayerSync.lead`, `HostState.{lead,points,ranks}`; `host:reveal` gains `points`,
+  `host:board` gains `ranks`. `hostState()` became **async**.
+- **Deltas are READ, never recomputed:** `pointsDeltas` sums persisted `playerAnswer.points` rows and
+  derives `previousScore = score − delta`; `rankDeltas` re-ranks with each player's own delta removed.
+  Idempotent + identical live vs. after a cold reload (asserted by tests).
+- **Test-fixture gotcha:** the lead phase broke ~75 existing DB tests that assumed `start → question`.
+  Fix: insert `engine.skipLead(gameId)` / `await request(host,'host:skipLead',{gameId})` right after
+  every `start` (mechanical script over the test files). `hostView.test.ts` listener-count assertion
+  went 8→9 (added `host:lead`). `host-sync.integration.test.ts` needed local `collect`/`settle` helpers.
+- Gates after 6.9.1: backend **397** (0 skips with DB), frontend **469**, shared **179**; typecheck +
+  build + format:check green. Report: `docs/reports/phase-6-9-1-server-show-state.md`.
