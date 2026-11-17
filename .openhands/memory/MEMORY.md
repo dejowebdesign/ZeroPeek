@@ -944,14 +944,20 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   newest-wins on recovery, like `paused`/`resumed`) — **no column, no migration**. New host command
   `host:auto {gameId, auto}` (validated real boolean, `assertHost`) → `Ack<{auto}>`; new host event
   `host:auto {auto}` to the host room only. `HostState.auto` added. `setAuto` is a **no-op when
-  unchanged** (no event, no timer churn). OFF cancels a pending advance only on reveal/board.
-- **AUTO gates ONLY the two scheduled transitions** (`revealInternal`→board, `boardInternal`→next),
-  centralised in `armAutoAdvance(game)`. The **answer clock and the start countdown always run** —
-  they are not AUTO transitions. Open question flagged to chrisB: should answer-time expiry also wait
-  for the host? Currently: no.
+  unchanged** (no event, no timer churn).
+- **AUTO gates EXACTLY TWO transitions: question → reveal (the answer resolution) and board → next
+  question.** Centralised in three helpers: `armQuestionClock` (AUTO-only), `armRevealWindow`
+  (ALWAYS), `armBoardAdvance` (AUTO-only). The **reveal → leaderboard** step is a fixed `REVEAL_MS`
+  (4 s) window in **both** modes; the start countdown always runs too. The all-players-answered
+  early reveal is gated on `game.auto`. Switching OFF cancels the question clock / board advance
+  (never the reveal window); switching ON resolves at once if the roster is full or the clock
+  already expired, else arms the exact remainder.
+  ⚠️ **The first 6.9.3 draft had this backwards** (gated reveal→board + board→next, left
+  question→reveal automatic). Fixed in `5e46187`; owner rule: *with AUTO off the host owns the
+  answer resolution; reveal→leaderboard is always automatic*.
 - Frontend: `autoLabel`/`autoHint` in `hostView.ts`; `host:auto` in `HostEventHandlers` (detach
   9→**10**); toggle in `pages/host.ts` (hidden in lobby + final, `data-auto-toggle`, `aria-pressed`),
   repainted from the broadcast AND the ACK. New `.show__auto` CSS from existing tokens only.
-- Counts: backend **409** (real PG), frontend **513**, shared **179**; typecheck/build/format:check/
-  lint green. Report: `docs/reports/phase-6-9-3-host-auto-control.md`; roadmap §9.6; `docs/phases.md`
-  6.9.3 row. **No push/PR/merge/deploy** (owner approval pending).
+- Counts: backend **419** (real PG), frontend **513**, shared **179**; typecheck/build/format:check/
+  lint green. Report: `docs/reports/phase-6-9-3-host-auto-control.md` (§8 = binding rule); roadmap
+  §9.6; `docs/phases.md` 6.9.3 row. **No push/PR/merge/deploy** (owner approval pending).
