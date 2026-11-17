@@ -879,3 +879,35 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   `docs/reports/phase-6-9-1-pre-push-audit.md` (verdict **GO**; fixed a `format:check` CI blocker —
   the new analysis doc was committed unformatted — a wrong report claim, and a timer test that
   actually called `skipLead`). Every phase must add its own `docs/phases.md` row in the feature commit.
+
+## Phase 6.9.2 — game-show skeleton & scene control (`feat/phase-6-9-2-game-show-skeleton`, from `main` @ `31a7783`)
+- **New pure module `packages/frontend/src/showScenes.ts`** (no DOM/socket): `SHOW_SCENES` (13),
+  `SCENE_DEFINITIONS` (`order/phase/mode/requires/transitions`), `ENTRY_SCENE` (phase→entry), and
+  `ShowController` (`sync`/`step`/`cycle`, `current`/`currentPhase`/`steppable`). It sends **no**
+  command and has no scoring/answering/phase method.
+- **Every scene has a real `GamePhase`.** `welcome`, `join`, `participants` are all *lobby*-phase
+  views (steppable between each other); `welcome` is NOT a `phase: null` client-only scene. The
+  lobby's **entry** scene is `join` (unchanged PIN view); `welcome` is reached by stepping and is
+  also the mapping result for `sceneForInput(null)` ("no game under control").
+- **Scene is derived through `hostScreen`**, so it inherits the console's fallbacks:
+  `sceneInputOf(state) = { phase: screenPhase(hostScreen(state)), questionId }`. `hostView.ts`
+  gained `'welcome'` in `HostScreen` and `hostScreen(null) => 'welcome'`. `ShowController.sync`
+  **ignores a stale descriptor** (`at < lastAt`) so a late event/resync can't pull the show back;
+  `step`/`cycle` only move within `samePhaseScenes(currentPhase)`.
+- **`pages/host.ts`**: `renderHostState` folds every render into `show.sync(descriptorOf(input))`;
+  helpers `descriptorOf`, `lastRender`+`rerender()`, `sceneBar()`, `presentationToggle()` +
+  `presentationMode`/`presentationClass()`. `sceneBar()` renders for any live phase (scene name +
+  steps + toggle) and never hides the controls. **Presentation mode** hides `.show__controls`,
+  `.show__scene-steps`, `.host-connection` (hides, never removes; in-memory only). Lobby = 3 scenes
+  of one card; question board frames differently per scene; reveal/board/podium get a per-scene
+  heading. Outro fetches **no** report (console-only).
+- **`showView.ts`**: `participantCard(player)` (lg head crop + name) for the participants grid.
+- **`tokens.css`**: additive "game-show skeleton" section only — `.show__scene-bar/-label/-steps`,
+  `.show__present`, `.lobby__welcome|participants|join`, `.lobby--wide`, `.participants`,
+  `.participant`, opacity-only `show-scene-fade` (+ reduced-motion). All values from existing tokens.
+- **Gotchas:** `HostState.reveal.question` is a full `Question` (union incl. `IdeasQuestion`) — a
+  reveal test helper needs a *full* question, not a `PublicQuestion`. Build partial `PublicQuestion`
+  literals with `as PublicQuestion`.
+- Gates after 6.9.2: frontend **512** (was 469), shared **179**, backend **98** (301 DB-skips here);
+  typecheck/build/format:check/lint green. Report: `docs/reports/phase-6-9-2-game-show-skeleton.md`;
+  roadmap §9.5; `docs/phases.md` 6.9.2 row. **No push/PR/merge/deploy** (owner approval pending).
