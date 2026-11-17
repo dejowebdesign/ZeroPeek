@@ -81,8 +81,9 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
 - **Capacity measured (Phase 5b, `tools/loadtest.mjs`):** 25 players → join wall 95 ms, answer
   p95 28 ms, 135 MB RSS; 35 players → join 134 ms, p95 35 ms, 143 MB. Target "25 + host" is
   comfortable on one process; R-2 only matters for several hundred players.
-- **Engine tempo (by design):** `REVEAL_MS = 6000`, `BOARD_MS = 6000`, `ANSWER_GRACE_MS = 1500`;
-  a full question cycle ≈ 12 s + answer time. Host can force "next" at any time.
+- **Engine tempo (by design):** `REVEAL_MS = 4000`, `BOARD_MS = 5000`, `ANSWER_GRACE_MS = 1500`;
+  the two scheduled transitions are gated on the host's **AUTO** mode (Phase 6.9.3, default **off**);
+  the answer clock and the start countdown always run. Host can force "next" at any time.
 - **The Phase 1–5 concept docs were first committed in Phase 5b** (they had existed only in the
   working tree; PR #9 was closed unmerged). `main` now holds them via PR #16, extended by Phase 5c
   (PR #17).
@@ -645,13 +646,16 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
 - `create_pr` tool works directly (owner/repo `dejowebdesign/ZeroPeek`).
 
 ## Gameplay engine: timings and known traps
-- **`REVEAL_MS = 6000`, `BOARD_MS = 6000`** (exported from
-  `packages/backend/src/services/engine.ts`). The engine **auto-advances**:
-  `reveal → board` after 6 s, `board → next question` after another 6 s, with no
-  host click. Any E2E/browser test must not assume a `Reveal`/`Next question`
-  button is on screen — drive it tolerantly or wait for the auto-advance. A host
-  `next` is only legal from `board`; `board` only from `reveal` (guards added in
-  `fix/complete-gameplay-reliability`) so a stale timer cannot skip a question.
+- **`REVEAL_MS = 4000`, `BOARD_MS = 5000`** (exported from
+  `packages/backend/src/services/engine.ts`). These two **scheduled** transitions
+  (`reveal → board`, `board → next question`) run **only when the host's AUTO mode
+  is on** (Phase 6.9.3; server-authoritative `host:auto`, default **off**, persisted
+  in the existing `GameEvent` log as type `auto`). With AUTO off the host advances
+  reveal/board by hand. The answer clock (question expiry) and the start countdown
+  are **not** AUTO transitions and always run. Any E2E/browser test must not assume
+  a `Reveal`/`Next question` button is on screen — drive it tolerantly, or turn AUTO
+  on. A host `next` is only legal from `board`; `board` only from `reveal` (guards
+  added in `fix/complete-gameplay-reliability`) so a stale timer cannot skip a question.
 - **With a single player the question auto-reveals the instant they answer**,
   so the host `Reveal` button never appears. Use **two** players for any host
   flow test.
@@ -929,3 +933,25 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   "stall" timeouts; poll with `setTimeout` + `bringToFront()`. (2) The console's real "Leaderboard"/
   "Reveal" control buttons collide with scene names — scope "no scene-nav" assertions to
   `.show__scene-bar`.
+
+### Phase 6.9.3 — host-control correction + optional AUTO (`feat/phase-6-9-2-host-auto-control`, from merged `main` `e3bf47d`)
+- **Presentation mode and the scene bar are GONE.** `presentationMode`, `presentationClass()`,
+  `presentationToggle()`, `sceneBar()`, the dead `rerender()`, and the CSS `.show__scene-bar`,
+  `.show__scene-label`, `.show__present`, `.show-presentation …` were all removed. The scene stays
+  **internal** (derived from the authoritative phase via `ShowController`); no scene navigation.
+  `design-system.test.ts` now asserts those classes are gone for good.
+- **AUTO is server-authoritative and persisted in the EXISTING `GameEvent` log** (type `auto`,
+  newest-wins on recovery, like `paused`/`resumed`) — **no column, no migration**. New host command
+  `host:auto {gameId, auto}` (validated real boolean, `assertHost`) → `Ack<{auto}>`; new host event
+  `host:auto {auto}` to the host room only. `HostState.auto` added. `setAuto` is a **no-op when
+  unchanged** (no event, no timer churn). OFF cancels a pending advance only on reveal/board.
+- **AUTO gates ONLY the two scheduled transitions** (`revealInternal`→board, `boardInternal`→next),
+  centralised in `armAutoAdvance(game)`. The **answer clock and the start countdown always run** —
+  they are not AUTO transitions. Open question flagged to chrisB: should answer-time expiry also wait
+  for the host? Currently: no.
+- Frontend: `autoLabel`/`autoHint` in `hostView.ts`; `host:auto` in `HostEventHandlers` (detach
+  9→**10**); toggle in `pages/host.ts` (hidden in lobby + final, `data-auto-toggle`, `aria-pressed`),
+  repainted from the broadcast AND the ACK. New `.show__auto` CSS from existing tokens only.
+- Counts: backend **409** (real PG), frontend **513**, shared **179**; typecheck/build/format:check/
+  lint green. Report: `docs/reports/phase-6-9-3-host-auto-control.md`; roadmap §9.6; `docs/phases.md`
+  6.9.3 row. **No push/PR/merge/deploy** (owner approval pending).
