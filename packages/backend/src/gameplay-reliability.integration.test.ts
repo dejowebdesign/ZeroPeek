@@ -77,10 +77,32 @@ const ONE_QUESTION_QUIZ: Quiz = {
   ],
 };
 
+// The shortest legal limit (5 s) + the 1.5 s grace = a 6.5 s clock, so the
+// "answer clock expires" cases finish quickly without faking the timer.
+const FAST_QUIZ: Quiz = {
+  id: '00000000-0000-4000-8000-0000000000d1',
+  title: 'Fast question',
+  description: '',
+  theme: 'standard',
+  defaultTimeLimit: 5,
+  questions: [
+    {
+      id: '00000000-0000-4000-8000-0000000000d2',
+      type: 'single',
+      text: 'Quick question?',
+      timeLimit: 5,
+      points: 'standard',
+      options: ['A', 'B'],
+      correctIndex: 0,
+    },
+  ],
+};
+
 describe.skipIf(!available)('gameplay reliability', () => {
   let ownerId = '';
   let twoQuizId = '';
   let oneQuizId = '';
+  let fastQuizId = '';
 
   beforeAll(async () => {
     await resetDatabase(prisma);
@@ -92,6 +114,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
     ownerId = owner.id;
     twoQuizId = (await createQuiz(ownerId, TWO_QUESTION_QUIZ)).id;
     oneQuizId = (await createQuiz(ownerId, ONE_QUESTION_QUIZ)).id;
+    fastQuizId = (await createQuiz(ownerId, FAST_QUIZ)).id;
   });
 
   afterAll(async () => {
@@ -325,6 +348,104 @@ describe.skipIf(!available)('gameplay reliability', () => {
   });
 
   describe('C – the AUTO mode (Phase 6.9.3)', () => {
+    // The answer clock itself (Phase 6.9.3 correction). AUTO must never stop,
+    // reset or restart the clock: it only decides whether the *resolution* runs
+    // by itself. The clock is anchored to `openedAt` and its deadline never moves.
+    describe('C1 – the answer clock is independent of AUTO', () => {
+      it('setAuto(false) neither stops nor shifts the running clock', async () => {
+        const { gameId } = await startedGame(twoQuizId);
+        const openedAt = (await engine.get(gameId)).openedAt!;
+        await engine.setAuto(gameId, false);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const game = await engine.get(gameId);
+        expect(game.openedAt).toBe(openedAt);
+        expect(game.phase).toBe('question');
+      });
+
+      it('setAuto(true) mid-question keeps the original deadline, not a fresh one', async () => {
+        const { gameId } = await startedGame(twoQuizId);
+        const openedAt = (await engine.get(gameId)).openedAt!;
+        // Turn AUTO on ~0.5 s in. The full clock is 21.5 s; a wrong re-arm from
+        // `now` would reveal ~0.5 s later, so waiting 3 s proves it did not.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await engine.setAuto(gameId, true);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const game = await engine.get(gameId);
+        expect(game.openedAt).toBe(openedAt);
+        expect(game.phase).toBe('question');
+      }, 20_000);
+
+      it('with AUTO off the clock expires but nothing resolves until the host acts', async () => {
+        const { gameId } = await startedGame(fastQuizId);
+        // The 5 s limit + 1.5 s grace elapses; with AUTO off the question waits.
+        await new Promise((resolve) => setTimeout(resolve, 6_900));
+        expect((await engine.get(gameId)).phase).toBe('question');
+        // The host can still resolve by hand, and the answers are still scored.
+        expect(await engine.reveal(gameId)).toBe('reveal');
+      }, 20_000);
+
+      it('with AUTO on the clock expiry resolves the question by itself', async () => {
+        const { gameId } = await startedGame(fastQuizId);
+        await engine.setAuto(gameId, true);
+        await new Promise((resolve) => setTimeout(resolve, 6_900));
+        expect((await engine.get(gameId)).phase).toBe('reveal');
+      }, 20_000);
+    });
+
+    // Switching AUTO mid-question must not leave an orphaned answer clock behind.
+    // Before the fix, `setAuto(true)` armed a board advance on top of the answer
+    // clock and overwrote the single timer slot, so the orphan revealed the
+    // question even after AUTO was switched off again.
+    describe('C2 – switching AUTO mid-question', () => {
+      it('AUTO on then off during a question must not resolve at expiry', async () => {
+        const { gameId } = await startedGame(fastQuizId);
+        await engine.setAuto(gameId, true);
+        await engine.setAuto(gameId, false);
+        await new Promise((resolve) => setTimeout(resolve, 6_900));
+        expect((await engine.get(gameId)).phase).toBe('question');
+      }, 20_000);
+
+      it('AUTO on then off then on again resolves exactly once at expiry', async () => {
+        const { gameId } = await startedGame(fastQuizId);
+        let reveals = 0;
+        const onReveal = (payload: { gameId: string }): void => {
+          if (payload.gameId === gameId) reveals += 1;
+        };
+        engine.on('reveal', onReveal);
+        try {
+          await engine.setAuto(gameId, true);
+          await engine.setAuto(gameId, false);
+          await engine.setAuto(gameId, true);
+          await new Promise((resolve) => setTimeout(resolve, 6_900));
+          expect((await engine.get(gameId)).phase).toBe('reveal');
+          expect(reveals).toBe(1);
+        } finally {
+          engine.off('reveal', onReveal);
+        }
+      }, 20_000);
+
+      it('setAuto(true) during the start countdown does not disturb the countdown', async () => {
+        const row = await createGame(twoQuizId, ownerId);
+        createdGames.push(row.id);
+        const { player } = await joinGame(row.pin, 'Ada');
+        await engine.addPlayer(row.id, {
+          id: player.id,
+          nickname: player.nickname,
+          avatar: player.avatar,
+          joinedAt: player.joinedAt,
+        });
+        await engine.start(row.id);
+        expect((await engine.get(row.id)).phase).toBe('lead');
+        // Toggling AUTO on during the countdown must not arm a board advance that
+        // would later jump the game; the countdown still opens the question.
+        await engine.setAuto(row.id, true);
+        await new Promise((resolve) => setTimeout(resolve, 5_600));
+        const game = await engine.get(row.id);
+        expect(game.phase).toBe('question');
+        expect(game.currentIndex).toBe(0);
+      }, 20_000);
+    });
+
     it('defaults to off and reports the value it set', async () => {
       const { gameId } = await startedGame(twoQuizId);
       expect((await engine.get(gameId)).auto).toBe(false);

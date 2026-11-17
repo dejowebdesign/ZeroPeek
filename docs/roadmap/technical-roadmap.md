@@ -601,11 +601,24 @@ Host-Seite; der Server bleibt für alles Spielrelevante maßgeblich.
 - **Kein Nachladen, kein Überspringen:** Das Umschalten löst **keine** laufende Runde neu auf und
   überspringt **keine** Frage. Ausschalten verwirft nur einen anstehenden AUTO-Übergang; jede
   Transition bleibt durch den Phasen-Wächter des Ziels abgesichert.
+- **Antwortuhr läuft unabhängig von AUTO:** Die **Antwortuhr** ist die serverseitige Frist der
+  laufenden Frage, abgeleitet aus `openedAt` und `limitMs(question)` (`timeLimit · 1000 +
+ANSWER_GRACE_MS`); sie ist die einzige Quelle der Wahrheit und läuft **immer**, in beiden Modi.
+  AUTO steuert nur den **Timer** (den geplanten automatischen Übergang), **nie** die Uhr. `setAuto`
+  stoppt, setzt oder verschiebt die Uhr **nicht**; die Endzeit bleibt unverändert. Mit AUTO AUS
+  bleiben die Timer einfach unbestellt, die Uhr läuft weiter und die Frage wartet nach Ablauf auf
+  den Host (`host:reveal`).
 - **Umschalten mitten in der Runde:** Ein → Aus stoppt den anstehenden AUTO-Übergang (Antwort-Timer
   bzw. Ranglisten-Übergang), **nicht** aber das feste Auflösungsfenster. Aus → Ein holt den
   aktuellen Zustand nach: ist die Antwortzeit schon abgelaufen oder haben alle Spieler geantwortet,
-  wird sofort aufgelöst; sonst wird der Antwort-Timer für die Restzeit neu gestellt. `REVEAL_MS`
-  6000 → **4000**, `BOARD_MS` 6000 → **5000**.
+  wird sofort aufgelöst; sonst wird der Antwort-Timer für die **Restzeit bis zur ursprünglichen
+  Endzeit** gestellt. `REVEAL_MS` 6000 → **4000**, `BOARD_MS` 6000 → **5000**.
+- **Ein Timer-Slot (Korrektur):** Der Runtime-Speicher hat genau einen `game.timer`. Jeder
+  Arm-Helfer leert ihn zuerst und armiert nur in seiner Phase — `armBoardAdvance` ausschließlich in
+  der **Ranglisten**-Phase. Ohne diesen Phasen-Wächter hätte `setAuto(true)` während einer laufenden
+  Frage einen Ranglisten-Timer über den Antwort-Timer gelegt, den Antwort-Timer verwaist und ihn
+  nach dem Ausschalten trotzdem ausgelöst (verletzt „AUTO AUS ⇒ keine automatische Auflösung“).
+  Behoben; siehe Report §3.2 und §9.
 - **Fragezeit und Start-Countdown bleiben unberührt:** Der Antwort-Timer und der Start-Countdown
   sind **keine** AUTO-Übergänge und laufen immer; AUTO steuert nur die zwei genannten Übergänge.
 - **Wiederverwendung:** Der Umschalter nutzt die vorhandenen Button-Varianten und ein neues

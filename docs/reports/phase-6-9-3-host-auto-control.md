@@ -22,6 +22,15 @@ log) decides whether the **answer resolution** (question → reveal) and the **l
 > **reveal → leaderboard** step is a fixed 4-second window in **both** modes. The gating was
 > therefore swapped. See §8 for the final, binding rule and the exact places changed.
 
+> **Correction 2 (this revision).** A follow-up audit of the answer clock found a real defect:
+> turning AUTO **on** during a live question armed a leaderboard advance on top of the answer timer,
+> overwriting the single `game.timer` slot and orphaning the answer timer. The orphan then fired at
+> the question's real deadline and revealed it **even after AUTO had been switched off again** —
+> breaking "AUTO off ⇒ no automatic resolution". Fixed by giving `armBoardAdvance` a `board`-phase
+> guard and making `armQuestionClock` clear before it arms. The answer clock itself is derived from
+> `openedAt` and was **never** stopped, reset or shifted by `setAuto`; only the timer bookkeeping
+> was wrong. See §3.2 (correction note) and §9.
+
 ## 1. Starting point (verified in the code, not assumed)
 
 1. The show is the **combined** host/beamer page `packages/frontend/src/pages/host.ts`; there is no
@@ -62,11 +71,19 @@ log) decides whether the **answer resolution** (question → reveal) and the **l
   `load`).
 - `EngineEvents` gains `auto: [{ gameId, auto }]`.
 - `REVEAL_MS` 6000 → **4000**, `BOARD_MS` 6000 → **5000**.
-- Three explicit arm helpers replace the old coarse `armAutoAdvance`:
-  - `armQuestionClock(game, delayMs)` — **AUTO only**; arms question → reveal for the full limit on
-    a fresh question, the exact remainder on resume/recovery.
+- Three explicit arm helpers replace the old coarse `armAutoAdvance`. **Clock vs timer:** the
+  _answer clock_ is the server-side deadline derived from `openedAt` (`limitMs(question)`); it is
+  the single source of truth and **always runs**, whatever the AUTO mode. The _timer_ is only the
+  scheduled callback that would auto-resolve when that clock expires. AUTO gates the timer, never
+  the clock.
+  - `armQuestionClock(game, delayMs)` — **AUTO only**; schedules question → reveal for the full
+    limit on a fresh question, the exact remainder on resume/recovery. It `clearTimer`s first and is
+    a pure function of the remaining time, so it can never leave a second timer behind or shift the
+    deadline.
   - `armRevealWindow(game)` — **always** armed; reveal → leaderboard after `REVEAL_MS`.
-  - `armBoardAdvance(game)` — **AUTO only**; leaderboard → next question after `BOARD_MS`.
+  - `armBoardAdvance(game)` — **AUTO only**, and only on the **board** phase; leaderboard → next
+    question after `BOARD_MS`. The phase guard is what keeps a `setAuto(true)` during a live question
+    from arming a board advance on top of the answer timer (see the correction note below).
 - `advance` (fresh question) and `resumeInternal` arm the answer clock via `armQuestionClock`, so
   with AUTO off the clock still runs but nothing auto-reveals.
 - `revealInternal` always calls `armRevealWindow` (reveal → board in both modes).
@@ -74,15 +91,27 @@ log) decides whether the **answer resolution** (question → reveal) and the **l
 - `acceptAnswer`'s "everyone answered" early reveal is gated on `game.auto`: with AUTO off a full
   roster waits for the host.
 - `setAuto(gameId, auto)` — server-authoritative, phase-locked. It is a **no-op** when the value is
-  unchanged (no event, no timer churn). Switching **off** cancels a pending answer clock
-  (question) or leaderboard advance (board) but **never** the always-on reveal window. Switching
-  **on** catches up at once via `armQuestionAuto`: on a live question whose whole roster has
-  answered, or whose clock has already expired, it resolves immediately; otherwise it arms the clock
-  for the exact remainder. Persists via `logEvent(gameId, 'auto', { auto })` and emits `auto`.
+  unchanged (no event, no timer churn). Switching **off** cancels only the pending _timer_ (the
+  scheduled auto-resolution on a question, or the advance on a board) — it **never** stops, resets
+  or restarts the answer clock, and never touches the always-on reveal window. Switching **on**
+  catches up at once via `armQuestionAuto`: on a live question whose whole roster has answered, or
+  whose clock has already expired, it resolves immediately; otherwise it schedules the timer for the
+  exact remainder of the **original** deadline. Persists via `logEvent(gameId, 'auto', { auto })` and
+  emits `auto`.
 - Recovery (`load`): the `auto` value is restored from the game's own event log (the newest `auto`
-  event wins — order-free). The **reveal window is always re-armed**; the **question clock and the
-  board advance are gated on `auto`**, so a recovered game with AUTO off waits for the host instead
-  of running on by itself.
+  event wins — order-free). The **reveal window is always re-armed**; the **answer-clock timer and
+  the board advance are gated on `auto`**, so a recovered game with AUTO off waits for the host
+  instead of running on by itself (the recovered clock has already expired in that case, but nothing
+  fires until the host acts or turns AUTO on).
+
+> **Correction (this revision).** `armBoardAdvance` originally had no phase guard. Because
+> `setAuto(true)` calls it unconditionally, turning AUTO on during a **live question** armed a
+> 5-second board advance on top of the answer clock. Both wrote the single `game.timer` slot, so the
+> board timer overwrote the reference to the answer timer and **orphaned** it — the orphan then fired
+> at the real deadline and revealed the question even after AUTO had been switched off again, which
+> broke the rule "AUTO off ⇒ no automatic resolution". Fixed by (a) restricting `armBoardAdvance` to
+> the `board` phase and (b) making `armQuestionClock` clear any pending timer before it arms. The
+> answer clock itself (`openedAt`) was never touched by the bug — only the timer bookkeeping was.
 
 ### 3.3 `packages/backend/src/socket.ts`
 
@@ -124,17 +153,23 @@ log) decides whether the **answer resolution** (question → reveal) and the **l
   a guard that `.show__scene-bar` / `.show__present` / `.show-presentation` are **gone for good**.
 - **`gameplay-reliability.integration.test.ts` (backend):** the timer-dependent tests (stale board
   timer, duplicate `board`/`reveal`, restart recovery) enable AUTO explicitly, since the default is
-  off. **§C – the AUTO mode** now encodes the corrected contract:
-  - default off and echo; a repeated set is a no-op and arms nothing extra;
-  - with AUTO off: a full roster answering does **not** resolve the question; an expired clock does
-    **not** resolve the question; a board does not open the next question; but a reveal **still**
-    advances to the board after the fixed window;
-  - with AUTO on: a full roster answering resolves the question; the board opens the next question;
-  - turning AUTO on after everyone answered, or after the clock expired, resolves at once; turning
-    it on mid-clock resolves when the clock expires;
-  - turning AUTO off during a question cancels the clock; during a board cancels the advance; during
-    a reveal does **not** stop the fixed reveal window;
-  - the mode survives an `evict` restart.
+  off. **§C – the AUTO mode** now encodes the corrected contract, in three parts:
+  - **C1 – the answer clock is independent of AUTO:** `setAuto(false)` neither stops nor shifts the
+    running clock (`openedAt` unchanged); `setAuto(true)` mid-question keeps the original deadline
+    (not a fresh one); with AUTO off the clock expires but nothing resolves until the host acts, and
+    the host can still reveal by hand; with AUTO on the expiry resolves by itself.
+  - **C2 – switching AUTO mid-question (regression guard for the fix):** AUTO on→off during a
+    question must **not** resolve at expiry; AUTO on→off→on resolves **exactly once**; `setAuto(true)`
+    during the start countdown does not disturb the countdown.
+  - the general contract: default off and echo; a repeated set is a no-op and arms nothing extra;
+    with AUTO off a full roster does not resolve the question and a board does not advance, but a
+    reveal still advances to the board after the fixed window; with AUTO on the board opens the next
+    question; turning AUTO on after everyone answered / after the clock expired resolves at once,
+    mid-clock resolves when it expires; turning it off during a question cancels the auto-resolution,
+    during a board cancels the advance, during a reveal does not stop the fixed reveal window; the
+    mode survives an `evict` restart.
+  - A new `FAST_QUIZ` (the minimum legal 5 s limit + 1.5 s grace = a 6.5 s clock) keeps the expiry
+    cases quick without faking the timer.
 - **`engine.integration.test.ts`:** the auto-reveal tests now enable AUTO, with new AUTO-off
   companions ("waits for the host when everyone has answered", "a paused question never
   auto-reveals"); the race tests (auto-reveal vs `end`) enable AUTO so the race is actually driven.
@@ -151,7 +186,7 @@ log) decides whether the **answer resolution** (question → reveal) and the **l
 | `npm run lint`       | pass                                          |
 | `npm run build`      | pass                                          |
 | `prettier --check .` | pass                                          |
-| Backend tests        | 23 files, **419 passed** (PostgreSQL present) |
+| Backend tests        | 23 files, **426 passed** (PostgreSQL present) |
 | Frontend tests       | 18 files, **513 passed**                      |
 | Shared tests         | 9 files, **179 passed**                       |
 
@@ -163,7 +198,7 @@ log) decides whether the **answer resolution** (question → reveal) and the **l
 - No schema change and no migration: the mode is stored in the existing `GameEvent` log.
 - The player experience is unchanged: AUTO is a host-only concern and is never sent to players.
 - With AUTO off (the default) the observable behaviour is exactly the requested manual game: the
-  answer clock runs, the host resolves the answers, the reveal shows for 4 s and then the
+  answer clock runs unchanged, the host resolves the answers, the reveal shows for 4 s and then the
   leaderboard appears, and the host starts the next question.
 
 ## 6. Risks and limits
@@ -175,6 +210,9 @@ log) decides whether the **answer resolution** (question → reveal) and the **l
 2. **The start countdown is not AUTO-gated.** It always runs, as the brief requires.
 3. **`auto` is restored from the event log** like `paused`/`resumed`; the log is append-only, so the
    newest `auto` event is authoritative. No new column was added on purpose.
+4. **One timer slot.** The runtime holds a single `game.timer`. Every arm helper now clears it first
+   and only arms in the phase it belongs to, so there is never a second, orphaned timer. This is the
+   invariant the correction restored; a future helper must keep it.
 
 ## 7. Open questions for chrisB
 
@@ -231,3 +269,33 @@ on its own.
 
 Already-resolved rounds are never re-resolved, no question is skipped, and the target's own phase
 guard still validates every transition.
+
+## 9. The answer clock is independent of AUTO (this revision)
+
+The **answer clock** is the server-side deadline of the running question. It is derived from
+`openedAt` (the server timestamp the question opened) and `limitMs(question)`
+(`timeLimit · 1000 + ANSWER_GRACE_MS`), and it is exposed to clients as `PublicQuestion.openedAt`.
+It is the single source of truth and it **always runs**, whatever the AUTO mode. AUTO never stops,
+resets or restarts it, and never changes its end time.
+
+AUTO controls only the **timer**: the scheduled callback that would auto-resolve the question when
+that clock expires (`armQuestionClock`), and the scheduled advance from the leaderboard to the next
+question (`armBoardAdvance`). With AUTO off both callbacks are simply absent; the clock keeps
+running and, when it reaches zero, the question stays open (late answers are still refused by the
+`limitMs` check in `acceptAnswer`) until the host resolves it with `host:reveal`.
+
+Consequences, each covered by a test:
+
+| Situation                              | Result                                                                             |
+| -------------------------------------- | ---------------------------------------------------------------------------------- |
+| AUTO off while the question runs       | clock keeps its original end time; nothing auto-resolves                           |
+| AUTO off after the clock expired       | question waits for the host                                                        |
+| AUTO off with a full answer roster     | question waits for the host                                                        |
+| AUTO on while the question runs        | clock keeps its original end time; resolves at expiry (or at once if full/expired) |
+| AUTO on → off while the question runs  | clock keeps its original end time; auto-resolution is prevented                    |
+| AUTO on → off during the reveal window | the fixed 4 s reveal window still finishes                                         |
+| AUTO on → off during the leaderboard   | the pending advance to the next question is cancelled                              |
+
+The audit also confirmed that `setAuto(false)` never called `clearTimer` on the clock in a way that
+could stop it, and that the clock's anchor (`openedAt`) is untouched by any AUTO change. The only
+defect found was the orphaned-timer bookkeeping described in §3.2.

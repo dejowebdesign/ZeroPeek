@@ -1405,9 +1405,15 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * answers by hand (`engine.reveal`), so no timer is armed and the question
    * stays open until the host acts. The delay is the full limit on a fresh
    * question and the exact remainder after a resume or a restart.
+   *
+   * The clock is anchored to `openedAt` (the server timestamp the question
+   * opened) and its deadline never moves: the timer is a pure function of the
+   * remaining time, so turning AUTO on/off does not restart or shift it. Any
+   * timer already pending is replaced first, so there is never more than one.
    */
   private armQuestionClock(game: RuntimeGame, delayMs: number): void {
     if (!game.auto) return;
+    this.clearTimer(game);
     game.timer = setTimeout(() => {
       void this.reveal(game.id).catch(() => undefined);
     }, delayMs);
@@ -1430,9 +1436,17 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * Arm the leaderboard advance (Phase 6.9.3): board → next question after
    * `BOARD_MS`. **AUTO only** — with AUTO off the host starts the next round by
    * hand, so the leaderboard stays on screen for as long as the host wants.
+   *
+   * It only ever arms on the **board** phase. Without that guard a `setAuto(true)`
+   * during a live question would arm a board advance on top of the answer clock,
+   * overwriting the single `game.timer` slot and orphaning the answer clock — the
+   * orphan then fired at expiry even after AUTO was switched off again, which
+   * broke the "AUTO off ⇒ no automatic resolution" rule.
    */
   private armBoardAdvance(game: RuntimeGame): void {
     if (!game.auto) return;
+    if (game.phase !== 'board') return;
+    this.clearTimer(game);
     game.timer = setTimeout(() => {
       void this.next(game.id).catch(() => undefined);
     }, BOARD_MS);
