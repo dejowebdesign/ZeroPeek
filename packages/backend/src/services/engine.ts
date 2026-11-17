@@ -1216,7 +1216,11 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     options: { skipped?: boolean } = {},
   ): Promise<GamePhase> {
     const game = await this.get(gameId);
-    this.clearTimer(game);
+    // A no-op call must not clear the pending auto-advance timer. The timer is
+    // the only thing that moves the game on from a screen, so clearing it on a
+    // duplicate `reveal` (a double host click, or the auto-reveal racing a manual
+    // one) would strand the game on the reveal screen forever (Phase 6.9.2
+    // correction). The guards come first; only a real transition clears below.
     // A paused question never reveals on its own; only an explicit resume or
     // skip may leave the pause (Phase 6.5.3).
     if (game.paused && !options.skipped) return game.phase;
@@ -1225,6 +1229,8 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     }
     const question = this.currentQuestion(game);
     if (!question) throw conflict('There is no question to reveal.');
+
+    this.clearTimer(game);
 
     const skipped = Boolean(options.skipped);
 
@@ -1414,12 +1420,16 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
   private async boardInternal(gameId: string): Promise<GamePhase> {
     const game = await this.get(gameId);
-    this.clearTimer(game);
     // Idempotent for a game already past the reveal, but never a legal jump from
     // an open question: a stale board timer that fires while a question is live
     // must not yank the screen to the leaderboard and lose the question.
     if (game.phase === 'board' || game.phase === 'end') return game.phase;
     if (game.phase !== 'reveal') throw conflict('There is nothing to rank yet.');
+    // Cleared only once the call is known to be a real transition: a duplicate
+    // `board` (a double host click, or the reveal's auto-timer racing a manual
+    // click) must not clear the leaderboard's own auto-advance timer and strand
+    // the game on the board (Phase 6.9.2 correction).
+    this.clearTimer(game);
     game.paused = false;
     game.pausedAt = null;
     game.remainingMs = null;

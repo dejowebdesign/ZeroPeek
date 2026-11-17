@@ -10,11 +10,12 @@
  *
  *  1. **The server owns the situation.** A scene is only ever *derived* from the
  *     authoritative state; nothing here can start, advance or score a game.
- *  2. **The presentation owns only how it looks.** Scenes that share a server
- *     phase (welcome/join/participants, question/answers/countdown,
- *     reveal/points, leaderboard/final, podium/outro) are alternative views of
- *     the *same* situation, so the host may step between them without touching
- *     the game.
+ *  2. **The presentation follows the game.** The scene is display-only: it is
+ *     re-derived from the authoritative phase on every render, so the show can
+ *     never be parked on a scene the server is not in. Scenes that share a phase
+ *     (welcome/join/participants, question/answers/countdown, reveal/points,
+ *     leaderboard/final, podium/outro) are alternative views of the *same*
+ *     situation; there is no manual navigation between them.
  */
 
 import type { GamePhase, HostState } from '@zeropeek/shared';
@@ -70,9 +71,10 @@ export interface SceneDefinition {
   /** The authoritative data the scene needs; empty for the intro scenes. */
   requires: readonly SceneRequirement[];
   /**
-   * The scenes the show may move to from here, in flow order. A transition may
-   * cross phases — the server drives those — while `ShowController.step` only
-   * ever moves between scenes of the *current* phase.
+   * The scenes the show moves to from here, in flow order. A transition may
+   * cross phases: the **server** drives those by changing the phase, and the
+   * controller re-derives the scene from it. This is a description of the show
+   * order, not a client-side navigation the host can trigger.
    */
   transitions: readonly ShowScene[];
 }
@@ -292,18 +294,17 @@ export function sceneForState(state: HostState | null): ShowScene {
  * The scene controller.
  *
  * It holds no game state of its own: `sync` folds an authoritative descriptor
- * into the current scene, and `step` only ever moves between scenes of the phase
- * the server last reported. A stale descriptor (an older `at`) is ignored, so a
- * late socket event or an overtaken resync can never pull the show backwards.
+ * into the current scene. The scene is **display-only** and re-derived from the
+ * authoritative phase on every `sync`, so the show always follows the game and
+ * can never be parked on a scene the server is not in. A stale descriptor (an
+ * older `at`) is ignored, so a late socket event or an overtaken resync can
+ * never pull the show backwards.
  *
- * The controller is *derived state*: it never sends a command, so a bad step can
- * never reach the engine.
+ * The controller is *derived state*: it never sends a command.
  */
 export class ShowController {
   private scene: ShowScene = 'welcome';
   private phase: ScenePhase | null = null;
-  /** The current question, so a new question resets to the question scene. */
-  private questionId: string | null = null;
   private lastAt = Number.NEGATIVE_INFINITY;
 
   /** The scene currently on screen. */
@@ -319,8 +320,8 @@ export class ShowController {
   /**
    * Fold an authoritative descriptor into the controller and return the scene to
    * render. A descriptor older than the last one is ignored (returns the scene
-   * unchanged). A phase change — or a new question — resets to that phase's entry
-   * scene; a re-render of the same situation keeps the host's sub-scene.
+   * unchanged). The scene is always the phase's entry scene, so a change in the
+   * authoritative phase — or a new question — always moves the show with it.
    */
   sync(input: SceneInput | null, at = Date.now()): ShowScene {
     if (at < this.lastAt) return this.scene;
@@ -328,50 +329,12 @@ export class ShowController {
 
     if (!input) {
       this.phase = null;
-      this.questionId = null;
       this.scene = 'welcome';
       return this.scene;
     }
 
-    const phase = input.phase;
-    const moved = phase !== this.phase;
-    const newQuestion = input.questionId !== this.questionId;
-    const sceneFits = this.phase !== null && sceneBelongsTo(this.scene, phase);
-
-    if (moved || newQuestion || !sceneFits) {
-      this.scene = entryScene(phase);
-    }
-    this.phase = phase;
-    this.questionId = input.questionId;
+    this.phase = input.phase;
+    this.scene = entryScene(input.phase);
     return this.scene;
-  }
-
-  /**
-   * Move to another scene of the current phase — a presentation-only step
-   * ("Präsentationsszenen wechseln", concept §24). A target outside the current
-   * phase is refused, so a manual step can never show a scene the server is not
-   * in and can never touch the game.
-   */
-  step(target: ShowScene): boolean {
-    if (this.phase === null) return false;
-    if (!sceneBelongsTo(target, this.phase)) return false;
-    this.scene = target;
-    return true;
-  }
-
-  /** Step to the next (`1`) or previous (`-1`) scene of the current phase. */
-  cycle(direction: 1 | -1): ShowScene {
-    if (this.phase === null) return this.scene;
-    const scenes = samePhaseScenes(this.phase);
-    if (scenes.length < 2) return this.scene;
-    const index = scenes.indexOf(this.scene);
-    const next = (index + direction + scenes.length) % scenes.length;
-    this.scene = scenes[next] ?? this.scene;
-    return this.scene;
-  }
-
-  /** Whether the current phase has more than one scene to step between. */
-  get steppable(): boolean {
-    return this.phase !== null && samePhaseScenes(this.phase).length > 1;
   }
 }

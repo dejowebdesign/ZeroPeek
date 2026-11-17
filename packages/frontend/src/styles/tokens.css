@@ -3136,10 +3136,10 @@ body::before {
    --------------------------------------------------------------------------- */
 
 /**
- * The scene bar: the current scene's name and the presentation-only steps to the
- * other scenes of the same phase. It never sends a game command. Hidden while a
- * game is not under control, and it never hides the host controls — it sits
- * above them.
+ * The scene bar: the current scene's name and the presentation-mode toggle. The
+ * scene is display-only — derived from the authoritative phase — so the bar has
+ * no manual navigation. It never sends a game command, is hidden while a game is
+ * not under control, and never hides the host controls — it sits above them.
  */
 .show__scene-bar {
   display: flex;
@@ -3158,14 +3158,6 @@ body::before {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
-}
-
-.show__scene-steps {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  justify-content: center;
 }
 
 /* The lobby-phase scenes: welcome, join and participants share one card. */
@@ -3258,7 +3250,6 @@ body::before {
 }
 
 .show-presentation .show__controls,
-.show-presentation .show__scene-steps,
 .show-presentation .host-connection {
   display: none;
 }

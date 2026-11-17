@@ -10,9 +10,13 @@
 ## 0. Result in one sentence
 
 The host/beamer page now derives its show scene from the authoritative server state through a
-single, pure scene controller, can step between the scenes of the current phase (presentation
-only), and can hide its own controls for a clean beamer stage — all additive, with no new
-dependency, no schema change and no change to any existing event or game rule.
+single, pure scene controller — the scene is **display-only** and always follows the game — and can
+hide its own controls for a clean beamer stage; all additive, with no new dependency, no schema
+change and no change to any existing event or game rule.
+
+> **Correction (2026-11-17):** two defects were found in the show flow after the first draft of this
+> report — the scene bar offered a manual scene step, and an idempotent phase command could cancel
+> the server's auto-advance timer and stall the game. Both are fixed; see **§8**.
 
 ## 1. Starting point (verified in the code, not assumed)
 
@@ -33,16 +37,16 @@ and no stylesheet token.
 
 ## 2. Design decisions applied
 
-| Decision           | Value                                                                                               |
-| ------------------ | --------------------------------------------------------------------------------------------------- |
-| Show architecture  | Combined host/beamer view stays; the show is the presentation half of it — **no** second surface    |
-| Scene authority    | A scene is **derived** from the authoritative state; the client never invents a phase               |
-| Phase → scene      | Read through the existing `hostScreen` selector, so show and console can never disagree             |
-| Sub-scene control  | A step only ever moves between scenes of the **current** phase; it sends **no** game command        |
-| Client-only scenes | None. Even `welcome` is drawn inside a live lobby, so the show has no state the server lacks        |
-| Presentation mode  | A toggle that **hides** the host chrome (never removes it); in-memory only                          |
-| Contracts / schema | **Unchanged.** No new event, no new field, no migration                                             |
-| Assets             | **No** image, **no** placeholder, **no** AI-generated graphic — the existing CSS backdrop is reused |
+| Decision           | Value                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| Show architecture  | Combined host/beamer view stays; the show is the presentation half of it — **no** second surface        |
+| Scene authority    | A scene is **derived** from the authoritative state; the client never invents a phase                   |
+| Phase → scene      | Read through the existing `hostScreen` selector, so show and console can never disagree                 |
+| Scene control      | The scene is **display-only**: re-derived from the authoritative phase on every render — no manual step |
+| Client-only scenes | None. Even `welcome` is drawn inside a live lobby, so the show has no state the server lacks            |
+| Presentation mode  | A toggle that **hides** the host chrome (never removes it); in-memory only                              |
+| Contracts / schema | **Unchanged.** No new event, no new field, no migration                                                 |
+| Assets             | **No** image, **no** placeholder, **no** AI-generated graphic — the existing CSS backdrop is reused     |
 
 ## 3. Changes
 
@@ -51,14 +55,17 @@ and no stylesheet token.
 - `SHOW_SCENES` / `SCENE_DEFINITIONS` — the 13 scenes with their `order`, `phase`, `mode`,
   `requires` and allowed `transitions`.
 - `ENTRY_SCENE` — the scene each phase opens with (lobby → `join`, lead → `start`, …).
-- `sceneDefinition`, `sceneBelongsTo`, `samePhaseScenes`, `entryScene` — the model accessors.
+- `sceneDefinition`, `sceneBelongsTo`, `samePhaseScenes`, `entryScene` — the model accessors (the
+  `samePhaseScenes` / `sceneBelongsTo` grouping is kept as the description of which scenes share a
+  phase; it no longer drives any client navigation).
 - `sceneInputOf(state)` / `sceneForInput` / `sceneForState` — the authoritative state → scene map,
   routed through `hostScreen` so its fallbacks (a `lead`/`question` without a payload falls back to
   the lobby; a `reveal` without a reveal falls back to the question) apply to the show too.
-- `ShowController` — folds a descriptor into the current scene (`sync`), steps between the current
-  phase's scenes (`step`, `cycle`), and ignores a **stale** descriptor (an older `at`), so a late
-  event or an overtaken resync can never pull the show backwards. It exposes **no** method that
-  scores, answers or changes a phase.
+- `ShowController` — folds a descriptor into the current scene (`sync`) and ignores a **stale**
+  descriptor (an older `at`), so a late event or an overtaken resync can never pull the show
+  backwards. The scene is re-derived from the phase on every `sync` (the phase's entry scene), so
+  the show always follows the game. It exposes **no** method that scores, answers, changes a phase
+  or moves the scene by hand.
 
 ### 3.2 `packages/frontend/src/hostView.ts`
 
@@ -75,11 +82,11 @@ and no stylesheet token.
 
 - `renderHostState` folds every render into `show.sync(descriptorOf(input))`, so the scene is always
   derived from the same authoritative descriptor — live event or reconnect snapshot.
-- `sceneBar()` — the scene name and the presentation-only steps for the current phase, plus the
-  presentation-mode toggle. It renders for every scene of a live game and never hides the host
+- `sceneBar()` — the scene name and the presentation-mode toggle. The scene is display-only, so the
+  bar has no manual navigation. It renders for every scene of a live game and never hides the host
   controls.
-- `presentationToggle()` / `presentationClass()` — presentation mode hides `.show__controls`,
-  `.show__scene-steps` and the connection banner on the board, so the beamer shows a clean stage.
+- `presentationToggle()` / `presentationClass()` — presentation mode hides `.show__controls` and the
+  connection banner on the board, so the beamer shows a clean stage.
 - The lobby is now three scenes of one card: `welcome` (intro), `join` (PIN + kick list — the exact
   markup the console always showed) and `participants` (character grid).
 - The question board emphasises a different part per scene (`question` full, `answers` options
@@ -90,39 +97,45 @@ and no stylesheet token.
 ### 3.5 `packages/frontend/src/styles/tokens.css`
 
 - A new, **additive** "game-show skeleton" section: `.show__scene-bar`, `.show__scene-label`,
-  `.show__scene-steps`, `.show__present`, the lobby-scene wrappers, the `.participants` grid and
-  `.participant` tile, and the `show-scene-fade` transition. Every value comes from existing tokens;
-  the fade animates **opacity only** and is disabled under `prefers-reduced-motion`.
+  `.show__present`, the lobby-scene wrappers, the `.participants` grid and `.participant` tile, and
+  the `show-scene-fade` transition. Every value comes from existing tokens; the fade animates
+  **opacity only** and is disabled under `prefers-reduced-motion`.
 
 ## 4. Tests
 
-- **New `showScenes.test.ts` (23 tests):** the 13-scene model and order, the phase → entry map, the
-  state → scene map including the `hostScreen` fallbacks, and the controller's transitions —
-  lobby → lead → question, reconnect (same scene), stale snapshot (ignored), new question (reset),
-  step within the phase only, refuse a step with no game, cycle + wrap, and a guard that the
-  controller exposes only presentation methods.
+- **New `showScenes.test.ts`:** the 13-scene model and order, the phase → entry map, the state →
+  scene map including the `hostScreen` fallbacks, and the controller — lobby → lead → question →
+  reveal → board → end, reconnect (same scene), stale snapshot (ignored), same-phase re-render
+  (scene unchanged), release (back to `welcome`), and a guard that the controller exposes only the
+  derivation surface (`current`, `currentPhase`, `sync`).
+- **New `hostPage.test.ts`:** drives the **real** host page in jsdom with a fake socket and asserts
+  there is **no** manual scene navigation in any phase, that the scene follows the authoritative
+  phase from lobby to podium, and that no scene bar is drawn while no game is under control.
 - **`showView.test.ts`:** `participantCard` structure, head crop and letter-badge fallback.
 - **`hostView.test.ts`:** `hostScreen(null) === 'welcome'`.
 - **`design-system.test.ts`:** the new classes are defined; the scene bar never hides the controls;
   presentation mode hides the chrome; the fade is opacity-only and reduced-motion-safe.
+- **`gameplay-reliability.integration.test.ts` (backend, +3):** a duplicate `board`/`reveal` and a
+  duplicate `board` racing the reveal timer must not clear the auto-advance and strand the game
+  (see §8).
 
 ### Verification (all green)
 
-| Check                  | Result                                                                |
-| ---------------------- | --------------------------------------------------------------------- |
-| `npm run typecheck`    | pass                                                                  |
-| Backend tests          | 23 files, **98 passed** / 301 skipped (no PostgreSQL in this sandbox) |
-| Frontend tests         | 17 files, **512 passed**                                              |
-| Shared tests           | 9 files, **179 passed**                                               |
-| `npm run build`        | pass                                                                  |
-| `npm run format:check` | pass                                                                  |
+| Check                  | Result                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `npm run typecheck`    | pass                                                                                |
+| Backend tests          | 23 files, **402 passed** (PostgreSQL present) / 98 passed / 301 skipped without one |
+| Frontend tests         | 18 files, **511 passed**                                                            |
+| Shared tests           | 9 files, **179 passed**                                                             |
+| `npm run build`        | pass                                                                                |
+| `npm run format:check` | pass                                                                                |
 
 ## 5. Risks and their handling
 
 | Risk                                      | Handling                                                                                                     |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | Host ↔ beamer contradiction               | One scene controller from **one** descriptor; the phase comes from `hostScreen`, never from local state — R3 |
-| A manual step reaching the engine         | `step`/`cycle` only change the drawn scene and send nothing; the controller has no command method            |
+| A manual step reaching the engine         | There is **no** manual step: the scene is re-derived from the authoritative phase on every render            |
 | A late event pulling the show backwards   | A stale descriptor (older `at`) is ignored — the R3 mitigation from the analysis                             |
 | Presentation mode hiding the way back out | The toggle is never hidden by the mode; the controls are hidden, not removed — R10                           |
 | Performance of the scene transition       | Opacity-only keyframe, no layout, disabled under `prefers-reduced-motion` — R4                               |
@@ -150,3 +163,33 @@ Carried over from the analysis (§12), none of which this phase resolves:
 4. Outro statistics: socket subset vs. HTTP report (currently neither — a closing line only).
 5. Start-countdown length and whether the host may skip it (already `host:skipLead` from 6.9.1).
 6. QR code: confirmed out of scope.
+
+## 8. Correction pass (2026-11-17) — two show-flow defects
+
+Two defects were found in the show flow after the first draft of this report. Both are corrected on
+the same branch; no other phase behaviour changed.
+
+### 8.1 Problem A — the scene bar offered a manual scene step
+
+The scene bar rendered a `‹`/`›`/named-button strip that let the host park the show on any scene of
+the current phase (`ShowController.step` / `cycle`). That contradicts the concept: the scene must
+follow the authoritative phase, and a host-visible scene the server is not in is exactly the
+host ↔ beamer contradiction the concept forbids (§10.1).
+
+**Fix.** The scene is now strictly display-only. `sceneBar()` renders the scene name and the
+presentation toggle only; `ShowController` lost `step`/`cycle`/`steppable` and `sync` always
+re-derives the phase's entry scene. The `.show__scene-steps` CSS and its contract entries were
+removed. `samePhaseScenes` / `sceneBelongsTo` remain as the model's description of which scenes
+share a phase. Guarded by `hostPage.test.ts` (no step buttons in any phase) and the updated
+`showScenes.test.ts`.
+
+### 8.2 Problem B — an idempotent phase command cancelled the auto-advance timer
+
+`engine.revealInternal` and `engine.boardInternal` called `clearTimer(game)` **before** their
+idempotency guards. A second `reveal`/`board` — a host double-click, or the auto-advance timer
+racing a manual click — was a silent no-op for the phase, but it still cleared the timer. Since
+that timer is the only thing that moves the game on from the reveal/board screen, the game stalled
+there permanently. Reproduced end-to-end (host double-click on "Leaderboard" → stuck on the board)
+and fixed by moving `clearTimer` **after** the guards, so only a real transition clears it. Guarded
+by three new backend tests in `gameplay-reliability.integration.test.ts` (they fail without the
+fix).

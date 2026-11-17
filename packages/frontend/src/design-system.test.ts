@@ -171,7 +171,6 @@ describe('design-system components', () => {
     // Game-show skeleton (Phase 6.9.2): scene bar and participants overview.
     'show__scene-bar',
     'show__scene-label',
-    'show__scene-steps',
     'show__present',
     'lobby__title',
     'lobby__welcome',
@@ -396,7 +395,6 @@ describe('game-show skeleton (Phase 6.9.2)', () => {
   it('hides the host chrome only in presentation mode, and never removes it', () => {
     const present = tokens.slice(tokens.indexOf('.show-presentation .show__controls'));
     expect(present).toContain('display: none');
-    expect(present).toContain('.show__scene-steps');
     // The toggle that leaves the mode stays visible.
     expect(tokens).toContain('.show__present {');
   });

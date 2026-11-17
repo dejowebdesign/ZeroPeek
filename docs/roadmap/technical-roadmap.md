@@ -555,13 +555,18 @@ Server-, Vertrags- oder Schemaänderung. Baut unmittelbar auf 6.9.1 auf.
 - **Server bleibt maßgeblich:** Die Szene wird über den bestehenden `hostScreen`-Selektor aus der
   autoritativen Phase abgeleitet — inklusive dessen sicherer Fallbacks. Der Client erfindet keine
   Phase.
-- **`ShowController`:** faltet den Zustand in die aktuelle Szene (`sync`), wechselt nur zwischen
-  Szenen **derselben** Phase (`step`/`cycle`) und ignoriert einen **veralteten** Zustand (älteres
-  `at`), damit ein spätes Ereignis die Show nie zurückspringen lässt. **Keine** Methode, die wertet,
-  antwortet oder eine Phase ändert.
-- **Szenenleiste + Präsentationsmodus:** Anzeige der Szene und reine Darstellungs-Schritte; der
-  Präsentationsmodus **blendet** die Host-Steuerung aus (entfernt sie nicht), sodass der Beamer eine
-  ruhige Bühne zeigt.
+- **`ShowController`:** faltet den Zustand in die aktuelle Szene (`sync`) und ignoriert einen
+  **veralteten** Zustand (älteres `at`), damit ein spätes Ereignis die Show nie zurückspringen
+  lässt. Die Szene ist **rein darstellend**: sie wird bei jedem `sync` neu aus der autoritativen
+  Phase abgeleitet (Einstiegsszene der Phase), also **keine** manuelle Szenen-Navigation. **Keine**
+  Methode, die wertet, antwortet oder eine Phase ändert.
+- **Szenenleiste + Präsentationsmodus:** Anzeige der Szene und Präsentations-Umschalter (keine
+  Darstellungs-Schritte); der Präsentationsmodus **blendet** die Host-Steuerung aus (entfernt sie
+  nicht), sodass der Beamer eine ruhige Bühne zeigt.
+- **Korrektur (2026-11-17):** Die manuelle Szenen-Navigation der Szenenleiste wurde entfernt
+  (die Szene folgt ausschließlich der Serverphase), und ein idempotenter Phasenbefehl (`reveal`/
+  `board`) löscht nicht mehr den Auto-Advance-Timer — sonst konnte das Spiel auf Rangliste/
+  Auflösung hängen bleiben.
 - **Lobby als drei Szenen:** `welcome`, `join` (PIN + Kick-Liste, unveränderte Markup) und
   `participants` (Charakter-Raster). Frage-/Auflösungs-/Rang-/Podium-Szenen betonen jeweils einen
   anderen Teil derselben Serverdaten.
