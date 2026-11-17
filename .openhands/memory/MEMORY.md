@@ -911,3 +911,21 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
 - Gates after 6.9.2: frontend **512** (was 469), shared **179**, backend **98** (301 DB-skips here);
   typecheck/build/format:check/lint green. Report: `docs/reports/phase-6-9-2-game-show-skeleton.md`;
   roadmap §9.5; `docs/phases.md` 6.9.2 row. **No push/PR/merge/deploy** (owner approval pending).
+
+### Phase 6.9.2 correction (`fix/phase-6-9-2-show-flow`, from merged PR #48 `9d9cde2`)
+- **Show scene is DISPLAY-ONLY.** The 6.9.2 scene bar's manual step strip (`ShowController.step/cycle/
+  steppable`) was removed: a host step could park the show on a scene the server is not in
+  (host↔beamer contradiction). `sync` now ALWAYS re-derives `entryScene(phase)`; `sceneBar()` = label
+  + presentation toggle. `.show__scene-steps` CSS + its contract entries dropped;
+  `samePhaseScenes`/`sceneBelongsTo` kept as grouping description only.
+- **`engine.revealInternal`/`boardInternal`: `clearTimer(game)` must come AFTER the idempotency
+  guards, never before.** The auto-advance timer is the ONLY thing that moves the game off reveal/
+  board; clearing it on a duplicate command (double host click, or the auto-timer racing a manual
+  click) stranded the game there permanently. Guarded by 3 new cases in
+  `gameplay-reliability.integration.test.ts` (they fail without the fix).
+- New `packages/frontend/src/hostPage.test.ts` drives the REAL host page in jsdom (fake socket).
+  Counts: frontend **511**, backend **402** (with PG), shared **179**.
+- **Test gotchas:** (1) puppeteer `waitForFunction` uses rAF, throttled in a background tab → false
+  "stall" timeouts; poll with `setTimeout` + `bringToFront()`. (2) The console's real "Leaderboard"/
+  "Reveal" control buttons collide with scene names — scope "no scene-nav" assertions to
+  `.show__scene-bar`.
