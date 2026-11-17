@@ -29,8 +29,8 @@ import { el } from './dom.js';
 import { questionResult, solutionText } from './questionView.js';
 import { chip } from './ui.js';
 
-/** Which host screen a state maps to. */
-export type HostScreen = 'lobby' | 'lead' | 'question' | 'reveal' | 'board' | 'end';
+/** Which host screen a state maps to. `welcome` is the no-game landing (6.9.2). */
+export type HostScreen = 'welcome' | 'lobby' | 'lead' | 'question' | 'reveal' | 'board' | 'end';
 
 /** The `sessionStorage` key holding the game a reload should resume. */
 export const GAME_KEY = 'zeropeek.host.game';
@@ -73,9 +73,12 @@ export function rememberedGame(storage: Storage = sessionStorage): string | null
  * The screen follows the server's authoritative phase, so a host that reloads
  * mid-game resumes the live screen. `reveal` and `board` carry data that only
  * exists in those phases; if it is missing the state is treated as the phase
- * that can still be rendered safely rather than throwing.
+ * that can still be rendered safely rather than throwing. A `null` state means
+ * no game is under control, which is the client-only welcome screen (Phase
+ * 6.9.2).
  */
-export function hostScreen(state: HostState): HostScreen {
+export function hostScreen(state: HostState | null): HostScreen {
+  if (!state) return 'welcome';
   if (state.phase === 'end') return 'end';
   if (state.phase === 'board') return 'board';
   if (state.phase === 'reveal') return state.reveal ? 'reveal' : 'question';

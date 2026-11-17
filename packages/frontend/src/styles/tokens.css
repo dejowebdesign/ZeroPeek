@@ -3123,3 +3123,149 @@ body::before {
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Game-show skeleton (Phase 6.9.2).
+
+   The shared structure and the scene control for the 13 show scenes inside the
+   existing combined host/beamer surface. Everything here is *additive* and
+   *local*: no global token changes, and every colour is drawn from the existing
+   tokens (cyan primary, violet secondary). The show keeps its dark navy look —
+   no bright neon fills. Animations are limited to a short opacity fade, so a
+   scene change reads as a transition rather than a jump.
+   --------------------------------------------------------------------------- */
+
+/**
+ * The scene bar: the current scene's name and the presentation-only steps to the
+ * other scenes of the same phase. It never sends a game command. Hidden while a
+ * game is not under control, and it never hides the host controls — it sits
+ * above them.
+ */
+.show__scene-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: var(--hairline) solid var(--border);
+  width: 100%;
+}
+
+.show__scene-label {
+  font-size: var(--type-help);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.show__scene-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: center;
+}
+
+/* The lobby-phase scenes: welcome, join and participants share one card. */
+.lobby__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--type-section);
+  font-weight: var(--weight-section);
+}
+
+.lobby__welcome,
+.lobby__participants,
+.lobby__join {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+}
+
+/* The participants overview can be wider than the join card. */
+.lobby--wide {
+  width: min(1100px, 100%);
+}
+
+/* The participants grid: one character tile per player, readable from afar. */
+.participants {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--show-gap);
+  width: 100%;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+}
+
+.participant {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: clamp(var(--space-3), 1.2vw, var(--space-5));
+  border-radius: var(--radius);
+  background: var(--glass-raised);
+  border: var(--hairline) solid var(--border-strong);
+  box-shadow: var(--shadow-btn);
+}
+
+.participant .player-avatar--lg {
+  width: clamp(3rem, 4vw + 1vh, 6rem);
+  height: clamp(3rem, 4vw + 1vh, 6rem);
+}
+
+.participant__name {
+  font-size: var(--type-show-name);
+  font-weight: var(--weight-card);
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+/**
+ * A scene transition: a short fade on the board so stepping between scenes of
+ * the same phase reads as a change, not a flicker. Only opacity animates, so it
+ * stays cheap on a projector. `prefers-reduced-motion` removes it below.
+ */
+.show__board {
+  animation: show-scene-fade var(--dur) var(--ease);
+}
+
+@keyframes show-scene-fade {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .show__board {
+    animation: none;
+  }
+}
+
+/**
+ * Presentation mode (Phase 6.9.2): a clean beamer stage. Hiding the host
+ * controls and the scene steps leaves only the scene itself; the toggle stays so
+ * the host can leave the mode. Nothing is removed from the DOM — only hidden —
+ * so a step back restores the console exactly as it was.
+ */
+.show__present {
+  display: flex;
+  justify-content: center;
+}
+
+.show-presentation .show__controls,
+.show-presentation .show__scene-steps,
+.show-presentation .host-connection {
+  display: none;
+}
+
+/* In presentation mode the bar keeps only the scene name and the toggle, so it
+   reads as a quiet status line rather than a console. */
+.show-presentation .show__scene-bar {
+  border-top: none;
+  padding-top: 0;
+}

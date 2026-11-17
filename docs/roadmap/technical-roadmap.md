@@ -543,6 +543,33 @@ Punkte-/Rangdeltas. **Additiv, ohne Schemaänderung, ohne neue Abhängigkeit.**
 
 Report: `docs/reports/phase-6-9-1-server-show-state.md`.
 
+### 9.5 Szenen-Grundgerüst und Szenensteuerung der Show (Phase 6.9.2)
+
+Das Grundgerüst der 13 Show-Szenen und ihre Steuerung — **rein clientseitig**, additiv, ohne
+Server-, Vertrags- oder Schemaänderung. Baut unmittelbar auf 6.9.1 auf.
+
+- **Kombinierte Ansicht bleibt:** Der Beamer ist weiterhin die Host-Seite (`pages/host.ts`); es
+  entsteht **keine** zweite Oberfläche, kein Show-Token, keine zweite Engine.
+- **Szenenmodell (`showScenes.ts`, rein/testbar):** 13 Szenen mit `order`, `phase`, `mode`,
+  `requires`, `transitions`; `ENTRY_SCENE` (Phase → Einstiegsszene); Zugriffsfunktionen.
+- **Server bleibt maßgeblich:** Die Szene wird über den bestehenden `hostScreen`-Selektor aus der
+  autoritativen Phase abgeleitet — inklusive dessen sicherer Fallbacks. Der Client erfindet keine
+  Phase.
+- **`ShowController`:** faltet den Zustand in die aktuelle Szene (`sync`), wechselt nur zwischen
+  Szenen **derselben** Phase (`step`/`cycle`) und ignoriert einen **veralteten** Zustand (älteres
+  `at`), damit ein spätes Ereignis die Show nie zurückspringen lässt. **Keine** Methode, die wertet,
+  antwortet oder eine Phase ändert.
+- **Szenenleiste + Präsentationsmodus:** Anzeige der Szene und reine Darstellungs-Schritte; der
+  Präsentationsmodus **blendet** die Host-Steuerung aus (entfernt sie nicht), sodass der Beamer eine
+  ruhige Bühne zeigt.
+- **Lobby als drei Szenen:** `welcome`, `join` (PIN + Kick-Liste, unveränderte Markup) und
+  `participants` (Charakter-Raster). Frage-/Auflösungs-/Rang-/Podium-Szenen betonen jeweils einen
+  anderen Teil derselben Serverdaten.
+- **Kein Bild, kein Ton, keine Migration:** Der vorhandene CSS-Wireframe-Hintergrund trägt die
+  Szenen; Hintergrundbilder bleiben Block D (6.10), Sound bleibt 6.11.
+
+Report: `docs/reports/phase-6-9-2-game-show-skeleton.md`.
+
 ---
 
 ## 10. Phase 6.9 – Game-Show-Modus (in der bestehenden Host-Ansicht)
