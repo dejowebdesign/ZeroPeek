@@ -68,6 +68,7 @@ function state(overrides: Partial<HostState> = {}): HostState {
     players: [],
     podium: null,
     answers: null,
+    auto: false,
     paused: false,
     skipped: false,
     lead: null,

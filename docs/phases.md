@@ -47,6 +47,7 @@ Nothing is implemented until the project owner approves it.
 | 6.8.6 | CSS, contract and documentation cleanup                                        | Awaiting review – `docs/reports/phase-6-8-6-css-contract-docs.md`                                                                                                                                                                                                  |
 | 6.9.1 | Server show states and event contracts (`lead` phase, question labels, deltas) | Done (merged, PR #47) – `docs/reports/phase-6-9-1-server-show-state.md`; roadmap §9.4                                                                                                                                                                              |
 | 6.9.2 | Game-show skeleton and scene control (13 scenes, presentation mode)            | Awaiting review – `docs/reports/phase-6-9-2-game-show-skeleton.md` (§8: display-only scene, auto-advance fix); roadmap §9.5                                                                                                                                        |
+| 6.9.3 | Host-control correction and optional AUTO operation (no presentation mode)     | Awaiting review – `docs/reports/phase-6-9-3-host-auto-control.md`; roadmap §9.6                                                                                                                                                                                    |
 
 See `docs/concept/README.md` for the reading order.
 

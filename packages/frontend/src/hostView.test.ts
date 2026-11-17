@@ -15,6 +15,8 @@ import type { HostReveal, HostState } from '@zeropeek/shared';
 
 import {
   attachHostHandlers,
+  autoHint,
+  autoLabel,
   canAct,
   connectionStatus,
   detachHostHandlers,
@@ -40,6 +42,7 @@ function state(overrides: Partial<HostState> = {}): HostState {
     players: [],
     podium: null,
     answers: null,
+    auto: false,
     paused: false,
     skipped: false,
     lead: null,
@@ -225,6 +228,18 @@ describe('connection status', () => {
   });
 });
 
+describe('AUTO labels (Phase 6.9.3)', () => {
+  it('names the mode plainly, off by default wording', () => {
+    expect(autoLabel(false)).toBe('AUTO: Off');
+    expect(autoLabel(true)).toBe('AUTO: On');
+  });
+
+  it('always explains what the mode does', () => {
+    expect(autoHint(false)).toMatch(/manual/i);
+    expect(autoHint(true)).toMatch(/automatic/i);
+  });
+});
+
 describe('remembered game', () => {
   /** A `Storage` stub that can also be told to throw, as private mode does. */
   function storage(): Storage & { failing?: boolean } {
@@ -336,6 +351,7 @@ describe('attachHostHandlers', () => {
     socket.emit('host:ended', { players: [] });
     socket.emit('host:paused', { questionId: 'q1', remainingMs: 5000 });
     socket.emit('host:resumed', { questionId: 'q1', remainingMs: 5000 });
+    socket.emit('host:auto', { auto: true });
 
     expect(handlers.lead).toHaveBeenCalledTimes(1);
     expect(handlers.question).toHaveBeenCalledTimes(1);
@@ -345,6 +361,7 @@ describe('attachHostHandlers', () => {
     expect(handlers.ended).toHaveBeenCalledTimes(1);
     expect(handlers.paused).toHaveBeenCalledTimes(1);
     expect(handlers.resumed).toHaveBeenCalledTimes(1);
+    expect(handlers.auto).toHaveBeenCalledWith({ auto: true });
   });
 
   it('stops firing after detach, and re-registers cleanly afterwards', () => {
@@ -355,7 +372,7 @@ describe('attachHostHandlers', () => {
     detach();
     socket.emit('host:lobby', { pin: '1', players: [] });
     expect(lobby).not.toHaveBeenCalled();
-    expect(socket.offCalls.count).toBe(9);
+    expect(socket.offCalls.count).toBe(10);
 
     attachHostHandlers(socket, handlersFor({ lobby }));
     socket.emit('host:lobby', { pin: '1', players: [] });
@@ -413,6 +430,7 @@ function handlersFor(overrides: Partial<HostEventHandlers> = {}): HostEventHandl
     ended: vi.fn(),
     paused: vi.fn(),
     resumed: vi.fn(),
+    auto: vi.fn(),
     ...overrides,
   };
 }

@@ -168,10 +168,8 @@ describe('design-system components', () => {
     'show__option-label',
     'show__controls',
     'show__winner',
-    // Game-show skeleton (Phase 6.9.2): scene bar and participants overview.
-    'show__scene-bar',
-    'show__scene-label',
-    'show__present',
+    // Game-show skeleton (Phase 6.9.2 / 6.9.3): AUTO toggle and participants.
+    'show__auto',
     'lobby__title',
     'lobby__welcome',
     'lobby__participants',
@@ -356,10 +354,10 @@ describe('beamer surface (Phase 6.1 fine-tuning)', () => {
   });
 });
 
-describe('game-show skeleton (Phase 6.9.2)', () => {
-  it('draws the scene bar and participants from existing tokens, never a new colour', () => {
-    const bar = tokens.slice(tokens.indexOf('.show__scene-bar'));
-    expect(bar).toContain('var(--border)');
+describe('game-show skeleton (Phase 6.9.2 / 6.9.3)', () => {
+  it('draws the AUTO toggle and participants from existing tokens, never a new colour', () => {
+    const auto = tokens.slice(tokens.indexOf('.show__auto'));
+    expect(auto).toContain('var(--border)');
     const tile = tokens.slice(tokens.indexOf('.participant {'));
     expect(tile).toContain('var(--glass-raised)');
     expect(tile).toContain('var(--radius)');
@@ -382,21 +380,19 @@ describe('game-show skeleton (Phase 6.9.2)', () => {
     expect(grid).toContain('grid-template-columns: repeat(auto-fit, minmax(140px, 1fr))');
   });
 
-  it('never hides the host controls behind the scene bar', () => {
-    // The scene bar sits above the controls; the controls keep their own rules.
-    const bar = tokens.slice(
-      tokens.indexOf('.show__scene-bar'),
-      tokens.indexOf('.show__scene-label'),
-    );
-    expect(bar).not.toContain('display: none');
+  it('never hides the host controls behind the AUTO toggle', () => {
+    // The AUTO bar sits above the controls; the controls keep their own rules.
+    const auto = tokens.slice(tokens.indexOf('.show__auto'), tokens.indexOf('.lobby__title'));
+    expect(auto).not.toContain('display: none');
     expect(tokens).toContain('.show__controls');
   });
 
-  it('hides the host chrome only in presentation mode, and never removes it', () => {
-    const present = tokens.slice(tokens.indexOf('.show-presentation .show__controls'));
-    expect(present).toContain('display: none');
-    // The toggle that leaves the mode stays visible.
-    expect(tokens).toContain('.show__present {');
+  it('has no presentation-mode chrome left (Phase 6.9.3 removed it)', () => {
+    // The presentation toggle and the scene bar are gone for good; the host
+    // controls are never hidden by a display mode.
+    expect(tokens).not.toContain('.show__scene-bar');
+    expect(tokens).not.toContain('.show__present');
+    expect(tokens).not.toContain('.show-presentation');
   });
 });
 

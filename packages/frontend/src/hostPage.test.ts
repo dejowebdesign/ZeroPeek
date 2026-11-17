@@ -1,15 +1,11 @@
 /**
- * Host page scene behaviour (Phase 6.9.2 correction).
+ * Host page control behaviour (Phase 6.9.2 correction, extended in 6.9.3).
  *
  * These drive the **real** host page in jsdom with a fake socket, so they cover
  * the wiring the pure `showScenes`/`hostView` tests cannot: that the scene is
- * display-only and follows the authoritative game phase, and that there is **no**
- * manual scene navigation in the console.
- *
- * Why this matters: a host step between scenes of a phase could park the show on
- * a scene the server is not in — the host ↔ beamer contradiction the concept
- * forbids (§10.1). The scene bar therefore shows the current scene and the
- * presentation toggle only.
+ * display-only and follows the authoritative game phase, that there is **no**
+ * manual scene navigation, and that the AUTO toggle mirrors the server's mode
+ * and sends `host:auto` rather than changing anything locally.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -88,8 +84,6 @@ function stubFetch(): void {
 
 const app = (): HTMLElement => document.getElementById('app') as HTMLElement;
 const screen = (): string => app().textContent ?? '';
-const sceneLabel = (): string =>
-  app().querySelector('.show__scene-label')?.textContent?.trim() ?? '';
 const buttons = (): HTMLButtonElement[] => [...app().querySelectorAll('button')];
 const clickButton = (label: string): void => {
   const node = buttons().find((b) => (b.textContent ?? '').includes(label));
@@ -103,41 +97,32 @@ const clickButton = (label: string): void => {
   node.click();
 };
 
-/** Every scene the manual navigation used to offer. None may appear. */
-const SCENE_NAV_LABELS = [
-  '‹',
-  '›',
-  'Welcome',
+/** The AUTO toggle currently on screen, or null when it is not offered. */
+const autoToggle = (): HTMLButtonElement | null =>
+  app().querySelector<HTMLButtonElement>('[data-auto-toggle]');
+const autoText = (): string => autoToggle()?.textContent?.trim() ?? '';
+
+/** The game-show chrome Phase 6.9.3 removed. None of it may appear again. */
+const REMOVED_LABELS = [
+  'Presentation mode',
+  'Exit presentation',
+  'Scene 2 of 13',
+  'SCENE 2 OF 13',
   'Player join',
-  'Participants',
-  'Question',
-  'Answer options',
-  'Countdown',
-  'Answer reveal',
-  'Points awarded',
-  'Leaderboard',
-  'Final round',
   'Winner podium',
   'End / thanks',
 ];
 
 /**
- * The scene-navigation buttons, if any remained. The scene bar now holds only
- * the scene label and the presentation toggle; the steps container is gone. A
- * "Leaderboard"/"Reveal" control button lives in `.show__controls` (a real game
- * command), so the check is scoped to the scene bar.
+ * Whether any removed presentation/scene control is still rendered. The scene is
+ * now purely internal: no scene number, no scene title and no mode switch.
  */
-function sceneNavButtons(): HTMLButtonElement[] {
-  const bar = app().querySelector('.show__scene-bar');
-  if (!bar) return [];
-  return [...bar.querySelectorAll('button')].filter((b) =>
-    SCENE_NAV_LABELS.includes((b.textContent ?? '').trim()),
-  );
-}
-
-/** Whether the (removed) scene-steps container is still rendered. */
-function hasSceneSteps(): boolean {
-  return app().querySelector('.show__scene-steps') !== null;
+function removedControls(): string[] {
+  const text = screen();
+  const found = REMOVED_LABELS.filter((label) => text.includes(label));
+  // The technical scene-step container, if it ever came back.
+  if (app().querySelector('.show__scene-steps')) found.push('.show__scene-steps');
+  return found;
 }
 
 function publicQuestion(index: number, id: string): PublicQuestion {
@@ -165,6 +150,7 @@ function lobbyState(): HostState {
     players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 0, connected: true }],
     podium: null,
     answers: null,
+    auto: false,
     paused: false,
     skipped: false,
     lead: null,
@@ -186,7 +172,7 @@ function revealPayload(id: string) {
     question: {
       id,
       type: 'single' as const,
-      text: 'Question',
+      text: 'Revealed prompt',
       timeLimit: 30,
       points: 'standard' as const,
       options: ['a', 'b'],
@@ -228,92 +214,129 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('host page – the scene is display-only', () => {
-  it('offers no manual scene navigation in any phase', async () => {
+describe('host page – no presentation chrome, and the AUTO toggle', () => {
+  it('offers no scene navigation, scene number or presentation toggle in any phase', async () => {
     fake.routes.set('host:start', () => ({ phase: 'lead' }));
     fake.routes.set('host:next', () => ({ phase: 'question' }));
 
     await enterLobby();
-    expect(sceneNavButtons()).toHaveLength(0);
-    expect(hasSceneSteps()).toBe(false);
+    expect(removedControls()).toEqual([]);
 
     clickButton('Start game');
     fake.trigger('host:lead', leadPayload());
     await vi.waitFor(() => {
-      if (!sceneLabel().includes('Start countdown')) throw new Error('lead not shown');
+      if (!screen().includes('Get ready!')) throw new Error('lead not shown');
     });
-    expect(sceneNavButtons()).toHaveLength(0);
-    expect(hasSceneSteps()).toBe(false);
+    expect(removedControls()).toEqual([]);
 
     fake.trigger('host:question', publicQuestion(0, 'q1'));
     await vi.waitFor(() => {
-      if (!sceneLabel().includes('Question')) throw new Error('question not shown');
+      if (!screen().includes('Question 1 of 3')) throw new Error('question not shown');
     });
-    expect(sceneNavButtons()).toHaveLength(0);
-    expect(hasSceneSteps()).toBe(false);
+    expect(removedControls()).toEqual([]);
 
     fake.trigger('host:reveal', revealPayload('q1'));
     await vi.waitFor(() => {
-      if (!sceneLabel().includes('Answer reveal')) throw new Error('reveal not shown');
+      if (!screen().includes('Revealed prompt')) throw new Error('reveal not shown');
     });
-    expect(sceneNavButtons()).toHaveLength(0);
-    expect(hasSceneSteps()).toBe(false);
+    expect(removedControls()).toEqual([]);
 
     fake.trigger('host:board', {
       players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
       ranks: [],
     });
     await vi.waitFor(() => {
-      if (!sceneLabel().includes('Leaderboard')) throw new Error('board not shown');
+      if (!screen().includes('Leaderboard')) throw new Error('board not shown');
     });
-    expect(sceneNavButtons()).toHaveLength(0);
-    expect(hasSceneSteps()).toBe(false);
+    expect(removedControls()).toEqual([]);
   });
 
-  it('follows the authoritative phase from lobby to podium', async () => {
+  it('hides the AUTO toggle in the lobby and on the final screen', async () => {
     fake.routes.set('host:start', () => ({ phase: 'lead' }));
 
     await enterLobby();
-    expect(sceneLabel()).toContain('Player join');
+    // The lobby is not frozen yet: no AUTO switch there.
+    expect(autoToggle()).toBeNull();
 
     clickButton('Start game');
     fake.trigger('host:lead', leadPayload());
     await vi.waitFor(() => {
-      if (!sceneLabel().includes('Start countdown')) throw new Error('lead not shown');
-    });
-
-    fake.trigger('host:question', publicQuestion(0, 'q1'));
-    await vi.waitFor(() => {
-      if (!sceneLabel().includes('Question')) throw new Error('question not shown');
-    });
-
-    // A same-phase re-render (e.g. a pause) must not move the scene.
-    fake.trigger('host:paused', { questionId: 'q1', remainingMs: 20_000 });
-    expect(sceneLabel()).toContain('Question');
-
-    fake.trigger('host:reveal', revealPayload('q1'));
-    await vi.waitFor(() => {
-      if (!sceneLabel().includes('Answer reveal')) throw new Error('reveal not shown');
-    });
-
-    fake.trigger('host:board', {
-      players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
-      ranks: [],
-    });
-    await vi.waitFor(() => {
-      if (!sceneLabel().includes('Leaderboard')) throw new Error('board not shown');
+      if (!autoToggle()) throw new Error('AUTO toggle not shown in lead');
     });
 
     fake.trigger('host:ended', {
       players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
     });
     await vi.waitFor(() => {
-      if (!sceneLabel().includes('Winner podium')) throw new Error('podium not shown');
+      if (!screen().includes('Final results')) throw new Error('podium not shown');
     });
+    // The game is over: nothing left to automate.
+    expect(autoToggle()).toBeNull();
   });
 
-  it('shows no scene bar at all while no game is under control', async () => {
-    await boot();
-    expect(app().querySelector('.show__scene-bar')).toBeNull();
+  it('shows the server mode and defaults to AUTO: Off', async () => {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    await vi.waitFor(() => {
+      if (!autoToggle()) throw new Error('AUTO toggle not shown');
+    });
+    expect(autoText()).toBe('AUTO: Off');
+    expect(autoToggle()?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('sends host:auto with the flipped value and follows the server ACK', async () => {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+    const sent: boolean[] = [];
+    fake.routes.set('host:auto', (payload) => {
+      const auto = (payload as { auto: boolean }).auto;
+      sent.push(auto);
+      return { auto };
+    });
+
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    await vi.waitFor(() => {
+      if (!autoToggle()) throw new Error('AUTO toggle not shown');
+    });
+
+    // Flip on: the value sent is the opposite of what is shown, and the label
+    // follows the server's answer, never a local guess.
+    autoToggle()!.click();
+    await vi.waitFor(() => {
+      if (autoText() !== 'AUTO: On') throw new Error('toggle did not turn on');
+    });
+    expect(sent).toEqual([true]);
+    expect(autoToggle()?.getAttribute('aria-pressed')).toBe('true');
+
+    autoToggle()!.click();
+    await vi.waitFor(() => {
+      if (autoText() !== 'AUTO: Off') throw new Error('toggle did not turn off');
+    });
+    expect(sent).toEqual([true, false]);
+  });
+
+  it('repaints from the host:auto broadcast without moving the screen', async () => {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    await vi.waitFor(() => {
+      if (!autoToggle()) throw new Error('AUTO toggle not shown');
+    });
+
+    fake.trigger('host:question', publicQuestion(0, 'q1'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Question 1 of 3')) throw new Error('question not shown');
+    });
+
+    // A second host tab turned AUTO on; the broadcast must update the toggle and
+    // leave the question screen exactly where it was.
+    fake.trigger('host:auto', { auto: true });
+    expect(autoText()).toBe('AUTO: On');
+    expect(screen()).toContain('Question 1 of 3');
   });
 });

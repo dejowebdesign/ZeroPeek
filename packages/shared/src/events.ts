@@ -201,6 +201,14 @@ export interface HostState {
   podium: PublicPlayer[] | null;
   /** Answered / total for the open question, or null. */
   answers: { answered: number; total: number } | null;
+  /**
+   * Whether the server runs the scheduled host transitions by itself (Phase
+   * 6.9.3). The host toggle `AUTO` sets this; the server is authoritative, so a
+   * host that reloads or reconnects resumes the exact mode the game is in. It is
+   * always present, so a fresh game (default `false`) and a resumed one are
+   * indistinguishable to the client.
+   */
+  auto: boolean;
   /** Whether the running question is paused (Phase 6.5.3). */
   paused: boolean;
   /**
@@ -375,6 +383,12 @@ export interface HostServerEvents {
   'host:paused': (payload: { questionId: string; remainingMs: number }) => void;
   /** The running question was resumed with this remaining time (Phase 6.5.3). */
   'host:resumed': (payload: { questionId: string; remainingMs: number }) => void;
+  /**
+   * The AUTO mode changed (Phase 6.9.3). Broadcast to every host socket of the
+   * game, so a second host tab (or a reconnect) stays in step with the toggle.
+   * The server owns the value; this event only mirrors it.
+   */
+  'host:auto': (payload: { auto: boolean }) => void;
   /** The server's reply to a `clock:ping`, used to correct the local clock. */
   'clock:pong': (payload: ClockPong) => void;
 }
@@ -399,6 +413,15 @@ export interface HostClientEvents {
   'host:skipLead': (payload: { gameId: string }, ack: Ack<{ phase: GamePhase }>) => void;
   'host:kick': (payload: { gameId: string; playerId: string }, ack: Ack<{ ok: boolean }>) => void;
   'host:join': (payload: { gameId: string }, ack: Ack<HostState>) => void;
+  /**
+   * Set the AUTO mode (Phase 6.9.3). The server owns the value: it persists it,
+   * runs the scheduled host transitions when it is on, and stops arming them
+   * when it is off. A change never re-resolves a round already under way — an
+   * in-flight question or countdown is untouched — and a duplicate set is a
+   * no-op, so it cannot arm a second timer. The ACK carries the authoritative
+   * value the server stored.
+   */
+  'host:auto': (payload: { gameId: string; auto: boolean }, ack: Ack<{ auto: boolean }>) => void;
   /**
    * Measure the server clock (Phase 6.8.5). Fire-and-forget: the server answers
    * with a `clock:pong` event carrying the same `id`. See `PlayerClientEvents`.

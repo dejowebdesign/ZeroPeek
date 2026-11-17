@@ -166,8 +166,9 @@ describe.skipIf(!available)('gameplay reliability', () => {
 
     it('a stale board timer does not advance a game that already moved on', async () => {
       const { gameId } = await startedGame(twoQuizId);
+      // AUTO on: `board` arms the board auto-advance timer this test is about.
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
-      // `board` arms the 6s auto-advance timer.
       await engine.board(gameId);
       // The host advances by hand before that timer fires.
       await engine.next(gameId);
@@ -209,6 +210,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
       // leaderboard's own auto-advance timer — otherwise the game sits on the
       // board forever with nothing left to move it on.
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       await engine.board(gameId);
       expect(await engine.board(gameId)).toBe('board');
@@ -228,6 +230,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
       // not clear the reveal's auto-advance timer, or the game is stuck on the
       // reveal screen forever.
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       expect(await engine.reveal(gameId)).toBe('reveal');
 
@@ -240,6 +243,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
       // reveal's 6 s auto-timer fires. The reveal timer calls `board` on a game
       // already in `board`; that no-op must not cancel the board's timer.
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       // Wait for the reveal auto-timer to fire `board`.
       await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
@@ -258,6 +262,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
   describe('B – restart recovery for every phase', () => {
     it('re-arms the auto-advance after a restart during reveal', async () => {
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
 
       // Simulate a backend restart mid-reveal.
@@ -273,6 +278,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
 
     it('re-arms the auto-advance after a restart during board', async () => {
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       await engine.board(gameId);
 
@@ -288,6 +294,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
 
     it('ends the game after a restart on the board of the final question', async () => {
       const { gameId } = await startedGame(oneQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       await engine.board(gameId);
 
@@ -303,6 +310,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
     it('never advances past the phase it recovered to, even if a stale timer fires', async () => {
       const { gameId } = await startedGame(twoQuizId);
       // Arm the board timer, then restart while still in `reveal`.
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       engine.evict(gameId);
       await engine.get(gameId);
@@ -314,5 +322,82 @@ describe.skipIf(!available)('gameplay reliability', () => {
       expect(game.phase).toBe('board');
       expect(game.currentIndex).toBe(0);
     }, 20_000);
+  });
+
+  describe('C – the AUTO mode (Phase 6.9.3)', () => {
+    it('defaults to off and reports the value it set', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      expect((await engine.get(gameId)).auto).toBe(false);
+      expect(await engine.setAuto(gameId, true)).toBe(true);
+      expect((await engine.get(gameId)).auto).toBe(true);
+      expect(await engine.setAuto(gameId, false)).toBe(false);
+    });
+
+    it('with AUTO off, a reveal does not advance to the board on its own', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.reveal(gameId);
+
+      // Wait past the reveal window: with AUTO off the host keeps the reveal up
+      // for as long as they like, so nothing may move.
+      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    }, 20_000);
+
+    it('with AUTO off, a board does not open the next question on its own', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+
+      await new Promise((resolve) => setTimeout(resolve, BOARD_MS + 400));
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('board');
+      expect(game.currentIndex).toBe(0);
+    }, 20_000);
+
+    it('turning AUTO on during a reveal arms the advance to the board', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.reveal(gameId);
+      // The reveal was opened with AUTO off (no timer); turning it on must pick
+      // up at the next transition rather than wait for the following question.
+      await engine.setAuto(gameId, true);
+
+      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
+      expect((await engine.get(gameId)).phase).toBe('board');
+    }, 20_000);
+
+    it('turning AUTO off during a board cancels the pending advance', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+      // Cancel before the board timer fires; the host takes over.
+      await engine.setAuto(gameId, false);
+
+      await new Promise((resolve) => setTimeout(resolve, BOARD_MS + 400));
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('board');
+      expect(game.currentIndex).toBe(0);
+    }, 20_000);
+
+    it('setting the value it already has is a no-op and arms nothing extra', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.reveal(gameId);
+      // AUTO is already off; a second "off" must not throw and must not arm a
+      // transition, so the reveal stays put.
+      expect(await engine.setAuto(gameId, false)).toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    }, 20_000);
+
+    it('restores the mode from the event log across a restart', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      await engine.reveal(gameId);
+
+      engine.evict(gameId);
+      const reloaded = await engine.get(gameId);
+      // The mode is persisted as an `auto` event, so a fresh process resumes it.
+      expect(reloaded.auto).toBe(true);
+    });
   });
 });

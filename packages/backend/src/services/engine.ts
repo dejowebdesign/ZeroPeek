@@ -91,6 +91,15 @@ interface RuntimeGame {
   remainingMs: number | null;
   /** The question id the host skipped, so it is never scored (Phase 6.5.3). */
   skippedQuestionId: string | null;
+  /**
+   * Whether the server runs the scheduled host transitions by itself (Phase
+   * 6.9.3). The host's `AUTO` toggle sets this; the server is authoritative and
+   * persists it, so a reload or a restart resumes the same mode. When it is on
+   * the reveal and the leaderboard advance themselves; when it is off they wait
+   * for the host. The start countdown and the answer time are **not** affected —
+   * they always run, so the host never has to watch a clock.
+   */
+  auto: boolean;
   /** Server timestamp (ms) the `lead` countdown started, or null. */
   leadStartedAt: number | null;
   /** Server timestamp (ms) the `lead` countdown ends, or null. */
@@ -112,11 +121,19 @@ export interface EngineEvents {
   ended: [{ gameId: string; players: PublicPlayer[] }];
   paused: [{ gameId: string; questionId: string; remainingMs: number }];
   resumed: [{ gameId: string; questionId: string; remainingMs: number }];
+  /** The AUTO mode changed (Phase 6.9.3), broadcast to every host socket. */
+  auto: [{ gameId: string; auto: boolean }];
 }
 
-/** How long the reveal and board screens stay before auto-advance (ms). */
-export const REVEAL_MS = 6000;
-export const BOARD_MS = 6000;
+/**
+ * How long the reveal and board screens stay before the auto-advance, in ms
+ * (Phase 6.9.3). These are the single source of truth for the AUTO delays: the
+ * server arms them, the client never holds a copy, and they are the same values
+ * a restart re-arms. `AUTO` on → the screens advance themselves; `AUTO` off →
+ * nothing is armed and the host advances.
+ */
+export const REVEAL_MS = 4000;
+export const BOARD_MS = 5000;
 
 /**
  * The server-authoritative start countdown (Phase 6.9.1). After `start` the game
@@ -281,6 +298,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       pausedAt: null,
       remainingMs: null,
       skippedQuestionId: null,
+      auto: false,
       leadStartedAt: null,
       leadEndsAt: null,
       players: new Map(),
@@ -329,6 +347,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       pausedAt: null,
       remainingMs: null,
       skippedQuestionId: null,
+      auto: false,
       leadStartedAt: null,
       leadEndsAt: null,
       players: new Map(),
@@ -377,7 +396,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const events = await prisma.gameEvent.findMany({
       where: {
         gameId: runtime.id,
-        type: { in: ['lead', 'question', 'paused', 'resumed', 'skipped'] },
+        type: { in: ['lead', 'question', 'paused', 'resumed', 'skipped', 'auto'] },
       },
       select: { type: true, data: true, createdAt: true },
     });
@@ -394,6 +413,19 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     // runs before the phase guard so a restart during `reveal`/`board` still
     // marks the question as skipped.
     runtime.skippedQuestionId = question && forQuestion('skipped').length > 0 ? question.id : null;
+
+    // The AUTO mode is restored from the game's own event log (Phase 6.9.3): the
+    // last `auto` event wins. Like the pause count, this is order-free — only the
+    // *value* of the latest event matters, so it is read from the newest by
+    // `createdAt` and ties are irrelevant because each event carries a boolean
+    // and the log is append-only. No new column, no migration.
+    const autoEvents = events.filter((event) => event.type === 'auto');
+    runtime.auto =
+      autoEvents
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .map((event) => (event.data as { auto?: boolean }).auto)
+        .filter((value): value is boolean => typeof value === 'boolean')
+        .at(-1) ?? false;
 
     // The start countdown (Phase 6.9.1). Its window is rebuilt from the `lead`
     // event's server `endsAt`, so a restart mid-countdown re-arms for the
@@ -431,7 +463,14 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     // one, so re-arming for the full window is the deterministic, restart-safe
     // choice. The question timer is different — it is the real, once-only clock,
     // so it is re-armed for the *remaining* time and reveals at once if expired.
+    //
+    // The AUTO mode was restored above from the game's own event log (Phase
+    // 6.9.3). With AUTO **off** the reveal and board timers are deliberately
+    // **not** armed: the host advances, and a recovered game must not run on by
+    // itself. The question timer is always armed regardless — the answer time is
+    // not an AUTO transition.
     if (runtime.phase === 'reveal') {
+      if (!runtime.auto) return;
       runtime.timer = setTimeout(() => {
         void this.board(runtime.id).catch(() => undefined);
       }, REVEAL_MS);
@@ -439,6 +478,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     }
 
     if (runtime.phase === 'board') {
+      if (!runtime.auto) return;
       runtime.timer = setTimeout(() => {
         void this.next(runtime.id).catch(() => undefined);
       }, BOARD_MS);
@@ -869,6 +909,44 @@ export class GameEngine extends EventEmitter<EngineEvents> {
   }
 
   /**
+   * Set the AUTO mode (Phase 6.9.3) and return the authoritative value.
+   *
+   * The server owns the mode, so the client only asks for a value and the engine
+   * decides. It is persisted in the existing append-only event log (no new
+   * column, no migration) and mirrored onto the runtime, so a reload or a restart
+   * resumes the exact mode the host left. Setting the value it already has is a
+   * no-op: no event, no timer churn, so a duplicate or double-clicked toggle
+   * cannot arm a second transition.
+   *
+   * Switching **off** cancels a pending automatic host transition (reveal →
+   * leaderboard, leaderboard → next question) so the host takes over, but it
+   * never touches the question clock or the start countdown — those are not AUTO
+   * transitions and always run. Switching **on** picks up at the next scheduled
+   * transition: on the reveal or the leaderboard that screen's advance is armed
+   * at once; on a question nothing is armed here and the reveal that follows arms
+   * the leaderboard itself. Either way no round is re-resolved and no question is
+   * skipped: the target's own phase guard still validates every transition.
+   */
+  async setAuto(gameId: string, auto: boolean): Promise<boolean> {
+    return this.withPhaseLock(gameId, async () => {
+      const game = await this.get(gameId);
+      if (game.auto === auto) return game.auto;
+      game.auto = auto;
+      await logEvent(gameId, 'auto', { auto });
+
+      // Off: stop the pending auto-advance, but only on a screen AUTO owns.
+      if (!auto && (game.phase === 'reveal' || game.phase === 'board')) {
+        this.clearTimer(game);
+      }
+      // On: resume at the current screen if it has an automatic successor.
+      if (auto) this.armAutoAdvance(game);
+
+      this.emit('auto', { gameId, auto });
+      return game.auto;
+    });
+  }
+
+  /**
    * Accept a player's answer. Enforces: the game is in the question phase, the
    * question id matches, the player has not answered yet, and the answer arrives
    * within the time limit (+grace). Returns whether it was accepted.
@@ -1108,6 +1186,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       players: null,
       podium: null,
       answers: null,
+      auto: game.auto,
       paused: false,
       skipped: false,
       lead: null,
@@ -1267,11 +1346,34 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       points,
     });
 
-    game.timer = setTimeout(() => {
-      void this.board(gameId).catch(() => undefined);
-    }, REVEAL_MS);
+    // AUTO only (Phase 6.9.3): arm the advance to the leaderboard. With AUTO off
+    // the host advances by hand, so no timer is armed and the reveal stays until
+    // the host is ready.
+    this.armAutoAdvance(game);
 
     return 'reveal';
+  }
+
+  /**
+   * Arm the automatic host transition for the screen currently on show (Phase
+   * 6.9.3): reveal → leaderboard, or leaderboard → next question. A no-op when
+   * AUTO is off, when the screen has no automatic successor (lobby, lead,
+   * question, end) or when the question is a slide (the host always advances it).
+   * The armed timer is the engine's single `game.timer`, and the transition it
+   * fires is still validated by the target's own phase guard, so a late timer can
+   * never move a game that has already moved on.
+   */
+  private armAutoAdvance(game: RuntimeGame): void {
+    if (!game.auto) return;
+    if (game.phase === 'reveal') {
+      game.timer = setTimeout(() => {
+        void this.board(game.id).catch(() => undefined);
+      }, REVEAL_MS);
+    } else if (game.phase === 'board') {
+      game.timer = setTimeout(() => {
+        void this.next(game.id).catch(() => undefined);
+      }, BOARD_MS);
+    }
   }
 
   /**
@@ -1441,9 +1543,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const ranks = question ? await this.rankDeltas(game, question.id) : [];
     this.emit('board', { gameId, players: this.leaderboard(game), ranks });
 
-    game.timer = setTimeout(() => {
-      void this.next(gameId).catch(() => undefined);
-    }, BOARD_MS);
+    // AUTO only (Phase 6.9.3): arm the advance to the next question. With AUTO off
+    // the host starts the next round by hand, so the leaderboard stays on screen
+    // for as long as the host wants to talk it through.
+    this.armAutoAdvance(game);
 
     return 'board';
   }

@@ -33,6 +33,8 @@ import {
 } from '../showView.js';
 import {
   attachHostHandlers,
+  autoHint,
+  autoLabel,
   canAct,
   connectionStatus,
   forgetGame,
@@ -44,7 +46,7 @@ import {
   revealBody,
   type HostEventHandlers,
 } from '../hostView.js';
-import { ShowController, sceneDefinition, sceneInputOf, type SceneInput } from '../showScenes.js';
+import { ShowController, sceneInputOf, type SceneInput } from '../showScenes.js';
 import {
   brand,
   button,
@@ -114,10 +116,20 @@ let lobbyPlayerCount = 0;
 let activeGame: HostGame | null = null;
 /**
  * The show scene controller (Phase 6.9.2). It folds the authoritative state into
- * the current show scene and lets the host step between the scenes of a phase
- * without touching the game. Presentation only.
+ * the current show scene. The scene is display-only — derived from the game
+ * phase — so it never steers the game; it only selects which internal view of a
+ * phase is drawn.
  */
 const show = new ShowController();
+/**
+ * The server's AUTO mode for the game under control (Phase 6.9.3). The server
+ * owns the value; this mirror is set from every authoritative state and from the
+ * `host:auto` broadcast, so the toggle always shows what the game is actually
+ * doing. Default off, like the server.
+ */
+let autoMode = false;
+/** The AUTO toggle currently on screen, so its label can be repainted in place. */
+let autoNode: HTMLButtonElement | null = null;
 /** The host's own connection state, shown in the control bar. */
 let connection: HostConnectionStatus = 'connected';
 /** Whether the socket has connected at least once (so a `connect` is a reconnect). */
@@ -347,6 +359,12 @@ function ensureSocket(): HostSocket {
           });
         }
       },
+      // The AUTO mode changed (Phase 6.9.3). The server is the source of truth,
+      // so this only repaints the toggle — it never moves the game or the screen.
+      auto: (payload) => {
+        lastLiveEventAt = Date.now();
+        setAuto(payload.auto);
+      },
     } satisfies HostEventHandlers);
 
     host.on('connect', () => {
@@ -442,28 +460,21 @@ function descriptorOf(input: HostRender): SceneInput {
   }
 }
 
-/** The last render input, so a presentation-only scene step can re-render it. */
+/** The last render input, so the AUTO toggle can repaint the screen it is on. */
 let lastRender: HostRender | null = null;
-
-/**
- * Re-render the situation currently on screen. Used only after a presentation
- * scene step: the descriptor is unchanged, so `show.sync` keeps the stepped
- * scene and nothing about the game moves.
- */
-function rerender(): void {
-  if (lastRender) renderHostState(lastRender);
-}
 
 /**
  * The single entry point for every host screen, whether it was triggered by a
  * live event or by a reconnect. Nothing here decides the phase from local
  * state: the payload already carries it, so the host always shows what the
  * server last said. The show controller (Phase 6.9.2) is folded in here so the
- * scene is always derived from the same authoritative descriptor.
+ * internal scene is always derived from the same authoritative descriptor, and
+ * the AUTO mirror is refreshed from every snapshot.
  */
 function renderHostState(input: HostRender): void {
   lastRender = input;
   show.sync(descriptorOf(input));
+  if (input.kind === 'sync') autoMode = input.state.auto;
 
   if (input.kind === 'sync') {
     activeGame = { id: input.state.gameId, pin: input.state.pin };
@@ -494,60 +505,71 @@ function renderHostState(input: HostRender): void {
 }
 
 /**
- * Whether the show is in presentation mode (Phase 6.9.2). When on, the host
- * controls and the scene bar are hidden so the beamer shows a clean stage; the
- * toggle itself stays visible so the host can leave the mode. In-memory only —
- * a reload returns to the steering view.
+ * The AUTO toggle (Phase 6.9.3). It shows the server's authoritative mode and
+ * asks the server to change it; it never changes the mode locally, so the label
+ * can only ever show what the game is really doing. The standard is **Off**
+ * (manual): the host advances the reveal and the leaderboard by hand. When it is
+ * **On** the server runs those two transitions by itself.
+ *
+ * It is offered on every live game screen except the lobby (where it would mean
+ * nothing yet) and the final screen (the game is over). The toggle itself is not
+ * a `data-host-action` button: it stays clickable while the mode is known, but a
+ * click while the socket is down is refused with the same guard as a command.
  */
-let presentationMode = false;
+function autoToggle(): HTMLElement | null {
+  autoNode = null;
+  if (lastRender === null) return null;
+  const kind = lastRender.kind;
+  // No AUTO before the game is frozen (lobby) or after it ended.
+  if (kind === 'lobby' || kind === 'end') return null;
+  if (kind === 'sync') {
+    const screen = hostScreen(lastRender.state);
+    if (screen === 'lobby' || screen === 'end') return null;
+  }
 
-/** The `show-presentation` modifier, applied to the board of every scene. */
-function presentationClass(): string {
-  return presentationMode ? ' show-presentation' : '';
+  autoNode = button(autoLabel(autoMode), {
+    variant: autoMode ? 'secondary' : 'ghost',
+    small: true,
+    ariaLabel: autoHint(autoMode),
+    onClick: () => void toggleAuto(),
+  });
+  autoNode.setAttribute('data-auto-toggle', '');
+  autoNode.setAttribute('aria-pressed', String(autoMode));
+  return el('div', { class: 'show__auto' }, autoNode);
+}
+
+/** Ask the server to flip the AUTO mode; the `host:auto` broadcast repaints. */
+async function toggleAuto(): Promise<void> {
+  if (!canAct(connection)) {
+    toast('Reconnect before you continue.', 'error');
+    return;
+  }
+  const gameId = currentGameId();
+  if (!gameId) return;
+  try {
+    const { auto } = await request<{ auto: boolean }>(ensureSocket(), 'host:auto', {
+      gameId,
+      auto: !autoMode,
+    });
+    setAuto(auto);
+  } catch (error) {
+    toast(errorText(error), 'error');
+  }
 }
 
 /**
- * The presentation-mode toggle. It only shows or hides the host chrome; it sends
- * no game command and changes no state the server owns.
+ * Reflect the server's AUTO mode in the toggle without re-fetching. Called from
+ * the `host:auto` broadcast and from the ACK of our own change, so a second host
+ * tab and this one stay in step. Only the label and the pressed state change;
+ * nothing about the game moves.
  */
-function presentationToggle(): HTMLElement {
-  return el(
-    'div',
-    { class: 'show__present' },
-    button(presentationMode ? 'Exit presentation' : 'Presentation mode', {
-      variant: 'ghost',
-      small: true,
-      ariaLabel: presentationMode
-        ? 'Leave presentation mode and show the host controls'
-        : 'Hide the host controls for a clean presentation',
-      onClick: () => {
-        presentationMode = !presentationMode;
-        rerender();
-      },
-    }),
-  );
-}
-
-/**
- * The show scene bar (Phase 6.9.2): the current scene's name and the
- * presentation-mode toggle. The scene is **display-only** — it is derived from
- * the authoritative game phase on every render, so it always follows the game
- * and can never be parked on a scene the server is not in. There is deliberately
- * no manual scene navigation: a host step could show a scene the game is not in,
- * which is exactly the host ↔ beamer contradiction the concept forbids (§10.1).
- * Returns `null` while no game is under control.
- */
-function sceneBar(): HTMLElement | null {
-  const phase = show.currentPhase;
-  if (phase === null) return null;
-  const current = sceneDefinition(show.current);
-
-  return el(
-    'div',
-    { class: 'show__scene-bar' },
-    el('span', { class: 'show__scene-label' }, `Scene ${current.order} of 13 · ${current.title}`),
-    presentationToggle(),
-  );
+function setAuto(auto: boolean): void {
+  autoMode = auto;
+  if (!autoNode) return;
+  autoNode.textContent = autoLabel(auto);
+  autoNode.setAttribute('aria-pressed', String(auto));
+  autoNode.setAttribute('aria-label', autoHint(auto));
+  autoNode.className = `btn ${auto ? 'btn-secondary' : 'btn-ghost'} btn-sm`;
 }
 
 /** Re-request a game's authoritative state and render the phase it reports. */
@@ -568,9 +590,12 @@ async function showHome(): Promise<void> {
   stopTimer();
   answerCountNode = null;
   bannerNode = null;
-  // No game under control: the show resets to its client-side welcome scene and
-  // forgets the last render, so a later step cannot re-draw a finished game.
+  // No game under control: the show resets to its client-side welcome scene, the
+  // AUTO mirror is cleared (the server owns it per game), and the last render is
+  // forgotten so the toggle cannot re-draw a finished game.
   lastRender = null;
+  autoMode = false;
+  autoNode = null;
   show.sync(null);
   try {
     const [{ quizzes }, { games }] = await Promise.all([
@@ -898,10 +923,10 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
       { class: 'centered' },
       el(
         'div',
-        { class: `card lobby anim-fade-in${wide ? ' lobby--wide' : ''}${presentationClass()}` },
+        { class: `card lobby anim-fade-in${wide ? ' lobby--wide' : ''}` },
         connectionBanner(),
         body,
-        sceneBar(),
+        autoToggle(),
         controlsFor('lobby'),
       ),
     ),
@@ -983,12 +1008,12 @@ function showLead(lead: LeadState): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: `show__board card anim-fade-in${presentationClass()}` },
+        { class: `show__board card anim-fade-in` },
         connectionBanner(),
         el('h2', { class: 'show__title' }, 'Get ready!'),
         el('p', { class: 'show__meta muted' }, 'The first question starts in'),
         timer,
-        sceneBar(),
+        autoToggle(),
         controlsFor('lead'),
       ),
     ),
@@ -1030,7 +1055,7 @@ function showQuestion(
       { class: 'centered show' },
       el(
         'div',
-        { class: `show__board card question anim-fade-in${presentationClass()}` },
+        { class: `show__board card question anim-fade-in` },
         connectionBanner(),
         el(
           'div',
@@ -1055,7 +1080,7 @@ function showQuestion(
               ),
             )
           : null,
-        sceneBar(),
+        autoToggle(),
         controlsFor('question', question.paused, question.type),
       ),
     ),
@@ -1105,11 +1130,11 @@ function showReveal(reveal: HostReveal): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: `show__board card question anim-fade-in${presentationClass()}` },
+        { class: `show__board card question anim-fade-in` },
         connectionBanner(),
         heading ? el('h2', { class: 'show__title' }, heading) : null,
         body,
-        sceneBar(),
+        autoToggle(),
         controlsFor('reveal'),
       ),
     ),
@@ -1129,7 +1154,7 @@ function showBoard(players: PublicPlayer[]): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: `show__board card anim-fade-in${presentationClass()}` },
+        { class: `show__board card anim-fade-in` },
         connectionBanner(),
         el('h2', { class: 'show__title' }, scene === 'final' ? 'Final round' : 'Leaderboard'),
         scene === 'final'
@@ -1141,7 +1166,7 @@ function showBoard(players: PublicPlayer[]): void {
           : null,
         el('p', { class: 'show__meta' }, chip(`${players.length} player(s)`, 'cyan')),
         el('ol', { class: 'leaderboard leaderboard--show' }, ...players.map(leaderboardRow)),
-        sceneBar(),
+        autoToggle(),
         controlsFor('board'),
       ),
     ),
@@ -1166,7 +1191,7 @@ function showPodium(players: PublicPlayer[]): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: `show__board card anim-pop${presentationClass()}` },
+        { class: `show__board card anim-pop` },
         connectionBanner(),
         el('h2', { class: 'show__title' }, outro ? 'Thank you for playing' : 'Final results'),
         first ? el('p', { class: 'show__winner' }, `Winner: ${first.nickname}`) : null,
@@ -1185,7 +1210,7 @@ function showPodium(players: PublicPlayer[]): void {
             )
           : null,
         outro ? el('p', { class: 'show__meta muted' }, 'See you at the next round.') : null,
-        sceneBar(),
+        autoToggle(),
         controlsFor('end'),
       ),
     ),
