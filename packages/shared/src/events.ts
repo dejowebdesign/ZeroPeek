@@ -202,11 +202,13 @@ export interface HostState {
   /** Answered / total for the open question, or null. */
   answers: { answered: number; total: number } | null;
   /**
-   * Whether the server runs the scheduled host transitions by itself (Phase
+   * Whether the server runs the AUTO-controlled transitions by itself (Phase
    * 6.9.3). The host toggle `AUTO` sets this; the server is authoritative, so a
-   * host that reloads or reconnects resumes the exact mode the game is in. It is
-   * always present, so a fresh game (default `false`) and a resumed one are
-   * indistinguishable to the client.
+   * host that reloads or reconnects resumes the exact mode the game is in. When
+   * on, the answer resolution (question → reveal) and the leaderboard advance
+   * (board → next) run by themselves; when off the host triggers both. The reveal
+   * window (reveal → leaderboard) is not AUTO-controlled. It is always present, so
+   * a fresh game (default `false`) and a resumed one are indistinguishable.
    */
   auto: boolean;
   /** Whether the running question is paused (Phase 6.5.3). */
@@ -415,11 +417,12 @@ export interface HostClientEvents {
   'host:join': (payload: { gameId: string }, ack: Ack<HostState>) => void;
   /**
    * Set the AUTO mode (Phase 6.9.3). The server owns the value: it persists it,
-   * runs the scheduled host transitions when it is on, and stops arming them
-   * when it is off. A change never re-resolves a round already under way — an
-   * in-flight question or countdown is untouched — and a duplicate set is a
-   * no-op, so it cannot arm a second timer. The ACK carries the authoritative
-   * value the server stored.
+   * runs the AUTO-controlled transitions when it is on (answer resolution and
+   * leaderboard advance), and leaves them to the host when it is off. Turning it
+   * **on** picks up the current state at once — a question whose clock has already
+   * expired, or whose roster has fully answered, resolves immediately. A change
+   * never re-resolves an already shown round and a duplicate set is a no-op, so it
+   * cannot arm a second timer. The ACK carries the authoritative value.
    */
   'host:auto': (payload: { gameId: string; auto: boolean }, ack: Ack<{ auto: boolean }>) => void;
   /**

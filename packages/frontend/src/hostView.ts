@@ -193,18 +193,22 @@ export function canAct(status: HostConnectionStatus): boolean {
 
 /**
  * The label for the AUTO toggle (Phase 6.9.3). The server owns the mode; this
- * only names it for the host. `On` runs the scheduled host transitions by
- * itself, `Off` (the default) leaves them to the host.
+ * only names it for the host. `On` runs the answer resolution and the leaderboard
+ * advance by itself, `Off` (the default) leaves both to the host.
  */
 export function autoLabel(auto: boolean): string {
   return auto ? 'AUTO: On' : 'AUTO: Off';
 }
 
-/** The description of what the AUTO mode does, for the toggle's accessible name. */
+/**
+ * The description of what the AUTO mode does, for the toggle's accessible name
+ * (Phase 6.9.3). The reveal window (reveal → leaderboard) always runs; AUTO only
+ * governs the answer resolution and the leaderboard advance.
+ */
 export function autoHint(auto: boolean): string {
   return auto
-    ? 'Automatic host transitions are active. Turn off to advance each screen yourself.'
-    : 'Manual operation: you advance the reveal and the leaderboard yourself.';
+    ? 'Automatic play: answers resolve by themselves and the next question starts on its own.'
+    : 'Manual play: you resolve the answers and start the next question yourself.';
 }
 
 /** The events a host socket delivers, as consumed by the page. */

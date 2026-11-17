@@ -587,9 +587,11 @@ Host-Seite; der Server bleibt für alles Spielrelevante maßgeblich.
   wird weiterhin aus der autoritativen Phase abgeleitet; es gibt **keine** Szenen-Navigation. Der
   Host steuert das Spiel aus einer einzigen Ansicht.
 - **AUTO-Umschalter (Standard: Aus):** Ein neuer Umschalter `AUTO` steuert, ob der Server die
-  **geplanten** Host-Übergänge selbst ausführt — Auflösung → Rangliste (`REVEAL_MS`) und
-  Rangliste → nächste Frage (`BOARD_MS`). **Standard ist immer AUS** (manuell): der Host löst
-  Auflösung und Rangliste selbst aus.
+  **zwei** AUTO-Übergänge selbst ausführt — die **Antwortauflösung** (Frage → Auflösung) und den
+  **Ranglisten-Übergang** (Rangliste → nächste Frage). **Standard ist immer AUS** (manuell): der
+  Host löst die Antworten selbst auf (`host:reveal`) und startet die nächste Frage selbst
+  (`host:next`). Das **Auflösungsfenster** (Auflösung → Rangliste, `REVEAL_MS`) läuft in **beiden**
+  Modi automatisch.
 - **Server-autoritativ und persistent:** Neuer Host-Befehl `host:auto` (`{ gameId, auto }` →
   `{ auto }`), autorisiert über `assertHost`, mit `auto`-Validierung (echter Boolean). Der Wert
   wird über das **bestehende** Event-Log (`auto`-Event) persistiert — **keine** Schemaänderung,
@@ -597,11 +599,15 @@ Host-Seite; der Server bleibt für alles Spielrelevante maßgeblich.
   (`auto`), sodass ein Reload/Reconnect den Modus wiederherstellt. Neues Host-Event `host:auto`
   (nur an Host-Sockets) hält zweite Host-Tabs synchron.
 - **Kein Nachladen, kein Überspringen:** Das Umschalten löst **keine** laufende Runde neu auf und
-  überspringt **keine** Frage. Ausschalten verwirft nur einen anstehenden Auto-Übergang; jede
+  überspringt **keine** Frage. Ausschalten verwirft nur einen anstehenden AUTO-Übergang; jede
   Transition bleibt durch den Phasen-Wächter des Ziels abgesichert.
+- **Umschalten mitten in der Runde:** Ein → Aus stoppt den anstehenden AUTO-Übergang (Antwort-Timer
+  bzw. Ranglisten-Übergang), **nicht** aber das feste Auflösungsfenster. Aus → Ein holt den
+  aktuellen Zustand nach: ist die Antwortzeit schon abgelaufen oder haben alle Spieler geantwortet,
+  wird sofort aufgelöst; sonst wird der Antwort-Timer für die Restzeit neu gestellt. `REVEAL_MS`
+  6000 → **4000**, `BOARD_MS` 6000 → **5000**.
 - **Fragezeit und Start-Countdown bleiben unberührt:** Der Antwort-Timer und der Start-Countdown
-  sind **keine** AUTO-Übergänge und laufen immer; AUTO steuert nur die zwei geplanten
-  Show-Übergänge. `REVEAL_MS` 6000 → **4000**, `BOARD_MS` 6000 → **5000**.
+  sind **keine** AUTO-Übergänge und laufen immer; AUTO steuert nur die zwei genannten Übergänge.
 - **Wiederverwendung:** Der Umschalter nutzt die vorhandenen Button-Varianten und ein neues
   `.show__auto`-Layout aus bestehenden Tokens — **keine** neue Farbe, **keine** neue Komponente.
 

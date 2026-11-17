@@ -387,6 +387,9 @@ describe.skipIf(!available)('player reconnect state sync', () => {
 
   it('J – a question whose time ran out during a restart reveals itself, not hangs', async () => {
     const { gameId, players, host } = await newGame(['Ada', 'Bob']);
+    // The time-out resolution is an AUTO transition (Phase 6.9.3); enable it so
+    // the recovered, expired question resolves on its own.
+    await request(host, 'host:auto', { gameId, auto: true });
     const questionSeen = once<{ id: string }>(players[0]!.socket, 'game:question');
     await request(host, 'host:start', { gameId });
     await request(host, 'host:skipLead', { gameId });
@@ -405,5 +408,24 @@ describe.skipIf(!available)('player reconnect state sync', () => {
 
     const row = await prisma.game.findUnique({ where: { id: gameId } });
     expect(row!.phase).toBe('reveal');
+  }, 30_000);
+
+  it('J2 – with AUTO off, a question whose time ran out during a restart waits for the host', async () => {
+    const { gameId, players, host } = await newGame(['Ada', 'Bob']);
+    const questionSeen = once<{ id: string }>(players[0]!.socket, 'game:question');
+    await request(host, 'host:start', { gameId });
+    await request(host, 'host:skipLead', { gameId });
+    await questionSeen;
+
+    await prisma.gameEvent.updateMany({
+      where: { gameId, type: 'question' },
+      data: { createdAt: new Date(Date.now() - 10 * 60 * 1000) },
+    });
+    engine.evict(gameId);
+    await engine.get(gameId);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // AUTO is off, so the recovered, expired question must NOT resolve itself.
+    expect((await prisma.game.findUnique({ where: { id: gameId } }))!.phase).toBe('question');
   }, 30_000);
 });

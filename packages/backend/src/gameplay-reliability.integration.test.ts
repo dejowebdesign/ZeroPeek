@@ -333,14 +333,12 @@ describe.skipIf(!available)('gameplay reliability', () => {
       expect(await engine.setAuto(gameId, false)).toBe(false);
     });
 
-    it('with AUTO off, a reveal does not advance to the board on its own', async () => {
+    it('with AUTO off, a reveal still advances to the board after the fixed window', async () => {
       const { gameId } = await startedGame(twoQuizId);
+      // The reveal window is NOT AUTO-controlled: it always runs.
       await engine.reveal(gameId);
-
-      // Wait past the reveal window: with AUTO off the host keeps the reveal up
-      // for as long as they like, so nothing may move.
       await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
-      expect((await engine.get(gameId)).phase).toBe('reveal');
+      expect((await engine.get(gameId)).phase).toBe('board');
     }, 20_000);
 
     it('with AUTO off, a board does not open the next question on its own', async () => {
@@ -354,15 +352,88 @@ describe.skipIf(!available)('gameplay reliability', () => {
       expect(game.currentIndex).toBe(0);
     }, 20_000);
 
-    it('turning AUTO on during a reveal arms the advance to the board', async () => {
-      const { gameId } = await startedGame(twoQuizId);
-      await engine.reveal(gameId);
-      // The reveal was opened with AUTO off (no timer); turning it on must pick
-      // up at the next transition rather than wait for the following question.
-      await engine.setAuto(gameId, true);
+    it('with AUTO off, a full roster answering does not resolve the question', async () => {
+      const { gameId, playerIds } = await startedGame(twoQuizId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      // Both players answer; AUTO is off, so the host resolves by hand.
+      await engine.submitAnswer(gameId, playerIds[0]!, question.id, 0);
+      await engine.submitAnswer(gameId, playerIds[1]!, question.id, 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await engine.get(gameId)).phase).toBe('question');
 
-      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
-      expect((await engine.get(gameId)).phase).toBe('board');
+      // The host resolves when ready.
+      expect(await engine.reveal(gameId)).toBe('reveal');
+    });
+
+    it('with AUTO off, an expired question clock does not resolve the question', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      // Backdate the open question far past its limit; nothing is armed with AUTO
+      // off, so the question must wait for the host, not reveal itself.
+      (await engine.get(gameId)).openedAt = Date.now() - 60_000;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect((await engine.get(gameId)).phase).toBe('question');
+
+      expect(await engine.reveal(gameId)).toBe('reveal');
+    });
+
+    it('with AUTO on, a full roster answering resolves the question', async () => {
+      const { gameId, playerIds } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, playerIds[0]!, question.id, 0);
+      await engine.submitAnswer(gameId, playerIds[1]!, question.id, 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    });
+
+    it('with AUTO on, the board opens the next question on its own', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+
+      await new Promise((resolve) => setTimeout(resolve, BOARD_MS + 400));
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('question');
+      expect(game.currentIndex).toBe(1);
+    }, 20_000);
+
+    it('turning AUTO on after everyone answered resolves the question at once', async () => {
+      const { gameId, playerIds } = await startedGame(twoQuizId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      // AUTO off: a full roster waits (see the test above). Turning it on must
+      // pick up the state the host handed over and resolve immediately.
+      await engine.submitAnswer(gameId, playerIds[0]!, question.id, 0);
+      await engine.submitAnswer(gameId, playerIds[1]!, question.id, 1);
+      await engine.setAuto(gameId, true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    });
+
+    it('turning AUTO on after the clock expired resolves the question at once', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      (await engine.get(gameId)).openedAt = Date.now() - 60_000;
+      await engine.setAuto(gameId, true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    });
+
+    it('turning AUTO on during a running clock resolves when it expires', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      // 20 s limit + 1.5 s grace; leave ~200 ms on the clock.
+      (await engine.get(gameId)).openedAt = Date.now() - 21_300;
+      await engine.setAuto(gameId, true);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    }, 20_000);
+
+    it('turning AUTO off during a question cancels the answer clock', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      // Cancel well before the limit; the question must then wait for the host.
+      await engine.setAuto(gameId, false);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect((await engine.get(gameId)).phase).toBe('question');
     }, 20_000);
 
     it('turning AUTO off during a board cancels the pending advance', async () => {
@@ -379,14 +450,25 @@ describe.skipIf(!available)('gameplay reliability', () => {
       expect(game.currentIndex).toBe(0);
     }, 20_000);
 
+    it('turning AUTO off during a reveal does not stop the fixed reveal window', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      await engine.reveal(gameId);
+      // The reveal window is not AUTO-controlled: turning AUTO off must not stop
+      // the pending advance to the board.
+      await engine.setAuto(gameId, false);
+
+      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
+      expect((await engine.get(gameId)).phase).toBe('board');
+    }, 20_000);
+
     it('setting the value it already has is a no-op and arms nothing extra', async () => {
       const { gameId } = await startedGame(twoQuizId);
-      await engine.reveal(gameId);
       // AUTO is already off; a second "off" must not throw and must not arm a
-      // transition, so the reveal stays put.
+      // transition, so the open question stays put.
       expect(await engine.setAuto(gameId, false)).toBe(false);
-      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
-      expect((await engine.get(gameId)).phase).toBe('reveal');
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect((await engine.get(gameId)).phase).toBe('question');
     }, 20_000);
 
     it('restores the mode from the event log across a restart', async () => {
