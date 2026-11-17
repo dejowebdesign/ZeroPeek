@@ -647,15 +647,19 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
 
 ## Gameplay engine: timings and known traps
 - **`REVEAL_MS = 4000`, `BOARD_MS = 5000`** (exported from
-  `packages/backend/src/services/engine.ts`). These two **scheduled** transitions
-  (`reveal → board`, `board → next question`) run **only when the host's AUTO mode
-  is on** (Phase 6.9.3; server-authoritative `host:auto`, default **off**, persisted
-  in the existing `GameEvent` log as type `auto`). With AUTO off the host advances
-  reveal/board by hand. The answer clock (question expiry) and the start countdown
-  are **not** AUTO transitions and always run. Any E2E/browser test must not assume
-  a `Reveal`/`Next question` button is on screen — drive it tolerantly, or turn AUTO
-  on. A host `next` is only legal from `board`; `board` only from `reveal` (guards
-  added in `fix/complete-gameplay-reliability`) so a stale timer cannot skip a question.
+  `packages/backend/src/services/engine.ts`). AUTO (Phase 6.9.3; server-authoritative
+  `host:auto`, default **off**, persisted in the existing `GameEvent` log as type
+  `auto`) gates **exactly two** transitions: **question → reveal** (`armQuestionClock`)
+  and **board → next question** (`armBoardAdvance`). The **reveal → board** step
+  (`armRevealWindow`, `REVEAL_MS`) is a **fixed window in BOTH modes** — NOT AUTO-gated.
+  The answer clock (question expiry) and the start countdown are not AUTO transitions and
+  always run. Any E2E/browser test must not assume a `Reveal`/`Next question` button is on
+  screen — drive it tolerantly, or turn AUTO on. A host `next` is only legal from `board`;
+  `board` only from `reveal` (guards added in `fix/complete-gameplay-reliability`) so a
+  stale timer cannot skip a question.
+- **One timer slot (`game.timer`).** Every arm helper must `clearTimer` first and only arm in
+  its own phase (`armBoardAdvance` only on `board`). Missing the phase guard let `setAuto(true)`
+  orphan the answer timer, which then revealed the question even after AUTO was turned off.
 - **With a single player the question auto-reveals the instant they answer**,
   so the host `Reveal` button never appears. Use **two** players for any host
   flow test.
@@ -955,9 +959,25 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   ⚠️ **The first 6.9.3 draft had this backwards** (gated reveal→board + board→next, left
   question→reveal automatic). Fixed in `5e46187`; owner rule: *with AUTO off the host owns the
   answer resolution; reveal→leaderboard is always automatic*.
+- **The ANSWER CLOCK is independent of AUTO (final clock audit).** The clock = `openedAt` +
+  `limitMs(question)` (`timeLimit·1000 + ANSWER_GRACE_MS`) and always runs; AUTO gates only the
+  **timer** (the scheduled auto-transition), never the clock's end time. `setAuto` never stops,
+  resets or shifts it.
+  ⚠️ **Real defect found + fixed (this revision):** `armBoardAdvance` had **no phase guard**, and
+  `setAuto(true)` calls it unconditionally — so toggling AUTO on during a **live question** armed a
+  5 s board timer on top of the answer timer, overwriting the single `game.timer` slot and
+  **orphaning** the answer timer; the orphan then fired at the real deadline and revealed the
+  question **even after AUTO was switched off again** (violated "AUTO off ⇒ no auto-resolution").
+  Fix: `armBoardAdvance` now `if (game.phase !== 'board') return;`, and `armQuestionClock` now
+  `clearTimer(game)` before arming. **Invariant: one timer slot; each arm helper clears first and
+  only arms in its own phase.** Regression tests: `gameplay-reliability.integration.test.ts` §C1
+  (clock independent of AUTO) + §C2 (on→off must not resolve; on→off→on resolves exactly once;
+  setAuto during lead doesn't disturb the countdown), using a new `FAST_QUIZ` (5 s limit + 1.5 s
+  grace = 6.5 s clock) to keep expiry tests quick.
 - Frontend: `autoLabel`/`autoHint` in `hostView.ts`; `host:auto` in `HostEventHandlers` (detach
   9→**10**); toggle in `pages/host.ts` (hidden in lobby + final, `data-auto-toggle`, `aria-pressed`),
   repainted from the broadcast AND the ACK. New `.show__auto` CSS from existing tokens only.
-- Counts: backend **419** (real PG), frontend **513**, shared **179**; typecheck/build/format:check/
-  lint green. Report: `docs/reports/phase-6-9-3-host-auto-control.md` (§8 = binding rule); roadmap
-  §9.6; `docs/phases.md` 6.9.3 row. **No push/PR/merge/deploy** (owner approval pending).
+- Counts: backend **426** (real PG), frontend **513**, shared **179**; typecheck/build/format:check/
+  lint green. Report: `docs/reports/phase-6-9-3-host-auto-control.md` (§3.2 correction note, §8 =
+  binding rule, §9 = clock independence); roadmap §9.6; `docs/phases.md` 6.9.3 row. **No
+  push/PR/merge/deploy** (owner approval pending).
