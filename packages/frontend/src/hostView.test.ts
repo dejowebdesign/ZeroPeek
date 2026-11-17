@@ -113,6 +113,10 @@ describe('hostScreen', () => {
     expect(hostScreen(state({ phase: 'lead' }))).toBe('lobby');
   });
 
+  it('shows the welcome screen when no game is under control (Phase 6.9.2)', () => {
+    expect(hostScreen(null)).toBe('welcome');
+  });
+
   function question() {
     return {
       id: 'q1',

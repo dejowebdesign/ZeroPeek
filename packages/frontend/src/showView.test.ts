@@ -11,7 +11,12 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicPlayer, PublicQuestion } from '@zeropeek/shared';
 
-import { leaderboardRow, podiumPlace, questionDisplayOptions } from './showView.js';
+import {
+  leaderboardRow,
+  participantCard,
+  podiumPlace,
+  questionDisplayOptions,
+} from './showView.js';
 
 function question(display: Record<string, unknown>): PublicQuestion {
   return {
@@ -79,6 +84,24 @@ describe('leaderboardRow', () => {
     const guest = leaderboardRow(player, 0);
     expect(guest.querySelector('.player-avatar--art')).toBeNull();
     expect(guest.querySelector('.player-avatar__initial')?.textContent).toBe('M');
+  });
+});
+
+describe('participantCard', () => {
+  it('shows the character tile with the name beneath (Phase 6.9.2)', () => {
+    const node = participantCard({ ...player, avatar: 'maya' });
+    expect(node.className).toBe('participant');
+    expect(node.querySelector('.participant__name')?.textContent).toBe('Maya');
+    const badge = node.querySelector('.player-avatar');
+    expect(badge?.classList.contains('player-avatar--lg')).toBe(true);
+    expect(badge?.classList.contains('player-avatar--head')).toBe(true);
+    expect(node.querySelector('.player-avatar__img')).not.toBeNull();
+  });
+
+  it('falls back to a letter badge for a guest with no artwork', () => {
+    const node = participantCard(player);
+    expect(node.querySelector('.player-avatar--art')).toBeNull();
+    expect(node.querySelector('.player-avatar__initial')?.textContent).toBe('M');
   });
 });
 

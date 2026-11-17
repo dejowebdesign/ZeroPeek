@@ -41,6 +41,21 @@ export function leaderboardRow(player: PublicPlayer, index: number): HTMLElement
 }
 
 /**
+ * One participant tile for the show's participants overview (scene 3, Phase
+ * 6.9.2). Shows the player's character (head crop) large with the name beneath,
+ * so a room full of players is recognisable from a distance. Reuses the same
+ * supplied artwork as the leaderboard; no image is generated.
+ */
+export function participantCard(player: PublicPlayer): HTMLElement {
+  return el(
+    'li',
+    { class: 'participant' },
+    playerAvatar(player.nickname, player.avatar, { size: 'lg', crop: 'head' }),
+    el('span', { class: 'participant__name' }, player.nickname),
+  );
+}
+
+/**
  * A podium place. `rank` is 1-based and drives the modifier class, so the
  * styling for gold, silver and bronze stays in the stylesheet. The winner's
  * **full character figure** is shown large, so the champion is recognisable from

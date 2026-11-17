@@ -168,6 +168,19 @@ describe('design-system components', () => {
     'show__option-label',
     'show__controls',
     'show__winner',
+    // Game-show skeleton (Phase 6.9.2): scene bar and participants overview.
+    'show__scene-bar',
+    'show__scene-label',
+    'show__scene-steps',
+    'show__present',
+    'lobby__title',
+    'lobby__welcome',
+    'lobby__participants',
+    'lobby__join',
+    'lobby--wide',
+    'participants',
+    'participant',
+    'participant__name',
     'leaderboard--show',
     'podium',
     'podium__place',
@@ -341,6 +354,51 @@ describe('beamer surface (Phase 6.1 fine-tuning)', () => {
     expect(countdown).toContain('conic-gradient');
     expect(countdown).toContain('var(--progress)');
     expect(countdown).not.toContain('url(');
+  });
+});
+
+describe('game-show skeleton (Phase 6.9.2)', () => {
+  it('draws the scene bar and participants from existing tokens, never a new colour', () => {
+    const bar = tokens.slice(tokens.indexOf('.show__scene-bar'));
+    expect(bar).toContain('var(--border)');
+    const tile = tokens.slice(tokens.indexOf('.participant {'));
+    expect(tile).toContain('var(--glass-raised)');
+    expect(tile).toContain('var(--radius)');
+  });
+
+  it('fades a scene change with opacity only, and stops under reduced motion', () => {
+    const fade = tokens.slice(
+      tokens.indexOf('@keyframes show-scene-fade'),
+      tokens.indexOf('@keyframes show-scene-fade') + 200,
+    );
+    expect(fade).toContain('opacity');
+    expect(fade).not.toContain('transform');
+    const reduce = tokens.slice(tokens.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reduce).toContain('.show__board');
+    expect(reduce).toContain('animation: none');
+  });
+
+  it('lays the participants grid out responsively', () => {
+    const grid = tokens.slice(tokens.indexOf('.participants {'));
+    expect(grid).toContain('grid-template-columns: repeat(auto-fit, minmax(140px, 1fr))');
+  });
+
+  it('never hides the host controls behind the scene bar', () => {
+    // The scene bar sits above the controls; the controls keep their own rules.
+    const bar = tokens.slice(
+      tokens.indexOf('.show__scene-bar'),
+      tokens.indexOf('.show__scene-label'),
+    );
+    expect(bar).not.toContain('display: none');
+    expect(tokens).toContain('.show__controls');
+  });
+
+  it('hides the host chrome only in presentation mode, and never removes it', () => {
+    const present = tokens.slice(tokens.indexOf('.show-presentation .show__controls'));
+    expect(present).toContain('display: none');
+    expect(present).toContain('.show__scene-steps');
+    // The toggle that leaves the mode stays visible.
+    expect(tokens).toContain('.show__present {');
   });
 });
 

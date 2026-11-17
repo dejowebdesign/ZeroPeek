@@ -25,7 +25,12 @@ import { appShell } from '../navigation.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
 import { ClockSync } from '../clockSync.js';
 import { playerAvatar } from '../avatar.js';
-import { leaderboardRow, podiumPlace, questionDisplayOptions } from '../showView.js';
+import {
+  leaderboardRow,
+  participantCard,
+  podiumPlace,
+  questionDisplayOptions,
+} from '../showView.js';
 import {
   attachHostHandlers,
   canAct,
@@ -39,6 +44,13 @@ import {
   revealBody,
   type HostEventHandlers,
 } from '../hostView.js';
+import {
+  ShowController,
+  samePhaseScenes,
+  sceneDefinition,
+  sceneInputOf,
+  type SceneInput,
+} from '../showScenes.js';
 import {
   brand,
   button,
@@ -106,6 +118,12 @@ let answerCountNode: HTMLElement | null = null;
 let lobbyPlayerCount = 0;
 /** The game currently being controlled, so a reconnect can re-request its state. */
 let activeGame: HostGame | null = null;
+/**
+ * The show scene controller (Phase 6.9.2). It folds the authoritative state into
+ * the current show scene and lets the host step between the scenes of a phase
+ * without touching the game. Presentation only.
+ */
+const show = new ShowController();
 /** The host's own connection state, shown in the control bar. */
 let connection: HostConnectionStatus = 'connected';
 /** Whether the socket has connected at least once (so a `connect` is a reconnect). */
@@ -410,13 +428,49 @@ type HostRender =
   | { kind: 'end'; players: PublicPlayer[] }
   | { kind: 'sync'; state: HostState };
 
+/** The authoritative descriptor a render input maps to (Phase 6.9.2). */
+function descriptorOf(input: HostRender): SceneInput {
+  switch (input.kind) {
+    case 'sync':
+      return sceneInputOf(input.state) ?? { phase: 'lobby', questionId: null };
+    case 'lobby':
+      return { phase: 'lobby', questionId: null };
+    case 'lead':
+      return { phase: 'lead', questionId: null };
+    case 'question':
+      return { phase: 'question', questionId: input.question.id };
+    case 'reveal':
+      return { phase: 'reveal', questionId: input.reveal.question.id };
+    case 'board':
+      return { phase: 'board', questionId: null };
+    default:
+      return { phase: 'end', questionId: null };
+  }
+}
+
+/** The last render input, so a presentation-only scene step can re-render it. */
+let lastRender: HostRender | null = null;
+
+/**
+ * Re-render the situation currently on screen. Used only after a presentation
+ * scene step: the descriptor is unchanged, so `show.sync` keeps the stepped
+ * scene and nothing about the game moves.
+ */
+function rerender(): void {
+  if (lastRender) renderHostState(lastRender);
+}
+
 /**
  * The single entry point for every host screen, whether it was triggered by a
  * live event or by a reconnect. Nothing here decides the phase from local
  * state: the payload already carries it, so the host always shows what the
- * server last said.
+ * server last said. The show controller (Phase 6.9.2) is folded in here so the
+ * scene is always derived from the same authoritative descriptor.
  */
 function renderHostState(input: HostRender): void {
+  lastRender = input;
+  show.sync(descriptorOf(input));
+
   if (input.kind === 'sync') {
     activeGame = { id: input.state.gameId, pin: input.state.pin };
     const screen = hostScreen(input.state);
@@ -445,6 +499,95 @@ function renderHostState(input: HostRender): void {
   }
 }
 
+/**
+ * Whether the show is in presentation mode (Phase 6.9.2). When on, the host
+ * controls and the scene bar are hidden so the beamer shows a clean stage; the
+ * toggle itself stays visible so the host can leave the mode. In-memory only —
+ * a reload returns to the steering view.
+ */
+let presentationMode = false;
+
+/** The `show-presentation` modifier, applied to the board of every scene. */
+function presentationClass(): string {
+  return presentationMode ? ' show-presentation' : '';
+}
+
+/**
+ * The presentation-mode toggle. It only shows or hides the host chrome; it sends
+ * no game command and changes no state the server owns.
+ */
+function presentationToggle(): HTMLElement {
+  return el(
+    'div',
+    { class: 'show__present' },
+    button(presentationMode ? 'Exit presentation' : 'Presentation mode', {
+      variant: 'ghost',
+      small: true,
+      ariaLabel: presentationMode
+        ? 'Leave presentation mode and show the host controls'
+        : 'Hide the host controls for a clean presentation',
+      onClick: () => {
+        presentationMode = !presentationMode;
+        rerender();
+      },
+    }),
+  );
+}
+
+/**
+ * The show scene bar (Phase 6.9.2): the current scene's name and presentation-
+ * only steps to the other scenes of the same phase. It sends no game command —
+ * stepping only changes what is drawn — so it cannot create an invalid state.
+ * Returns `null` for a phase with a single scene, so nothing is drawn where
+ * there is nothing to choose.
+ */
+function sceneBar(): HTMLElement | null {
+  const phase = show.currentPhase;
+  if (phase === null) return null;
+  const scenes = samePhaseScenes(phase);
+  const current = sceneDefinition(show.current);
+  const steppable = scenes.length > 1;
+
+  const steps = steppable
+    ? [
+        button('‹', {
+          small: true,
+          ariaLabel: 'Previous scene',
+          onClick: () => {
+            show.cycle(-1);
+            rerender();
+          },
+        }),
+        ...scenes.map((id) =>
+          button(sceneDefinition(id).title, {
+            variant: id === show.current ? 'primary' : 'ghost',
+            small: true,
+            disabled: id === show.current,
+            onClick: () => {
+              if (show.step(id)) rerender();
+            },
+          }),
+        ),
+        button('›', {
+          small: true,
+          ariaLabel: 'Next scene',
+          onClick: () => {
+            show.cycle(1);
+            rerender();
+          },
+        }),
+      ]
+    : [];
+
+  return el(
+    'div',
+    { class: 'show__scene-bar' },
+    el('span', { class: 'show__scene-label' }, `Scene ${current.order} of 13 · ${current.title}`),
+    steppable ? el('div', { class: 'show__scene-steps' }, ...steps) : null,
+    presentationToggle(),
+  );
+}
+
 /** Re-request a game's authoritative state and render the phase it reports. */
 async function resumeGame(gameId: string): Promise<void> {
   try {
@@ -463,6 +606,10 @@ async function showHome(): Promise<void> {
   stopTimer();
   answerCountNode = null;
   bannerNode = null;
+  // No game under control: the show resets to its client-side welcome scene and
+  // forgets the last render, so a later step cannot re-draw a finished game.
+  lastRender = null;
+  show.sync(null);
   try {
     const [{ quizzes }, { games }] = await Promise.all([
       get<{ quizzes: QuizSummary[] }>('/api/quizzes'),
@@ -720,10 +867,19 @@ function hostButton(
   return node;
 }
 
-/** The lobby screen with the join PIN and the growing player list. */
+/**
+ * The lobby-phase scenes (Phase 6.9.2): welcome, player join and participants.
+ * They are three views of the same server phase, so the host may step between
+ * them; only the join view steers (it carries the kick buttons). The join view
+ * keeps the exact markup the host console has always shown.
+ */
 function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
   stopTimer();
   answerCountNode = null;
+  const scene = show.current;
+
+  // The join view's live roster. Built for every view so a step back to `join`
+  // always shows the current players, but only wired into the DOM for `join`.
   const players = el('ul', { class: 'lobby__players' });
   const paint = (list: PublicPlayer[]): void => {
     lobbyPlayerCount = list.length;
@@ -739,6 +895,39 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
       ),
     );
   };
+  paint(initialPlayers);
+
+  let body: HTMLElement;
+  let wide = false;
+  if (scene === 'welcome') {
+    body = el(
+      'div',
+      { class: 'lobby__welcome' },
+      el('h2', { class: 'lobby__title' }, 'Welcome'),
+      el('p', { class: 'muted' }, 'ZeroPeek – the game show is about to begin.'),
+      el('p', { class: 'lobby__actions' }, chip(location.origin + '/', 'cyan')),
+    );
+  } else if (scene === 'participants') {
+    wide = true;
+    body = el(
+      'div',
+      { class: 'lobby__participants' },
+      el('h2', { class: 'lobby__title' }, 'Participants'),
+      el('p', { class: 'lobby__actions' }, chip(`${initialPlayers.length} player(s)`, 'cyan')),
+      initialPlayers.length
+        ? el('ol', { class: 'participants' }, ...initialPlayers.map(participantCard))
+        : el('p', { class: 'muted' }, 'No players have joined yet.'),
+    );
+  } else {
+    body = el(
+      'div',
+      { class: 'lobby__join' },
+      el('p', { class: 'muted' }, 'Join at this address with the PIN'),
+      el('p', { class: 'lobby__pin' }, pin),
+      el('p', { class: 'lobby__actions' }, chip(location.origin + '/', 'cyan')),
+      players,
+    );
+  }
 
   render(
     app,
@@ -747,18 +936,15 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
       { class: 'centered' },
       el(
         'div',
-        { class: 'card lobby anim-fade-in' },
+        { class: `card lobby anim-fade-in${wide ? ' lobby--wide' : ''}${presentationClass()}` },
         connectionBanner(),
-        el('p', { class: 'muted' }, 'Join at this address with the PIN'),
-        el('p', { class: 'lobby__pin' }, pin),
-        el('p', { class: 'lobby__actions' }, chip(location.origin + '/', 'cyan')),
-        players,
+        body,
+        sceneBar(),
         controlsFor('lobby'),
       ),
     ),
   );
 
-  paint(initialPlayers);
   setConnection(connection);
 }
 
@@ -835,11 +1021,12 @@ function showLead(lead: LeadState): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: 'show__board card anim-fade-in' },
+        { class: `show__board card anim-fade-in${presentationClass()}` },
         connectionBanner(),
         el('h2', { class: 'show__title' }, 'Get ready!'),
         el('p', { class: 'show__meta muted' }, 'The first question starts in'),
         timer,
+        sceneBar(),
         controlsFor('lead'),
       ),
     ),
@@ -866,6 +1053,13 @@ function showQuestion(
   else if (lobbyPlayerCount) count.textContent = `0 / ${lobbyPlayerCount} answers`;
 
   const options = questionDisplayOptions(question);
+  // The three question-phase scenes emphasise a different part of the same
+  // board (Phase 6.9.2): the full board (default), the options without the ring,
+  // or the ring without the options. Same data, same game — only the framing
+  // changes.
+  const scene = show.current;
+  const showOptions = options.length > 0 && scene !== 'countdown';
+  const showTimer = scene !== 'answers';
 
   render(
     app,
@@ -874,7 +1068,7 @@ function showQuestion(
       { class: 'centered show' },
       el(
         'div',
-        { class: 'show__board card question anim-fade-in' },
+        { class: `show__board card question anim-fade-in${presentationClass()}` },
         connectionBanner(),
         el(
           'div',
@@ -883,9 +1077,9 @@ function showQuestion(
         ),
         el('h2', { class: 'question__prompt' }, question.text),
         question.paused ? el('p', { class: 'show__paused' }, chip('Paused', 'warn', true)) : null,
-        timer,
+        showTimer ? timer : null,
         count,
-        options.length
+        showOptions
           ? el(
               'div',
               { class: 'show__options' },
@@ -899,6 +1093,7 @@ function showQuestion(
               ),
             )
           : null,
+        sceneBar(),
         controlsFor('question', question.paused, question.type),
       ),
     ),
@@ -935,6 +1130,11 @@ function showReveal(reveal: HostReveal): void {
   currentAnswers = null;
 
   const body = revealBody(reveal);
+  // The reveal phase has two scenes (Phase 6.9.2): the plain answer reveal and
+  // the "points awarded" view, which repeats the distribution under a points
+  // heading. Both read the same server reveal; the per-player deltas arrive in
+  // the payload and are shown in a later sub-phase.
+  const heading = show.current === 'points' ? 'Points awarded' : null;
 
   render(
     app,
@@ -943,9 +1143,11 @@ function showReveal(reveal: HostReveal): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: 'show__board card question anim-fade-in' },
+        { class: `show__board card question anim-fade-in${presentationClass()}` },
         connectionBanner(),
+        heading ? el('h2', { class: 'show__title' }, heading) : null,
         body,
+        sceneBar(),
         controlsFor('reveal'),
       ),
     ),
@@ -957,6 +1159,7 @@ function showReveal(reveal: HostReveal): void {
 function showBoard(players: PublicPlayer[]): void {
   stopTimer();
   answerCountNode = null;
+  const scene = show.current;
   render(
     app,
     el(
@@ -964,11 +1167,19 @@ function showBoard(players: PublicPlayer[]): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: 'show__board card anim-fade-in' },
+        { class: `show__board card anim-fade-in${presentationClass()}` },
         connectionBanner(),
-        el('h2', { class: 'show__title' }, 'Leaderboard'),
+        el('h2', { class: 'show__title' }, scene === 'final' ? 'Final round' : 'Leaderboard'),
+        scene === 'final'
+          ? el(
+              'p',
+              { class: 'show__meta muted' },
+              'The last round is coming up — here is the current standing.',
+            )
+          : null,
         el('p', { class: 'show__meta' }, chip(`${players.length} player(s)`, 'cyan')),
         el('ol', { class: 'leaderboard leaderboard--show' }, ...players.map(leaderboardRow)),
+        sceneBar(),
         controlsFor('board'),
       ),
     ),
@@ -981,6 +1192,10 @@ function showPodium(players: PublicPlayer[]): void {
   stopTimer();
   answerCountNode = null;
   const [first, second, third, ...rest] = players;
+  // The end phase has two scenes (Phase 6.9.2): the winner podium and the
+  // closing/thanks view. The outro keeps the final standing on screen and adds a
+  // short closing line; no report is fetched (the report stays on the console).
+  const outro = show.current === 'outro';
 
   render(
     app,
@@ -989,9 +1204,9 @@ function showPodium(players: PublicPlayer[]): void {
       { class: 'centered show' },
       el(
         'div',
-        { class: 'show__board card anim-pop' },
+        { class: `show__board card anim-pop${presentationClass()}` },
         connectionBanner(),
-        el('h2', { class: 'show__title' }, 'Final results'),
+        el('h2', { class: 'show__title' }, outro ? 'Thank you for playing' : 'Final results'),
         first ? el('p', { class: 'show__winner' }, `Winner: ${first.nickname}`) : null,
         el(
           'ol',
@@ -1007,6 +1222,8 @@ function showPodium(players: PublicPlayer[]): void {
               ...rest.map((player, index) => leaderboardRow(player, index + 3)),
             )
           : null,
+        outro ? el('p', { class: 'show__meta muted' }, 'See you at the next round.') : null,
+        sceneBar(),
         controlsFor('end'),
       ),
     ),
