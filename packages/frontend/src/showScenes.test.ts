@@ -226,60 +226,30 @@ describe('ShowController transitions', () => {
     expect(controller.sync(input('reveal', 'q1'), 3)).toBe('reveal');
   });
 
-  it('resets to the question scene when a new question opens', () => {
+  it('always re-derives the scene from the phase, even for the same phase', () => {
     const controller = new ShowController();
-    controller.sync(input('question', 'q1'), 1);
-    expect(controller.step('countdown')).toBe(true);
-    expect(controller.current).toBe('countdown');
-    // The next question is a new situation, so the sub-scene resets.
+    expect(controller.sync(input('question', 'q1'), 1)).toBe('question');
+    // A new question is the same phase: the show stays on the question scene.
     expect(controller.sync(input('question', 'q2'), 2)).toBe('question');
+    // A same-phase re-render (e.g. a pause) cannot park the show elsewhere.
+    expect(controller.sync(input('question', 'q2'), 3)).toBe('question');
   });
 
-  it('lets the host step between scenes of the current phase only', () => {
-    const controller = new ShowController();
-    controller.sync(input('board'), 1);
-    expect(controller.step('final')).toBe(true);
-    // A re-render of the same phase keeps the host's chosen sub-scene.
-    expect(controller.sync(input('board'), 2)).toBe('final');
-    // Stepping into another phase's scene is refused (presentation only).
-    expect(controller.step('reveal')).toBe(false);
-    expect(controller.current).toBe('final');
-  });
-
-  it('lets the host step to the welcome and participants scenes in the lobby', () => {
+  it('follows the server across every phase boundary', () => {
     const controller = new ShowController();
     expect(controller.sync(input('lobby'), 1)).toBe('join');
-    expect(controller.step('welcome')).toBe(true);
-    expect(controller.current).toBe('welcome');
-    expect(controller.step('participants')).toBe(true);
-    expect(controller.current).toBe('participants');
-    // A question scene is still refused from the lobby.
-    expect(controller.step('question')).toBe(false);
+    expect(controller.sync(input('lead'), 2)).toBe('start');
+    expect(controller.sync(input('question', 'q1'), 3)).toBe('question');
+    expect(controller.sync(input('reveal', 'q1'), 4)).toBe('reveal');
+    expect(controller.sync(input('board'), 5)).toBe('leaderboard');
+    expect(controller.sync(input('end'), 6)).toBe('podium');
   });
 
-  it('refuses to step while no game is under control', () => {
+  it('returns to the welcome scene when the game is released', () => {
     const controller = new ShowController();
-    expect(controller.sync(null, 1)).toBe('welcome');
-    expect(controller.step('join')).toBe(false);
-    expect(controller.cycle(1)).toBe('welcome');
-    expect(controller.steppable).toBe(false);
-  });
-
-  it('cycles through the current phase’s scenes and wraps', () => {
-    const controller = new ShowController();
-    controller.sync(input('question', 'q1'), 1);
-    expect(controller.steppable).toBe(true);
-    expect(controller.cycle(1)).toBe('answers');
-    expect(controller.cycle(1)).toBe('countdown');
-    expect(controller.cycle(1)).toBe('question');
-    expect(controller.cycle(-1)).toBe('countdown');
-  });
-
-  it('has a single scene for the lead phase, so there is nothing to cycle', () => {
-    const controller = new ShowController();
-    controller.sync(input('lead'), 1);
-    expect(controller.steppable).toBe(false);
-    expect(controller.cycle(1)).toBe('start');
+    controller.sync(input('board'), 1);
+    expect(controller.sync(null, 2)).toBe('welcome');
+    expect(controller.currentPhase).toBeNull();
   });
 
   it('never invents a phase: the scene always comes from the descriptor', () => {
@@ -292,12 +262,11 @@ describe('ShowController transitions', () => {
 });
 
 describe('scene model stays presentation-only', () => {
-  it('exposes no scoring, answering or phase-changing method', () => {
+  it('exposes no scoring, answering, phase-changing or navigation method', () => {
     const controller = new ShowController();
     const surface = Object.getOwnPropertyNames(Object.getPrototypeOf(controller));
-    // Only presentation methods; the game itself is driven by the server.
-    expect(surface.sort()).toEqual(
-      ['constructor', 'current', 'currentPhase', 'cycle', 'step', 'steppable', 'sync'].sort(),
-    );
+    // Only the derivation surface; the game — and therefore the scene — is
+    // driven entirely by the server.
+    expect(surface.sort()).toEqual(['constructor', 'current', 'currentPhase', 'sync'].sort());
   });
 });

@@ -44,13 +44,7 @@ import {
   revealBody,
   type HostEventHandlers,
 } from '../hostView.js';
-import {
-  ShowController,
-  samePhaseScenes,
-  sceneDefinition,
-  sceneInputOf,
-  type SceneInput,
-} from '../showScenes.js';
+import { ShowController, sceneDefinition, sceneInputOf, type SceneInput } from '../showScenes.js';
 import {
   brand,
   button,
@@ -535,55 +529,23 @@ function presentationToggle(): HTMLElement {
 }
 
 /**
- * The show scene bar (Phase 6.9.2): the current scene's name and presentation-
- * only steps to the other scenes of the same phase. It sends no game command —
- * stepping only changes what is drawn — so it cannot create an invalid state.
- * Returns `null` for a phase with a single scene, so nothing is drawn where
- * there is nothing to choose.
+ * The show scene bar (Phase 6.9.2): the current scene's name and the
+ * presentation-mode toggle. The scene is **display-only** — it is derived from
+ * the authoritative game phase on every render, so it always follows the game
+ * and can never be parked on a scene the server is not in. There is deliberately
+ * no manual scene navigation: a host step could show a scene the game is not in,
+ * which is exactly the host ↔ beamer contradiction the concept forbids (§10.1).
+ * Returns `null` while no game is under control.
  */
 function sceneBar(): HTMLElement | null {
   const phase = show.currentPhase;
   if (phase === null) return null;
-  const scenes = samePhaseScenes(phase);
   const current = sceneDefinition(show.current);
-  const steppable = scenes.length > 1;
-
-  const steps = steppable
-    ? [
-        button('‹', {
-          small: true,
-          ariaLabel: 'Previous scene',
-          onClick: () => {
-            show.cycle(-1);
-            rerender();
-          },
-        }),
-        ...scenes.map((id) =>
-          button(sceneDefinition(id).title, {
-            variant: id === show.current ? 'primary' : 'ghost',
-            small: true,
-            disabled: id === show.current,
-            onClick: () => {
-              if (show.step(id)) rerender();
-            },
-          }),
-        ),
-        button('›', {
-          small: true,
-          ariaLabel: 'Next scene',
-          onClick: () => {
-            show.cycle(1);
-            rerender();
-          },
-        }),
-      ]
-    : [];
 
   return el(
     'div',
     { class: 'show__scene-bar' },
     el('span', { class: 'show__scene-label' }, `Scene ${current.order} of 13 · ${current.title}`),
-    steppable ? el('div', { class: 'show__scene-steps' }, ...steps) : null,
     presentationToggle(),
   );
 }

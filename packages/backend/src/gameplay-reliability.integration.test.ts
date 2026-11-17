@@ -202,6 +202,57 @@ describe.skipIf(!available)('gameplay reliability', () => {
       expect(reveals).toBe(1);
       expect(boards).toBe(1);
     });
+
+    it('a duplicate `board` does not clear the auto-advance and strand the game', async () => {
+      // The host double-clicks "Leaderboard" (or the reveal's auto-timer races a
+      // manual click). The second `board` is a no-op, but it must not clear the
+      // leaderboard's own auto-advance timer — otherwise the game sits on the
+      // board forever with nothing left to move it on.
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+      expect(await engine.board(gameId)).toBe('board');
+
+      // The board timer must still fire and open the next question.
+      await new Promise((resolve) => setTimeout(resolve, BOARD_MS + 400));
+
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('question');
+      expect(game.currentIndex).toBe(1);
+      expect(engine.publicQuestion(game).id).toBe(TWO_QUESTION_QUIZ.questions[1]!.id);
+    }, 20_000);
+
+    it('a duplicate `reveal` does not clear the auto-advance and strand the game', async () => {
+      // The auto-reveal (everyone answered) races a manual host reveal, or the
+      // host double-clicks "Reveal". The second `reveal` is a no-op, but it must
+      // not clear the reveal's auto-advance timer, or the game is stuck on the
+      // reveal screen forever.
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.reveal(gameId);
+      expect(await engine.reveal(gameId)).toBe('reveal');
+
+      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
+      expect((await engine.get(gameId)).phase).toBe('board');
+    }, 20_000);
+
+    it('a duplicate `board` racing the reveal timer still reaches the next question', async () => {
+      // Realistic stall trigger: the host clicks "Leaderboard" right as the
+      // reveal's 6 s auto-timer fires. The reveal timer calls `board` on a game
+      // already in `board`; that no-op must not cancel the board's timer.
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.reveal(gameId);
+      // Wait for the reveal auto-timer to fire `board`.
+      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
+      expect((await engine.get(gameId)).phase).toBe('board');
+      // The stale reveal callback's duplicate `board` — reproduced by a manual
+      // duplicate click at the same moment.
+      expect(await engine.board(gameId)).toBe('board');
+
+      await new Promise((resolve) => setTimeout(resolve, BOARD_MS + 400));
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('question');
+      expect(game.currentIndex).toBe(1);
+    }, 30_000);
   });
 
   describe('B – restart recovery for every phase', () => {
