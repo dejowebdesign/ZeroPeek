@@ -314,7 +314,7 @@ function ensureSocket(): HostSocket {
       },
       board: (payload) => {
         lastLiveEventAt = Date.now();
-        renderHostState({ kind: 'board', players: payload.players });
+        renderHostState({ kind: 'board', players: payload.players, hasNext: payload.hasNext });
       },
       ended: (payload) => {
         lastLiveEventAt = Date.now();
@@ -436,7 +436,7 @@ type HostRender =
       answers?: { answered: number; total: number } | null;
     }
   | { kind: 'reveal'; reveal: HostReveal }
-  | { kind: 'board'; players: PublicPlayer[] }
+  | { kind: 'board'; players: PublicPlayer[]; hasNext: boolean }
   | { kind: 'end'; players: PublicPlayer[] }
   | { kind: 'sync'; state: HostState };
 
@@ -482,7 +482,7 @@ function renderHostState(input: HostRender): void {
     if (screen === 'lobby') return showLobby(input.state.pin, input.state.players ?? []);
     if (screen === 'lead' && input.state.lead) return showLead(input.state.lead);
     if (screen === 'reveal' && input.state.reveal) return showReveal(input.state.reveal);
-    if (screen === 'board') return showBoard(input.state.players ?? []);
+    if (screen === 'board') return showBoard(input.state.players ?? [], input.state.hasNext);
     if (screen === 'end') return showPodium(input.state.players ?? input.state.podium ?? []);
     if (input.state.question) return showQuestion(input.state.question, input.state.answers);
     return showLobby(input.state.pin, input.state.players ?? []);
@@ -498,7 +498,7 @@ function renderHostState(input: HostRender): void {
     case 'reveal':
       return showReveal(input.reveal);
     case 'board':
-      return showBoard(input.players);
+      return showBoard(input.players, input.hasNext);
     default:
       return showPodium(input.players);
   }
@@ -801,8 +801,13 @@ function currentGameId(): string {
  * always match the server's phase (hostView §hostActions). Ending and skipping
  * keep a confirmation dialog; `home` leaves the game instead of commanding it.
  */
-function controlsFor(phase: GamePhase, isPaused = false, type?: QuestionType): HTMLElement {
-  const nodes = hostActions(phase, isPaused, type).map((action) => {
+function controlsFor(
+  phase: GamePhase,
+  isPaused = false,
+  type?: QuestionType,
+  hasNext = true,
+): HTMLElement {
+  const nodes = hostActions(phase, isPaused, type, hasNext).map((action) => {
     if (action.id === 'home') {
       return button(action.label, {
         variant: action.variant,
@@ -814,42 +819,56 @@ function controlsFor(phase: GamePhase, isPaused = false, type?: QuestionType): H
       });
     }
     if (action.id === 'end') {
-      const node = hostButton(action.label, 'host:end', { variant: action.variant });
-      node.onclick = () => {
-        confirmDialog({
+      return hostButton(action.label, 'host:end', {
+        variant: action.variant,
+        confirm: {
           title: 'End the game now?',
           body: 'The current question ends immediately and the final results are shown. This cannot be undone.',
           confirmLabel: 'End game',
-          onConfirm: () => void send('host:end'),
-        });
-      };
-      return node;
+        },
+      });
     }
     if (action.id === 'skip') {
-      const node = hostButton(action.label, 'host:skip', { variant: action.variant });
-      node.onclick = () => {
-        confirmDialog({
+      return hostButton(action.label, 'host:skip', {
+        variant: action.variant,
+        confirm: {
           title: 'Skip this question?',
           body: 'The question ends and is shown without its solution. It is not scored; answers already given stay on record.',
           confirmLabel: 'Skip question',
-          onConfirm: () => void send('host:skip'),
-        });
-      };
-      return node;
+        },
+      });
     }
     return hostButton(action.label, `host:${action.id}`, { variant: action.variant });
   });
   return el('div', { class: 'show__controls' }, ...nodes);
 }
 
-/** A control button, tagged so `setConnection` can disable every host action at
- * once while the socket is down. */
+/**
+ * A control button, tagged so `setConnection` can disable every host action at
+ * once while the socket is down. When `confirm` is given the command is sent
+ * **only** after the dialog is accepted: the button's own click action is the
+ * confirmation, never an extra listener on top of a direct send.
+ */
 function hostButton(
   label: string,
   action: string,
-  options: { variant?: 'primary' | 'danger' } = {},
+  options: {
+    variant?: 'primary' | 'danger';
+    confirm?: { title: string; body: string; confirmLabel: string };
+  } = {},
 ): HTMLButtonElement {
-  const node = button(label, { variant: options.variant, onClick: () => void send(action) });
+  const node = button(label, {
+    variant: options.variant,
+    onClick: options.confirm
+      ? () =>
+          confirmDialog({
+            title: options.confirm!.title,
+            body: options.confirm!.body,
+            confirmLabel: options.confirm!.confirmLabel,
+            onConfirm: () => void send(action),
+          })
+      : () => void send(action),
+  });
   node.setAttribute('data-host-action', action);
   return node;
 }
@@ -1143,7 +1162,7 @@ function showReveal(reveal: HostReveal): void {
 }
 
 /** The leaderboard screen. */
-function showBoard(players: PublicPlayer[]): void {
+function showBoard(players: PublicPlayer[], hasNext = true): void {
   stopTimer();
   answerCountNode = null;
   const scene = show.current;
@@ -1167,7 +1186,7 @@ function showBoard(players: PublicPlayer[]): void {
         el('p', { class: 'show__meta' }, chip(`${players.length} player(s)`, 'cyan')),
         el('ol', { class: 'leaderboard leaderboard--show' }, ...players.map(leaderboardRow)),
         autoToggle(),
-        controlsFor('board'),
+        controlsFor('board', false, undefined, hasNext),
       ),
     ),
   );

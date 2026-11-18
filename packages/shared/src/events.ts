@@ -236,6 +236,14 @@ export interface HostState {
    * the authoritative value.
    */
   ranks: RankDelta[] | null;
+  /**
+   * Whether a further question follows the one just played. Only meaningful on
+   * the `board`, where it decides whether the host is offered `Next question`:
+   * it is `false` on the last leaderboard, so no control suggests a question that
+   * does not exist. Derived server-side from the quiz length, so a host that
+   * reloads or reconnects on the board restores exactly the right controls.
+   */
+  hasNext: boolean;
 }
 
 /** The host's own connection state, as shown in the control bar. */
@@ -376,9 +384,15 @@ export interface HostServerEvents {
   'host:reveal': (payload: HostReveal & { points: PointsDelta[] }) => void;
   /**
    * The leaderboard, plus the per-player rank movements (Phase 6.9.1). `ranks`
-   * is presentation only; `players` stays the authoritative ordering.
+   * is presentation only; `players` stays the authoritative ordering. `hasNext`
+   * tells the host whether a further question follows, so `Next question` is only
+   * offered when it would do something.
    */
-  'host:board': (payload: { players: PublicPlayer[]; ranks: RankDelta[] }) => void;
+  'host:board': (payload: {
+    players: PublicPlayer[];
+    ranks: RankDelta[];
+    hasNext: boolean;
+  }) => void;
   'host:ended': (payload: { players: PublicPlayer[] }) => void;
   'host:error': (payload: { message: string }) => void;
   /** The running question was paused; the timer is frozen (Phase 6.5.3). */

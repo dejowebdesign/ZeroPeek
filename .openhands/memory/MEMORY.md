@@ -981,3 +981,17 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   lint green. Report: `docs/reports/phase-6-9-3-host-auto-control.md` (§3.2 correction note, §8 =
   binding rule, §9 = clock independence); roadmap §9.6; `docs/phases.md` 6.9.3 row. **No
   push/PR/merge/deploy** (owner approval pending).
+- **Host-control fix (2026-11-18, branch `fix/host-next-skip-confirmation`, commit `09ad746`).**
+  Report `docs/reports/host-next-and-confirmation-fix.md`; roadmap §9.7; `docs/phases.md` 6.9.4.
+  1. ⚠️ **`el()` uses `addEventListener`** — so binding a command via `onClick` and then adding
+     `node.onclick = …` runs **both** handlers. That made Skip/End send **immediately** and open the
+     confirm dialog (Cancel could not undo). Fix: `hostButton(..., { confirm })` makes the dialog the
+     button's only click action; the command is sent from `onConfirm`. **Invariant: one handler per
+     button — never `onClick` + a second `onclick`.**
+  2. The board always showed **Next question**, even on the **last** board. New server-derived
+     `hasNext` on the `board` event + `HostState` (forwarded by `socket.ts`); `hostActions(phase,
+     paused, type, hasNext)` omits `next` when false. Display only — `engine.next` still refuses a
+     non-`board` phase. `HostState` fixtures in hostView/hostPage/showScenes tests needed `hasNext`
+     (playerView did not).
+  Counts: backend **429**, frontend **519**, shared **179**; all gates green. **No push/PR/merge.**
+

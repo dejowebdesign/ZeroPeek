@@ -118,7 +118,7 @@ export interface EngineEvents {
   question: [{ gameId: string; question: PublicQuestion }];
   answers: [{ gameId: string; questionId: string; answered: number; total: number }];
   reveal: [{ gameId: string; reveal: HostReveal; points: PointsDelta[] }];
-  board: [{ gameId: string; players: PublicPlayer[]; ranks: RankDelta[] }];
+  board: [{ gameId: string; players: PublicPlayer[]; ranks: RankDelta[]; hasNext: boolean }];
   ended: [{ gameId: string; players: PublicPlayer[] }];
   paused: [{ gameId: string; questionId: string; remainingMs: number }];
   resumed: [{ gameId: string; questionId: string; remainingMs: number }];
@@ -546,6 +546,11 @@ export class GameEngine extends EventEmitter<EngineEvents> {
   /** The current question, or null when there is none. */
   currentQuestion(game: RuntimeGame): Question | null {
     return game.quiz.questions[game.currentIndex] ?? null;
+  }
+
+  /** Whether a question follows the current index (used to gate `Next`). */
+  private hasNextQuestion(game: RuntimeGame): boolean {
+    return game.currentIndex + 1 < game.quiz.questions.length;
   }
 
   /** The public (solution-free) view of the current question. */
@@ -1237,6 +1242,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       lead: null,
       points: null,
       ranks: null,
+      hasNext: false,
     };
 
     // The start countdown (Phase 6.9.1): a host that reconnects mid-countdown
@@ -1286,6 +1292,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
         players: this.leaderboard(game),
         skipped,
         ranks: await this.rankDeltas(game, question.id),
+        hasNext: this.hasNextQuestion(game),
       };
     }
 
@@ -1617,7 +1624,12 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     // the same persisted deltas the reveal used, so the two screens always agree.
     const question = this.currentQuestion(game);
     const ranks = question ? await this.rankDeltas(game, question.id) : [];
-    this.emit('board', { gameId, players: this.leaderboard(game), ranks });
+    this.emit('board', {
+      gameId,
+      players: this.leaderboard(game),
+      ranks,
+      hasNext: this.hasNextQuestion(game),
+    });
 
     // AUTO only (Phase 6.9.3): arm the advance to the next question. With AUTO off
     // the host starts the next round by hand, so the leaderboard stays on screen

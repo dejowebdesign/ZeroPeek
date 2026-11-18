@@ -545,8 +545,8 @@ export function attachSocketIO(
     hosts.to(hostRoom(gameId)).emit('host:auto', { auto });
   });
 
-  engine.on('board', ({ gameId, players: list, ranks }) => {
-    hosts.to(hostRoom(gameId)).emit('host:board', { players: list, ranks });
+  engine.on('board', ({ gameId, players: list, ranks, hasNext }) => {
+    hosts.to(hostRoom(gameId)).emit('host:board', { players: list, ranks, hasNext });
     players.to(playerRoom(gameId)).emit('game:board', { players: list });
   });
 
