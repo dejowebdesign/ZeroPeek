@@ -282,6 +282,50 @@ describe.skipIf(!available)('gameplay reliability', () => {
     }, 30_000);
   });
 
+  describe('A2 – the board reports whether a further question exists', () => {
+    it('carries hasNext: true on a board that is not the last question', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      const boards: Array<{ hasNext: boolean }> = [];
+      engine.on('board', (payload) => boards.push(payload));
+
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+
+      // Two questions, currently on the first: a next question exists.
+      expect(boards.at(-1)?.hasNext).toBe(true);
+      expect((await engine.hostState(await engine.get(gameId))).hasNext).toBe(true);
+    });
+
+    it('carries hasNext: false on the last question’s board', async () => {
+      const { gameId } = await startedGame(oneQuizId);
+      const boards: Array<{ hasNext: boolean }> = [];
+      engine.on('board', (payload) => boards.push(payload));
+
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+
+      // The single question is the last one, so no Next is offered.
+      expect(boards.at(-1)?.hasNext).toBe(false);
+      expect((await engine.hostState(await engine.get(gameId))).hasNext).toBe(false);
+    });
+
+    it('reports hasNext: false on the final board of a two-question quiz', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      const boards: Array<{ hasNext: boolean }> = [];
+      engine.on('board', (payload) => boards.push(payload));
+
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+      await engine.next(gameId);
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+
+      // First board had a next question; the last one does not.
+      expect(boards.map((b) => b.hasNext)).toEqual([true, false]);
+      expect((await engine.hostState(await engine.get(gameId))).hasNext).toBe(false);
+    });
+  });
+
   describe('B – restart recovery for every phase', () => {
     it('re-arms the auto-advance after a restart during reveal', async () => {
       const { gameId } = await startedGame(twoQuizId);

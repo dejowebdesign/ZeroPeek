@@ -48,6 +48,7 @@ function state(overrides: Partial<HostState> = {}): HostState {
     lead: null,
     points: null,
     ranks: null,
+    hasNext: false,
     ...overrides,
   };
 }
@@ -182,6 +183,16 @@ describe('hostActions', () => {
     for (const forbidden of ['start', 'reveal', 'board', 'next', 'end', 'skip']) {
       expect(ids).not.toContain(forbidden);
     }
+  });
+
+  it('offers Next only while a further question exists', () => {
+    // On the last leaderboard there is no next question, so the only control is
+    // End game — a dead Next would suggest a question that does not exist.
+    expect(hostActions('board', false, undefined, false).map((a) => a.id)).toEqual(['end']);
+    expect(hostActions('board', false, undefined, true).map((a) => a.id)).toEqual(['next', 'end']);
+    // The gate is board-only: `hasNext` never adds or removes another phase's
+    // controls.
+    expect(hostActions('reveal', false, undefined, false).map((a) => a.id)).toEqual(['board']);
   });
 
   it('marks only the destructive actions as such', () => {

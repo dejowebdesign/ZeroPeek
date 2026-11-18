@@ -74,6 +74,7 @@ function state(overrides: Partial<HostState> = {}): HostState {
     lead: null,
     points: null,
     ranks: null,
+    hasNext: false,
     ...overrides,
   };
 }

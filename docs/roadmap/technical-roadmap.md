@@ -626,6 +626,30 @@ ANSWER_GRACE_MS`); sie ist die einzige Quelle der Wahrheit und läuft **immer**,
 
 Report: `docs/reports/phase-6-9-3-host-auto-control.md`.
 
+### 9.7 Korrektur: Bestätigungsdialog und Next-Schaltfläche der Host-Steuerung
+
+Zwei Fehler aus dem Praxistest der Phase 6.9.3, beide rein in der Host-Steuerung. Rein additiv
+auf dem bestehenden Event; **keine** Schemaänderung, **keine** Migration, **keine** Spielregel
+geändert.
+
+- **Bestätigung wurde umgangen (Skip/Ende):** `hostButton()` band den Befehl bereits über den
+  `onClick` (`el()` nutzt `addEventListener`). `controlsFor()` legte danach einen **zweiten**
+  Handler per `node.onclick` darüber, der nur den Dialog öffnete. Beide liefen: der Befehl wurde
+  **sofort** gesendet **und** der Dialog öffnete sich — „Abbrechen“ konnte das Senden nicht mehr
+  zurücknehmen. Behoben: `hostButton()` erhält ein optionales `confirm`; ist es gesetzt, ist das
+  Öffnen des Dialogs die **einzige** Klick-Aktion, und der Befehl wird erst aus `onConfirm`
+  gesendet. Der Befehl und der Dialog können sich damit nicht mehr doppelt auslösen.
+- **Next-Schaltfläche unzuverlässig:** Die Rangliste zeigte **immer** „Next question“, auch auf der
+  **letzten** Rangliste, wo der nächste Klick das Spiel beendet. Der Client hatte keine Information,
+  um „weitere Frage vorhanden“ von „letzte Frage“ zu unterscheiden. Behoben: neues, serverseitig
+  abgeleitetes `hasNext` in `HostState` und im `host:board`-Ereignis; `hostActions()` lässt `next`
+  nur bei `hasNext` zu. Ein Reload/Reconnect auf der Rangliste stellt damit exakt die richtigen
+  Schaltflächen wieder her.
+- **Anzeige ist keine Sicherheitsgrenze:** Das Ausblenden von `next` schützt nichts; `engine.next`
+  weist jede nicht-`board`-Phase weiterhin zurück.
+
+Report: `docs/reports/host-next-and-confirmation-fix.md`.
+
 ---
 
 ## 10. Phase 6.9 – Game-Show-Modus (in der bestehenden Host-Ansicht)

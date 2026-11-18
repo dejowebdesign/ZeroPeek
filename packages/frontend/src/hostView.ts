@@ -108,14 +108,21 @@ export interface HostAction {
  *              refuses a plain reveal, so only `resume` and `skip` are offered
  *              — the two ways the engine allows a paused question to move on.
  *   reveal   – board (engine.board)
- *   board    – next (engine.next) and end (engine.end)
+ *   board    – next (engine.next) and end (engine.end); `next` is only offered
+ *              while a further question exists (`hasNext`), so the last
+ *              leaderboard shows `End game` alone instead of a dead `Next`
  *   end      – none; only returning home, which is not a game action
  *
  * This is display only. Hiding a button is not a security measure: the server
  * re-checks the phase (and the pause) on every command and `engine` refuses an
  * illegal one.
  */
-export function hostActions(phase: GamePhase, paused = false, type?: QuestionType): HostAction[] {
+export function hostActions(
+  phase: GamePhase,
+  paused = false,
+  type?: QuestionType,
+  hasNext = true,
+): HostAction[] {
   switch (phase) {
     case 'lobby':
       return [{ id: 'start', label: 'Start game', variant: 'primary' }];
@@ -146,7 +153,9 @@ export function hostActions(phase: GamePhase, paused = false, type?: QuestionTyp
       return [{ id: 'board', label: 'Leaderboard', variant: 'primary' }];
     case 'board':
       return [
-        { id: 'next', label: 'Next question', variant: 'primary' },
+        ...(hasNext
+          ? [{ id: 'next' as const, label: 'Next question', variant: 'primary' as const }]
+          : []),
         { id: 'end', label: 'End game', variant: 'danger' },
       ];
     default:
@@ -218,7 +227,7 @@ export interface HostEventHandlers {
   question: (question: PublicQuestion) => void;
   answers: (payload: { questionId: string; answered: number; total: number }) => void;
   reveal: (payload: HostReveal & { points: PointsDelta[] }) => void;
-  board: (payload: { players: PublicPlayer[]; ranks: RankDelta[] }) => void;
+  board: (payload: { players: PublicPlayer[]; ranks: RankDelta[]; hasNext: boolean }) => void;
   ended: (payload: { players: PublicPlayer[] }) => void;
   paused: (payload: { questionId: string; remainingMs: number }) => void;
   resumed: (payload: { questionId: string; remainingMs: number }) => void;

@@ -18,6 +18,8 @@ type Handler = (...args: unknown[]) => void;
 class FakeSocket {
   handlers = new Map<string, Set<Handler>>();
   routes = new Map<string, (payload: unknown) => unknown>();
+  /** Every event name passed to `emit`, so a test can assert what was sent. */
+  sent: string[] = [];
 
   on(event: string, fn: Handler): this {
     if (!this.handlers.has(event)) this.handlers.set(event, new Set());
@@ -36,6 +38,7 @@ class FakeSocket {
     return this.on(event, wrap);
   }
   emit(event: string, payload: unknown, ack?: (reply: unknown) => void): this {
+    this.sent.push(event);
     const route = this.routes.get(event);
     if (route && ack) {
       try {
@@ -94,6 +97,15 @@ const clickButton = (label: string): void => {
         .join('|')}`,
     );
   }
+  node.click();
+};
+
+/** Click a button inside the open confirmation dialog, by its visible label. */
+const clickDialogButton = (label: string): void => {
+  const node = [...document.querySelectorAll<HTMLButtonElement>('.dialog button')].find((b) =>
+    (b.textContent ?? '').includes(label),
+  );
+  if (!node) throw new Error(`no dialog button "${label}"`);
   node.click();
 };
 
@@ -156,6 +168,7 @@ function lobbyState(): HostState {
     lead: null,
     points: null,
     ranks: null,
+    hasNext: false,
   };
 }
 
@@ -206,6 +219,7 @@ async function enterLobby(): Promise<void> {
 beforeEach(() => {
   fake.handlers.clear();
   fake.routes.clear();
+  fake.sent = [];
   stubFetch();
 });
 
@@ -244,6 +258,7 @@ describe('host page – no presentation chrome, and the AUTO toggle', () => {
     fake.trigger('host:board', {
       players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
       ranks: [],
+      hasNext: true,
     });
     await vi.waitFor(() => {
       if (!screen().includes('Leaderboard')) throw new Error('board not shown');
@@ -338,5 +353,145 @@ describe('host page – no presentation chrome, and the AUTO toggle', () => {
     fake.trigger('host:auto', { auto: true });
     expect(autoText()).toBe('AUTO: On');
     expect(screen()).toContain('Question 1 of 3');
+  });
+});
+
+describe('host page – destructive controls and the leaderboard advance', () => {
+  it('sends host:skip only after the confirmation is accepted', async () => {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+    fake.routes.set('host:skip', () => ({ phase: 'reveal' }));
+
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    fake.trigger('host:question', publicQuestion(0, 'q1'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Question 1 of 3')) throw new Error('question not shown');
+    });
+    fake.sent = [];
+
+    // Opening the dialog must not send anything: a stray send here would end the
+    // question before the host decided. Regression for the double-bound handler
+    // (`hostButton` already sent, then `onclick` opened the dialog on top).
+    clickButton('Skip question');
+    expect(fake.sent).toEqual([]);
+    expect(document.querySelectorAll('.dialog').length).toBe(1);
+
+    // Cancel leaves the game untouched and sends nothing.
+    clickDialogButton('Cancel');
+    expect(fake.sent).toEqual([]);
+    expect(document.querySelectorAll('.dialog').length).toBe(0);
+
+    // Confirming sends exactly one command.
+    clickButton('Skip question');
+    clickDialogButton('Skip question');
+    await vi.waitFor(() => {
+      if (fake.sent.length !== 1) throw new Error('host:skip not sent exactly once');
+    });
+    expect(fake.sent).toEqual(['host:skip']);
+  });
+
+  it('sends host:end only after the confirmation is accepted', async () => {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+    fake.routes.set('host:end', () => ({ phase: 'end' }));
+
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    fake.trigger('host:board', {
+      players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
+      ranks: [],
+      hasNext: false,
+    });
+    await vi.waitFor(() => {
+      if (!screen().includes('Leaderboard')) throw new Error('board not shown');
+    });
+    fake.sent = [];
+
+    clickButton('End game');
+    expect(fake.sent).toEqual([]);
+    clickDialogButton('Cancel');
+    expect(fake.sent).toEqual([]);
+
+    clickButton('End game');
+    clickDialogButton('End game');
+    await vi.waitFor(() => {
+      if (fake.sent.length !== 1) throw new Error('host:end not sent exactly once');
+    });
+    expect(fake.sent).toEqual(['host:end']);
+  });
+
+  it('offers Next question on the board while a further question exists', async () => {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+    fake.routes.set('host:next', () => ({ phase: 'question' }));
+
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    fake.trigger('host:board', {
+      players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
+      ranks: [],
+      hasNext: true,
+    });
+    await vi.waitFor(() => {
+      if (!screen().includes('Leaderboard')) throw new Error('board not shown');
+    });
+
+    const next = buttons().find((b) => (b.textContent ?? '').includes('Next question'));
+    expect(next).toBeDefined();
+    next!.click();
+    await vi.waitFor(() => {
+      if (!fake.sent.includes('host:next')) throw new Error('host:next not sent');
+    });
+  });
+
+  it('drops Next question on the last leaderboard', async () => {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    fake.trigger('host:board', {
+      players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
+      ranks: [],
+      hasNext: false,
+    });
+    await vi.waitFor(() => {
+      if (!screen().includes('Leaderboard')) throw new Error('board not shown');
+    });
+
+    // No further question: only End game remains, so no dead Next is offered.
+    expect(screen()).not.toContain('Next question');
+    expect(buttons().some((b) => (b.textContent ?? '').includes('End game'))).toBe(true);
+  });
+
+  it('restores the board controls from a reconnect snapshot', async () => {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    fake.trigger('host:board', {
+      players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
+      ranks: [],
+      hasNext: false,
+    });
+    await vi.waitFor(() => {
+      if (!screen().includes('Leaderboard')) throw new Error('board not shown');
+    });
+
+    // A reconnect re-fetches the state; the server's `hasNext: false` must render
+    // the same controls as the live event did.
+    fake.routes.set('host:join', () => ({
+      ...lobbyState(),
+      phase: 'board',
+      players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
+      ranks: [],
+      hasNext: false,
+    }));
+    fake.trigger('connect');
+    await vi.waitFor(() => {
+      if (screen().includes('Next question')) throw new Error('dead Next after resync');
+    });
+    expect(buttons().some((b) => (b.textContent ?? '').includes('End game'))).toBe(true);
   });
 });
