@@ -71,6 +71,9 @@ The client never derives the clock from a local timer alone; it uses the server'
 
 - `limitMs(question)` centralises the "visible limit + grace" arithmetic. The timer, the
   late-answer guard and the pause/resume maths all use it, so a resume can never drift.
+  > **Superseded (Phase 6.9.5):** the grace period was removed — `limitMs()` is now exactly the
+  > visible limit, so the shown `0s` is the enforced deadline. See
+  > `docs/reports/phase-6-9-5-answer-deadline-and-host-next.md`.
 - `pause(gameId)` — a live `question` only, never a `slide` (a slide has no clock). Clears
   the timer, freezes `remainingMs` and writes a `paused` row with `{ questionId, remainingMs,
 openedAt }`.

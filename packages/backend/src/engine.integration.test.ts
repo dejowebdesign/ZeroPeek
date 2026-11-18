@@ -212,6 +212,29 @@ describe.skipIf(!available)('game engine integration', () => {
     await expect(engine.submitAnswer(gameId, playerId, question.id, 0)).rejects.toThrow(/late/i);
   });
 
+  it('rejects an answer once the visible limit has elapsed, with no hidden grace', async () => {
+    // Phase 6.9.5: the deadline the player sees (`timeLimit` seconds) is the
+    // deadline the server enforces. A second past the limit must be refused, and
+    // there must be no extra acceptance window beyond the visible `0s`.
+    const { gameId, playerId } = await freshGame();
+    await engine.start(gameId);
+    await engine.skipLead(gameId);
+    const game = await engine.get(gameId);
+    const question = engine.publicQuestion(game);
+    game.openedAt = Date.now() - (question.timeLimit * 1000 + 1000);
+    await expect(engine.submitAnswer(gameId, playerId, question.id, 0)).rejects.toThrow(/late/i);
+  });
+
+  it('accepts an answer that lands just inside the visible limit', async () => {
+    const { gameId, playerId } = await freshGame();
+    await engine.start(gameId);
+    await engine.skipLead(gameId);
+    const game = await engine.get(gameId);
+    const question = engine.publicQuestion(game);
+    game.openedAt = Date.now() - (question.timeLimit * 1000 - 250);
+    await expect(engine.submitAnswer(gameId, playerId, question.id, 0)).resolves.toBeDefined();
+  });
+
   it('rejects an answer when no question is open', async () => {
     const { gameId, playerId } = await freshGame();
     await expect(engine.submitAnswer(gameId, playerId, 'whatever', 0)).rejects.toThrow(

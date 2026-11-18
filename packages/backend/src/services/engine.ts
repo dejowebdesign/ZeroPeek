@@ -56,9 +56,6 @@ import {
 import { getQuiz } from './quizService.js';
 import { quizForGame, startWithSnapshot } from './snapshotService.js';
 
-/** Grace period in ms added to the limit before a late answer is rejected. */
-const ANSWER_GRACE_MS = 1500;
-
 interface RuntimePlayer {
   id: string;
   nickname: string;
@@ -147,13 +144,18 @@ export const LEAD_SECONDS = 5;
 export const LEAD_MS = LEAD_SECONDS * 1000;
 
 /**
- * The full run time of a question, in ms: the visible limit plus the grace
- * period in which a late answer is still accepted. Both the timer and the
- * pause/resume arithmetic use this one value, so a resume can never drift from
- * what the clock was doing before the pause.
+ * The full run time of a question, in ms: exactly the visible limit.
+ *
+ * The deadline a player sees and the deadline the server enforces must be the
+ * same instant. The client renders `timeLimit` seconds from `openedAt`, so the
+ * acceptance window is `timeLimit * 1000` and **nothing more** — the visible
+ * `0s` means "closed". A hidden grace period would let the clock show `0s` while
+ * the server still accepted answers, which is exactly the defect this fixes
+ * (Phase 6.9.5). The timer, the late-answer guard and the pause/resume maths all
+ * use this one value, so they can never disagree.
  */
 function limitMs(question: Question): number {
-  return question.timeLimit * 1000 + ANSWER_GRACE_MS;
+  return question.timeLimit * 1000;
 }
 
 /**
@@ -1048,7 +1050,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
 
     const openedAt = game.openedAt ?? Date.now();
     const elapsedMs = Date.now() - openedAt;
-    if (elapsedMs > limitMs(question)) {
+    // The visible `0s` is the deadline: once the limit has elapsed the question is
+    // closed and a late answer is refused, whether AUTO is on or off, and however
+    // late the socket message arrived. The client's own clock is never consulted.
+    if (elapsedMs >= limitMs(question)) {
       throw conflict('Too late – the question is closed.');
     }
 

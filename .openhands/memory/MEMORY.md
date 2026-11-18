@@ -81,7 +81,8 @@ cd /var/tmp/ihkverify && npm install puppeteer-core@23
 - **Capacity measured (Phase 5b, `tools/loadtest.mjs`):** 25 players → join wall 95 ms, answer
   p95 28 ms, 135 MB RSS; 35 players → join 134 ms, p95 35 ms, 143 MB. Target "25 + host" is
   comfortable on one process; R-2 only matters for several hundred players.
-- **Engine tempo (by design):** `REVEAL_MS = 4000`, `BOARD_MS = 5000`, `ANSWER_GRACE_MS = 1500`;
+- **Engine tempo (by design):** `REVEAL_MS = 4000`, `BOARD_MS = 5000`; the answer deadline is
+  exactly the visible `timeLimit` (`ANSWER_GRACE_MS` was **removed** in Phase 6.9.5 — see below);
   the two scheduled transitions are gated on the host's **AUTO** mode (Phase 6.9.3, default **off**);
   the answer clock and the start countdown always run. Host can force "next" at any time.
 - **The Phase 1–5 concept docs were first committed in Phase 5b** (they had existed only in the
@@ -585,10 +586,11 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
 - **No migration:** paused/skipped state is rows in the existing `GameEvent` log;
   `recoverCurrentQuestion` restores a paused game **paused** (no timer) and the skipped flag
   from the last `question`/`reveal`/`skipped`. `prisma migrate status` stays "up to date".
-- **Pause maths:** one `limitMs(q) = timeLimit*1000 + ANSWER_GRACE_MS` helper is the only place
-  that expression lives; resume shifts `openedAt` forward by the pause duration and re-arms the
-  timer once. `revealInternal` no-ops while paused unless `skipped`, so a stray timer/racing
-  click cannot un-pause. `submitAnswer` refuses while paused.
+- **Pause maths:** one `limitMs(q) = timeLimit*1000` helper is the only place that expression lives
+  (the old `+ ANSWER_GRACE_MS` was dropped in Phase 6.9.5, so the enforced deadline now equals the
+  visible clock); resume shifts `openedAt` forward by the pause duration and re-arms the timer once.
+  `revealInternal` no-ops while paused unless `skipped`, so a stray timer/racing click cannot
+  un-pause. `submitAnswer` refuses while paused.
 - **Dead buttons:** a paused question offers only Resume+Skip (engine refuses plain reveal while
   paused); no Pause for a `slide` (engine refuses it). Frontend must mirror engine refusals.
 - **`playerSync` must equal the live event.** A skipped reveal now reports `outcome:'skipped'`
@@ -960,9 +962,9 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   question→reveal automatic). Fixed in `5e46187`; owner rule: *with AUTO off the host owns the
   answer resolution; reveal→leaderboard is always automatic*.
 - **The ANSWER CLOCK is independent of AUTO (final clock audit).** The clock = `openedAt` +
-  `limitMs(question)` (`timeLimit·1000 + ANSWER_GRACE_MS`) and always runs; AUTO gates only the
-  **timer** (the scheduled auto-transition), never the clock's end time. `setAuto` never stops,
-  resets or shifts it.
+  `limitMs(question)` (= exactly `timeLimit·1000` since Phase 6.9.5) and always runs; AUTO gates
+  only the **timer** (the scheduled auto-transition), never the clock's end time. `setAuto` never
+  stops, resets or shifts it.
   ⚠️ **Real defect found + fixed (this revision):** `armBoardAdvance` had **no phase guard**, and
   `setAuto(true)` calls it unconditionally — so toggling AUTO on during a **live question** armed a
   5 s board timer on top of the answer timer, overwriting the single `game.timer` slot and
@@ -972,8 +974,8 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
   `clearTimer(game)` before arming. **Invariant: one timer slot; each arm helper clears first and
   only arms in its own phase.** Regression tests: `gameplay-reliability.integration.test.ts` §C1
   (clock independent of AUTO) + §C2 (on→off must not resolve; on→off→on resolves exactly once;
-  setAuto during lead doesn't disturb the countdown), using a new `FAST_QUIZ` (5 s limit + 1.5 s
-  grace = 6.5 s clock) to keep expiry tests quick.
+  setAuto during lead doesn't disturb the countdown), using a new `FAST_QUIZ` (5 s limit; the
+  6.5 s clock became exactly 5 s in Phase 6.9.5) to keep expiry tests quick.
 - Frontend: `autoLabel`/`autoHint` in `hostView.ts`; `host:auto` in `HostEventHandlers` (detach
   9→**10**); toggle in `pages/host.ts` (hidden in lobby + final, `data-auto-toggle`, `aria-pressed`),
   repainted from the broadcast AND the ACK. New `.show__auto` CSS from existing tokens only.
@@ -994,4 +996,23 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
      non-`board` phase. `HostState` fixtures in hostView/hostPage/showScenes tests needed `hasNext`
      (playerView did not).
   Counts: backend **429**, frontend **519**, shared **179**; all gates green. **No push/PR/merge.**
+
+- **Answer-deadline fix (2026-11-18, branch `fix/host-next-and-answer-deadline`).** Report
+  `docs/reports/phase-6-9-5-answer-deadline-and-host-next.md`; roadmap §9.8; `docs/phases.md` 6.9.5.
+  1. ⚠️ **Hidden answer grace removed.** `limitMs()` used to add `ANSWER_GRACE_MS = 1500`, so the
+     server accepted answers 1.5 s past the visible `0s` (reproduced via the engine API **and** a real
+     player socket: a 5.2 s answer on a 5 s question was stored). Fix: `limitMs()` = the visible
+     `timeLimit·1000`, constant deleted, late guard `>` → `>=`. **Invariant: the deadline shown is the
+     deadline enforced — never a hidden constant.** Speed bonus uses `elapsedMs` vs `question.timeLimit`
+     (`shared/scoring.ts`), never `limitMs()`, so no point value shifted.
+  2. Player screen had no clock, so its buttons stayed clickable against a closed question. New pure
+     `answerDeadlineRemainingMs(question, serverNow)` in `playerView.ts` + a `questionTimer` in
+     `showQuestion()` that closes the control and shows "Time is up." at the same instant; cleared on
+     every screen change and on `game:resumed`, which rebases `openedAt` on the resumed remainder.
+  3. The reported **missing host Next button was NOT a defect**: PR #51's `hasNext` fix is in `main`
+     and in the running bundle (verified `host-BJOV_daG.js` == local build of `main`). Likely cause of
+     the report: browser cache — `docker/Caddyfile.frontend` sets **no `Cache-Control`** for `*.html`
+     (only a weak ETag), so a stale bundle can be served briefly after a deploy. Follow-up (not done,
+     needs approval): add no-cache for `*.html` in the frontend Caddyfile.
+  Counts: backend **431**, frontend **523**, shared **179**; all gates green. **No push/PR/merge.**
 
