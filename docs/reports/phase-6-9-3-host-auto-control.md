@@ -168,8 +168,8 @@ log) decides whether the **answer resolution** (question → reveal) and the **l
     mid-clock resolves when it expires; turning it off during a question cancels the auto-resolution,
     during a board cancels the advance, during a reveal does not stop the fixed reveal window; the
     mode survives an `evict` restart.
-  - A new `FAST_QUIZ` (the minimum legal 5 s limit + 1.5 s grace = a 6.5 s clock) keeps the expiry
-    cases quick without faking the timer.
+  - A new `FAST_QUIZ` (the minimum legal 5 s limit; the clock is now exactly 5 s — the former
+    1.5 s grace was removed in Phase 6.9.5) keeps the expiry cases quick without faking the timer.
 - **`engine.integration.test.ts`:** the auto-reveal tests now enable AUTO, with new AUTO-off
   companions ("waits for the host when everyone has answered", "a paused question never
   auto-reveals"); the race tests (auto-reveal vs `end`) enable AUTO so the race is actually driven.

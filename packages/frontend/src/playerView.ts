@@ -7,7 +7,7 @@
  * play flow itself stays server-authoritative.
  */
 
-import type { HostPresence, PlayerSync, PublicPlayer } from '@zeropeek/shared';
+import type { HostPresence, PlayerSync, PublicPlayer, PublicQuestion } from '@zeropeek/shared';
 
 import { el } from './dom.js';
 import { playerAvatar } from './avatar.js';
@@ -38,6 +38,25 @@ export function screenForSync(sync: PlayerSync): PlayerScreen {
   // is only set from the reveal onwards.
   if (sync.answer?.result) return 'reveal';
   return sync.question ? 'question' : 'lobby';
+}
+
+/**
+ * The milliseconds left before the visible answer clock reaches zero, or `0`
+ * once it has (Phase 6.9.5).
+ *
+ * The server's `openedAt` is the anchor and the limit is the question's own
+ * `timeLimit`, measured against a corrected server-clock reading (`serverNow`) so
+ * every device agrees. This is the same deadline the server enforces, so the
+ * player's control closes exactly when a late answer would be refused — never a
+ * second later. A paused or clockless question has no deadline and returns `null`.
+ */
+export function answerDeadlineRemainingMs(
+  question: Pick<PublicQuestion, 'openedAt' | 'timeLimit' | 'paused' | 'type'>,
+  serverNow: number,
+): number | null {
+  if (question.paused || question.type === 'slide') return null;
+  const deadline = question.openedAt + question.timeLimit * 1000;
+  return Math.max(0, deadline - serverNow);
 }
 
 /**

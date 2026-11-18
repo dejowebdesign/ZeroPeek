@@ -26,6 +26,7 @@ import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { ClockSync } from '../clockSync.js';
 import { questionInput, questionPrompt } from '../questionView.js';
 import {
+  answerDeadlineRemainingMs,
   endProgressActions,
   hostStatusChip,
   joinIdentityHint,
@@ -134,8 +135,26 @@ const app: HTMLElement = appElement;
     }
   }
 
+  /**
+   * The timeout that closes the answer control when the question's visible clock
+   * runs out (Phase 6.9.5). The server is the authority on the deadline — this is
+   * only the matching local feedback, so the buttons go inert at the same instant
+   * the server stops accepting, instead of staying clickable against a closed
+   * question. Cleared on every screen change.
+   */
+  let questionTimer: number | null = null;
+
+  function stopQuestionTimer(): void {
+    if (questionTimer !== null) {
+      clearTimeout(questionTimer);
+      questionTimer = null;
+    }
+  }
+
   /** Show the join form. A signed-in player is asked for the PIN only. */
   function showJoin(message?: string): void {
+    stopLeadTimer();
+    stopQuestionTimer();
     const pin = el('input', {
       class: 'input',
       inputmode: 'numeric',
@@ -215,6 +234,7 @@ const app: HTMLElement = appElement;
   /** Show the waiting room until the host starts. */
   function showWaiting(players: PublicPlayer[] = []): void {
     stopLeadTimer();
+    stopQuestionTimer();
     const session = loadSession();
     render(
       app,
@@ -254,6 +274,7 @@ const app: HTMLElement = appElement;
    */
   function showLead(lead: LeadState): void {
     stopLeadTimer();
+    stopQuestionTimer();
     currentQuestion = null;
     const timer = countdown(Math.ceil(lead.durationSeconds), 1);
     render(
@@ -289,6 +310,7 @@ const app: HTMLElement = appElement;
   /** Show an open question. `prior` carries a reconnect's existing answer. */
   function showQuestion(question: PublicQuestion, prior?: PlayerAnswerState | null): void {
     stopLeadTimer();
+    stopQuestionTimer();
     currentQuestion = question;
     currentPrior = prior ?? null;
     let submitted = prior?.answered === true;
@@ -306,13 +328,33 @@ const app: HTMLElement = appElement;
         feedback.replaceChildren(notice(errorText(error), 'error'));
       }
     });
+    /** Make the answer control inert and say why. */
+    const closeInput = (): void => {
+      input.querySelectorAll('button, input, select, textarea').forEach((node) => {
+        (node as HTMLButtonElement).disabled = true;
+      });
+    };
     if (prior?.answered || question.paused) {
       // Already answered (or the question is paused): the control stays visible
       // but inert, so a player cannot submit a second answer or answer a frozen
       // question.
-      input.querySelectorAll('button, input, select, textarea').forEach((node) => {
-        (node as HTMLButtonElement).disabled = true;
-      });
+      closeInput();
+    }
+    // A running question closes its control when the visible clock reaches zero,
+    // the same instant the server stops accepting (Phase 6.9.5). The countdown is
+    // drawn from the server's `openedAt` through the clock sync, so every device
+    // closes together; a paused question has no clock and stays inert until the
+    // host resumes, and a slide has no clock and no answer control at all.
+    if (!submitted && !question.paused && question.type !== 'slide') {
+      const remainingMs = answerDeadlineRemainingMs(question, clock.serverNow());
+      if (remainingMs !== null && remainingMs <= 0) {
+        closeInput();
+      } else if (remainingMs !== null) {
+        questionTimer = window.setTimeout(() => {
+          closeInput();
+          if (!submitted) feedback.replaceChildren(notice('Time is up.', 'info'));
+        }, remainingMs);
+      }
     }
 
     const me = loadSession();
@@ -353,6 +395,7 @@ const app: HTMLElement = appElement;
 
   /** Show the player's own result for the revealed question. */
   function showResult(questionId: string, result: OwnResult): void {
+    stopQuestionTimer();
     if (result.outcome === 'skipped') {
       render(
         app,
@@ -426,6 +469,7 @@ const app: HTMLElement = appElement;
 
   /** Show the leaderboard. */
   function showBoard(players: PublicPlayer[]): void {
+    stopQuestionTimer();
     const session = loadSession();
     render(
       app,
@@ -469,6 +513,7 @@ const app: HTMLElement = appElement;
 
   /** Show the final placement. */
   function showEnd(payload: { rank: number; score: number; podium: PublicPlayer[] }): void {
+    stopQuestionTimer();
     const session = loadSession();
     render(
       app,
@@ -605,8 +650,17 @@ const app: HTMLElement = appElement;
   socket.on('game:resumed', (payload) => {
     if (currentQuestion && currentQuestion.id === payload.questionId) {
       // The player screen shows no clock of its own, so resuming only has to
-      // unfreeze the answer control.
-      currentQuestion = { ...currentQuestion, paused: false, remainingMs: null };
+      // unfreeze the answer control. The question's deadline is rebased on the
+      // resumed remainder (the pause shifted the server's `openedAt` forward), so
+      // the Phase 6.9.5 close-timer waits exactly the time that was left rather
+      // than firing against the pre-pause deadline.
+      const limitMs = currentQuestion.timeLimit * 1000;
+      currentQuestion = {
+        ...currentQuestion,
+        paused: false,
+        remainingMs: null,
+        openedAt: clock.serverNow() - (limitMs - payload.remainingMs),
+      };
       showQuestion(currentQuestion, currentPrior);
     }
   });

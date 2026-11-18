@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import type { PlayerSync, PublicPlayer } from '@zeropeek/shared';
 
 import {
+  answerDeadlineRemainingMs,
   connectionState,
   endProgressActions,
   hostPresenceStatus,
@@ -240,5 +241,29 @@ describe('screenForSync', () => {
       },
     });
     expect(screenForSync(state)).toBe('reveal');
+  });
+});
+
+describe('answerDeadlineRemainingMs (Phase 6.9.5)', () => {
+  const open = { openedAt: 1000, timeLimit: 20, paused: false, type: 'single' as const };
+
+  it('reports the time left against the visible limit', () => {
+    expect(answerDeadlineRemainingMs(open, 1000)).toBe(20_000);
+    expect(answerDeadlineRemainingMs(open, 20_500)).toBe(500);
+  });
+
+  it('reaches exactly zero at the visible deadline, with no hidden grace', () => {
+    // The deadline the player sees is the deadline the server enforces: at the
+    // limit the remainder is 0, and past it stays 0 rather than going negative.
+    expect(answerDeadlineRemainingMs(open, 21_000)).toBe(0);
+    expect(answerDeadlineRemainingMs(open, 25_000)).toBe(0);
+  });
+
+  it('has no deadline for a paused question', () => {
+    expect(answerDeadlineRemainingMs({ ...open, paused: true }, 1000)).toBeNull();
+  });
+
+  it('has no deadline for a slide', () => {
+    expect(answerDeadlineRemainingMs({ ...open, type: 'slide' }, 1000)).toBeNull();
   });
 });

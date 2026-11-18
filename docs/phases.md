@@ -49,6 +49,7 @@ Nothing is implemented until the project owner approves it.
 | 6.9.2 | Game-show skeleton and scene control (13 scenes, presentation mode)            | Awaiting review – `docs/reports/phase-6-9-2-game-show-skeleton.md` (§8: display-only scene, auto-advance fix); roadmap §9.5                                                                                                                                        |
 | 6.9.3 | Host-control correction and optional AUTO operation (no presentation mode)     | Awaiting review – `docs/reports/phase-6-9-3-host-auto-control.md`; roadmap §9.6                                                                                                                                                                                    |
 | 6.9.4 | Host-control fix: Skip/End confirmation and leaderboard Next button            | Awaiting review – `docs/reports/host-next-and-confirmation-fix.md`; roadmap §9.7                                                                                                                                                                                   |
+| 6.9.5 | Answer-deadline alignment (no hidden grace) and host Next verification         | Awaiting review – `docs/reports/phase-6-9-5-answer-deadline-and-host-next.md`; roadmap §9.8                                                                                                                                                                        |
 
 See `docs/concept/README.md` for the reading order.
 
