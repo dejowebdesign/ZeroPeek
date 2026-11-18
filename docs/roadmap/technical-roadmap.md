@@ -575,6 +575,57 @@ Server-, Vertrags- oder Schemaänderung. Baut unmittelbar auf 6.9.1 auf.
 
 Report: `docs/reports/phase-6-9-2-game-show-skeleton.md`.
 
+### 9.6 Korrektur der Host-Steuerung und optionaler AUTO-Betrieb (Phase 6.9.3)
+
+Vereinfachung des Show-Betriebs auf **eine** Host-/Beamer-Ansicht ohne separaten
+Präsentationsmodus und ohne manuelle Szenen-Navigation. Rein additiv auf der bestehenden
+Host-Seite; der Server bleibt für alles Spielrelevante maßgeblich.
+
+- **Kein Präsentationsmodus, keine Szenenleiste:** Der `Presentation mode`-Umschalter, die
+  Szenenleiste (`Scene n of 13`) und die CSS-Klassen `.show-presentation`, `.show__present`,
+  `.show__scene-bar`, `.show__scene-label` werden entfernt. Die Szene bleibt **rein intern** und
+  wird weiterhin aus der autoritativen Phase abgeleitet; es gibt **keine** Szenen-Navigation. Der
+  Host steuert das Spiel aus einer einzigen Ansicht.
+- **AUTO-Umschalter (Standard: Aus):** Ein neuer Umschalter `AUTO` steuert, ob der Server die
+  **zwei** AUTO-Übergänge selbst ausführt — die **Antwortauflösung** (Frage → Auflösung) und den
+  **Ranglisten-Übergang** (Rangliste → nächste Frage). **Standard ist immer AUS** (manuell): der
+  Host löst die Antworten selbst auf (`host:reveal`) und startet die nächste Frage selbst
+  (`host:next`). Das **Auflösungsfenster** (Auflösung → Rangliste, `REVEAL_MS`) läuft in **beiden**
+  Modi automatisch.
+- **Server-autoritativ und persistent:** Neuer Host-Befehl `host:auto` (`{ gameId, auto }` →
+  `{ auto }`), autorisiert über `assertHost`, mit `auto`-Validierung (echter Boolean). Der Wert
+  wird über das **bestehende** Event-Log (`auto`-Event) persistiert — **keine** Schemaänderung,
+  **keine** Migration. Ein Neustart setzt den Modus exakt fort. Der Wert ist Teil von `HostState`
+  (`auto`), sodass ein Reload/Reconnect den Modus wiederherstellt. Neues Host-Event `host:auto`
+  (nur an Host-Sockets) hält zweite Host-Tabs synchron.
+- **Kein Nachladen, kein Überspringen:** Das Umschalten löst **keine** laufende Runde neu auf und
+  überspringt **keine** Frage. Ausschalten verwirft nur einen anstehenden AUTO-Übergang; jede
+  Transition bleibt durch den Phasen-Wächter des Ziels abgesichert.
+- **Antwortuhr läuft unabhängig von AUTO:** Die **Antwortuhr** ist die serverseitige Frist der
+  laufenden Frage, abgeleitet aus `openedAt` und `limitMs(question)` (`timeLimit · 1000 +
+ANSWER_GRACE_MS`); sie ist die einzige Quelle der Wahrheit und läuft **immer**, in beiden Modi.
+  AUTO steuert nur den **Timer** (den geplanten automatischen Übergang), **nie** die Uhr. `setAuto`
+  stoppt, setzt oder verschiebt die Uhr **nicht**; die Endzeit bleibt unverändert. Mit AUTO AUS
+  bleiben die Timer einfach unbestellt, die Uhr läuft weiter und die Frage wartet nach Ablauf auf
+  den Host (`host:reveal`).
+- **Umschalten mitten in der Runde:** Ein → Aus stoppt den anstehenden AUTO-Übergang (Antwort-Timer
+  bzw. Ranglisten-Übergang), **nicht** aber das feste Auflösungsfenster. Aus → Ein holt den
+  aktuellen Zustand nach: ist die Antwortzeit schon abgelaufen oder haben alle Spieler geantwortet,
+  wird sofort aufgelöst; sonst wird der Antwort-Timer für die **Restzeit bis zur ursprünglichen
+  Endzeit** gestellt. `REVEAL_MS` 6000 → **4000**, `BOARD_MS` 6000 → **5000**.
+- **Ein Timer-Slot (Korrektur):** Der Runtime-Speicher hat genau einen `game.timer`. Jeder
+  Arm-Helfer leert ihn zuerst und armiert nur in seiner Phase — `armBoardAdvance` ausschließlich in
+  der **Ranglisten**-Phase. Ohne diesen Phasen-Wächter hätte `setAuto(true)` während einer laufenden
+  Frage einen Ranglisten-Timer über den Antwort-Timer gelegt, den Antwort-Timer verwaist und ihn
+  nach dem Ausschalten trotzdem ausgelöst (verletzt „AUTO AUS ⇒ keine automatische Auflösung“).
+  Behoben; siehe Report §3.2 und §9.
+- **Fragezeit und Start-Countdown bleiben unberührt:** Der Antwort-Timer und der Start-Countdown
+  sind **keine** AUTO-Übergänge und laufen immer; AUTO steuert nur die zwei genannten Übergänge.
+- **Wiederverwendung:** Der Umschalter nutzt die vorhandenen Button-Varianten und ein neues
+  `.show__auto`-Layout aus bestehenden Tokens — **keine** neue Farbe, **keine** neue Komponente.
+
+Report: `docs/reports/phase-6-9-3-host-auto-control.md`.
+
 ---
 
 ## 10. Phase 6.9 – Game-Show-Modus (in der bestehenden Host-Ansicht)

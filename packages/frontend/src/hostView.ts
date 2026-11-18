@@ -191,6 +191,26 @@ export function canAct(status: HostConnectionStatus): boolean {
   return status === 'connected';
 }
 
+/**
+ * The label for the AUTO toggle (Phase 6.9.3). The server owns the mode; this
+ * only names it for the host. `On` runs the answer resolution and the leaderboard
+ * advance by itself, `Off` (the default) leaves both to the host.
+ */
+export function autoLabel(auto: boolean): string {
+  return auto ? 'AUTO: On' : 'AUTO: Off';
+}
+
+/**
+ * The description of what the AUTO mode does, for the toggle's accessible name
+ * (Phase 6.9.3). The reveal window (reveal → leaderboard) always runs; AUTO only
+ * governs the answer resolution and the leaderboard advance.
+ */
+export function autoHint(auto: boolean): string {
+  return auto
+    ? 'Automatic play: answers resolve by themselves and the next question starts on its own.'
+    : 'Manual play: you resolve the answers and start the next question yourself.';
+}
+
 /** The events a host socket delivers, as consumed by the page. */
 export interface HostEventHandlers {
   lobby: (payload: { pin: string; players: PublicPlayer[] }) => void;
@@ -202,6 +222,7 @@ export interface HostEventHandlers {
   ended: (payload: { players: PublicPlayer[] }) => void;
   paused: (payload: { questionId: string; remainingMs: number }) => void;
   resumed: (payload: { questionId: string; remainingMs: number }) => void;
+  auto: (payload: { auto: boolean }) => void;
 }
 
 /**
@@ -267,6 +288,7 @@ export function attachHostHandlers(
     ['host:ended', forward((h) => h.ended as RawListener)],
     ['host:paused', forward((h) => h.paused as RawListener)],
     ['host:resumed', forward((h) => h.resumed as RawListener)],
+    ['host:auto', forward((h) => h.auto as RawListener)],
   ];
 
   for (const [event, listener] of listeners) register(event, listener);

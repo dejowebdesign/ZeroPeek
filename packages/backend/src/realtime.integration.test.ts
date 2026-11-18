@@ -136,6 +136,9 @@ describe.skipIf(!available)('realtime end-to-end', () => {
       quizId,
     });
     expect(pin).toMatch(/^[234679ACDEFGHJKMNPQRTUVWXYZ]{6}$/);
+    // The early reveal on a full roster is an AUTO transition (Phase 6.9.3); turn
+    // it on so this end-to-end run exercises the automatic path.
+    await request(host, 'host:auto', { gameId, auto: true });
 
     // Two players join by PIN.
     const ada = openSocket();
@@ -180,6 +183,10 @@ describe.skipIf(!available)('realtime end-to-end', () => {
     expect((await adaResult).result.outcome).toBe('correct');
     expect((await adaResult).result.points).toBeGreaterThan(0);
     expect((await bobResult).result.outcome).toBe('wrong');
+
+    // Turn AUTO back off now the automatic reveal has fired, so the leaderboard
+    // advance is host-driven and the rest of the run is deterministic.
+    await request(host, 'host:auto', { gameId, auto: false });
 
     // A host-triggered reveal is idempotent after the automatic one.
     await request(host, 'host:reveal', { gameId });

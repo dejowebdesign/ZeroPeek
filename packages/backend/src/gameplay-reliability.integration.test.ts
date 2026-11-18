@@ -77,10 +77,32 @@ const ONE_QUESTION_QUIZ: Quiz = {
   ],
 };
 
+// The shortest legal limit (5 s) + the 1.5 s grace = a 6.5 s clock, so the
+// "answer clock expires" cases finish quickly without faking the timer.
+const FAST_QUIZ: Quiz = {
+  id: '00000000-0000-4000-8000-0000000000d1',
+  title: 'Fast question',
+  description: '',
+  theme: 'standard',
+  defaultTimeLimit: 5,
+  questions: [
+    {
+      id: '00000000-0000-4000-8000-0000000000d2',
+      type: 'single',
+      text: 'Quick question?',
+      timeLimit: 5,
+      points: 'standard',
+      options: ['A', 'B'],
+      correctIndex: 0,
+    },
+  ],
+};
+
 describe.skipIf(!available)('gameplay reliability', () => {
   let ownerId = '';
   let twoQuizId = '';
   let oneQuizId = '';
+  let fastQuizId = '';
 
   beforeAll(async () => {
     await resetDatabase(prisma);
@@ -92,6 +114,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
     ownerId = owner.id;
     twoQuizId = (await createQuiz(ownerId, TWO_QUESTION_QUIZ)).id;
     oneQuizId = (await createQuiz(ownerId, ONE_QUESTION_QUIZ)).id;
+    fastQuizId = (await createQuiz(ownerId, FAST_QUIZ)).id;
   });
 
   afterAll(async () => {
@@ -166,8 +189,9 @@ describe.skipIf(!available)('gameplay reliability', () => {
 
     it('a stale board timer does not advance a game that already moved on', async () => {
       const { gameId } = await startedGame(twoQuizId);
+      // AUTO on: `board` arms the board auto-advance timer this test is about.
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
-      // `board` arms the 6s auto-advance timer.
       await engine.board(gameId);
       // The host advances by hand before that timer fires.
       await engine.next(gameId);
@@ -209,6 +233,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
       // leaderboard's own auto-advance timer — otherwise the game sits on the
       // board forever with nothing left to move it on.
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       await engine.board(gameId);
       expect(await engine.board(gameId)).toBe('board');
@@ -228,6 +253,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
       // not clear the reveal's auto-advance timer, or the game is stuck on the
       // reveal screen forever.
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       expect(await engine.reveal(gameId)).toBe('reveal');
 
@@ -240,6 +266,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
       // reveal's 6 s auto-timer fires. The reveal timer calls `board` on a game
       // already in `board`; that no-op must not cancel the board's timer.
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       // Wait for the reveal auto-timer to fire `board`.
       await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
@@ -258,6 +285,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
   describe('B – restart recovery for every phase', () => {
     it('re-arms the auto-advance after a restart during reveal', async () => {
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
 
       // Simulate a backend restart mid-reveal.
@@ -273,6 +301,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
 
     it('re-arms the auto-advance after a restart during board', async () => {
       const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       await engine.board(gameId);
 
@@ -288,6 +317,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
 
     it('ends the game after a restart on the board of the final question', async () => {
       const { gameId } = await startedGame(oneQuizId);
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       await engine.board(gameId);
 
@@ -303,6 +333,7 @@ describe.skipIf(!available)('gameplay reliability', () => {
     it('never advances past the phase it recovered to, even if a stale timer fires', async () => {
       const { gameId } = await startedGame(twoQuizId);
       // Arm the board timer, then restart while still in `reveal`.
+      await engine.setAuto(gameId, true);
       await engine.reveal(gameId);
       engine.evict(gameId);
       await engine.get(gameId);
@@ -314,5 +345,262 @@ describe.skipIf(!available)('gameplay reliability', () => {
       expect(game.phase).toBe('board');
       expect(game.currentIndex).toBe(0);
     }, 20_000);
+  });
+
+  describe('C – the AUTO mode (Phase 6.9.3)', () => {
+    // The answer clock itself (Phase 6.9.3 correction). AUTO must never stop,
+    // reset or restart the clock: it only decides whether the *resolution* runs
+    // by itself. The clock is anchored to `openedAt` and its deadline never moves.
+    describe('C1 – the answer clock is independent of AUTO', () => {
+      it('setAuto(false) neither stops nor shifts the running clock', async () => {
+        const { gameId } = await startedGame(twoQuizId);
+        const openedAt = (await engine.get(gameId)).openedAt!;
+        await engine.setAuto(gameId, false);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const game = await engine.get(gameId);
+        expect(game.openedAt).toBe(openedAt);
+        expect(game.phase).toBe('question');
+      });
+
+      it('setAuto(true) mid-question keeps the original deadline, not a fresh one', async () => {
+        const { gameId } = await startedGame(twoQuizId);
+        const openedAt = (await engine.get(gameId)).openedAt!;
+        // Turn AUTO on ~0.5 s in. The full clock is 21.5 s; a wrong re-arm from
+        // `now` would reveal ~0.5 s later, so waiting 3 s proves it did not.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await engine.setAuto(gameId, true);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const game = await engine.get(gameId);
+        expect(game.openedAt).toBe(openedAt);
+        expect(game.phase).toBe('question');
+      }, 20_000);
+
+      it('with AUTO off the clock expires but nothing resolves until the host acts', async () => {
+        const { gameId } = await startedGame(fastQuizId);
+        // The 5 s limit + 1.5 s grace elapses; with AUTO off the question waits.
+        await new Promise((resolve) => setTimeout(resolve, 6_900));
+        expect((await engine.get(gameId)).phase).toBe('question');
+        // The host can still resolve by hand, and the answers are still scored.
+        expect(await engine.reveal(gameId)).toBe('reveal');
+      }, 20_000);
+
+      it('with AUTO on the clock expiry resolves the question by itself', async () => {
+        const { gameId } = await startedGame(fastQuizId);
+        await engine.setAuto(gameId, true);
+        await new Promise((resolve) => setTimeout(resolve, 6_900));
+        expect((await engine.get(gameId)).phase).toBe('reveal');
+      }, 20_000);
+    });
+
+    // Switching AUTO mid-question must not leave an orphaned answer clock behind.
+    // Before the fix, `setAuto(true)` armed a board advance on top of the answer
+    // clock and overwrote the single timer slot, so the orphan revealed the
+    // question even after AUTO was switched off again.
+    describe('C2 – switching AUTO mid-question', () => {
+      it('AUTO on then off during a question must not resolve at expiry', async () => {
+        const { gameId } = await startedGame(fastQuizId);
+        await engine.setAuto(gameId, true);
+        await engine.setAuto(gameId, false);
+        await new Promise((resolve) => setTimeout(resolve, 6_900));
+        expect((await engine.get(gameId)).phase).toBe('question');
+      }, 20_000);
+
+      it('AUTO on then off then on again resolves exactly once at expiry', async () => {
+        const { gameId } = await startedGame(fastQuizId);
+        let reveals = 0;
+        const onReveal = (payload: { gameId: string }): void => {
+          if (payload.gameId === gameId) reveals += 1;
+        };
+        engine.on('reveal', onReveal);
+        try {
+          await engine.setAuto(gameId, true);
+          await engine.setAuto(gameId, false);
+          await engine.setAuto(gameId, true);
+          await new Promise((resolve) => setTimeout(resolve, 6_900));
+          expect((await engine.get(gameId)).phase).toBe('reveal');
+          expect(reveals).toBe(1);
+        } finally {
+          engine.off('reveal', onReveal);
+        }
+      }, 20_000);
+
+      it('setAuto(true) during the start countdown does not disturb the countdown', async () => {
+        const row = await createGame(twoQuizId, ownerId);
+        createdGames.push(row.id);
+        const { player } = await joinGame(row.pin, 'Ada');
+        await engine.addPlayer(row.id, {
+          id: player.id,
+          nickname: player.nickname,
+          avatar: player.avatar,
+          joinedAt: player.joinedAt,
+        });
+        await engine.start(row.id);
+        expect((await engine.get(row.id)).phase).toBe('lead');
+        // Toggling AUTO on during the countdown must not arm a board advance that
+        // would later jump the game; the countdown still opens the question.
+        await engine.setAuto(row.id, true);
+        await new Promise((resolve) => setTimeout(resolve, 5_600));
+        const game = await engine.get(row.id);
+        expect(game.phase).toBe('question');
+        expect(game.currentIndex).toBe(0);
+      }, 20_000);
+    });
+
+    it('defaults to off and reports the value it set', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      expect((await engine.get(gameId)).auto).toBe(false);
+      expect(await engine.setAuto(gameId, true)).toBe(true);
+      expect((await engine.get(gameId)).auto).toBe(true);
+      expect(await engine.setAuto(gameId, false)).toBe(false);
+    });
+
+    it('with AUTO off, a reveal still advances to the board after the fixed window', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      // The reveal window is NOT AUTO-controlled: it always runs.
+      await engine.reveal(gameId);
+      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
+      expect((await engine.get(gameId)).phase).toBe('board');
+    }, 20_000);
+
+    it('with AUTO off, a board does not open the next question on its own', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+
+      await new Promise((resolve) => setTimeout(resolve, BOARD_MS + 400));
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('board');
+      expect(game.currentIndex).toBe(0);
+    }, 20_000);
+
+    it('with AUTO off, a full roster answering does not resolve the question', async () => {
+      const { gameId, playerIds } = await startedGame(twoQuizId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      // Both players answer; AUTO is off, so the host resolves by hand.
+      await engine.submitAnswer(gameId, playerIds[0]!, question.id, 0);
+      await engine.submitAnswer(gameId, playerIds[1]!, question.id, 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await engine.get(gameId)).phase).toBe('question');
+
+      // The host resolves when ready.
+      expect(await engine.reveal(gameId)).toBe('reveal');
+    });
+
+    it('with AUTO off, an expired question clock does not resolve the question', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      // Backdate the open question far past its limit; nothing is armed with AUTO
+      // off, so the question must wait for the host, not reveal itself.
+      (await engine.get(gameId)).openedAt = Date.now() - 60_000;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect((await engine.get(gameId)).phase).toBe('question');
+
+      expect(await engine.reveal(gameId)).toBe('reveal');
+    });
+
+    it('with AUTO on, a full roster answering resolves the question', async () => {
+      const { gameId, playerIds } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      await engine.submitAnswer(gameId, playerIds[0]!, question.id, 0);
+      await engine.submitAnswer(gameId, playerIds[1]!, question.id, 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    });
+
+    it('with AUTO on, the board opens the next question on its own', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+
+      await new Promise((resolve) => setTimeout(resolve, BOARD_MS + 400));
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('question');
+      expect(game.currentIndex).toBe(1);
+    }, 20_000);
+
+    it('turning AUTO on after everyone answered resolves the question at once', async () => {
+      const { gameId, playerIds } = await startedGame(twoQuizId);
+      const question = engine.publicQuestion(await engine.get(gameId));
+      // AUTO off: a full roster waits (see the test above). Turning it on must
+      // pick up the state the host handed over and resolve immediately.
+      await engine.submitAnswer(gameId, playerIds[0]!, question.id, 0);
+      await engine.submitAnswer(gameId, playerIds[1]!, question.id, 1);
+      await engine.setAuto(gameId, true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    });
+
+    it('turning AUTO on after the clock expired resolves the question at once', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      (await engine.get(gameId)).openedAt = Date.now() - 60_000;
+      await engine.setAuto(gameId, true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    });
+
+    it('turning AUTO on during a running clock resolves when it expires', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      // 20 s limit + 1.5 s grace; leave ~200 ms on the clock.
+      (await engine.get(gameId)).openedAt = Date.now() - 21_300;
+      await engine.setAuto(gameId, true);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      expect((await engine.get(gameId)).phase).toBe('reveal');
+    }, 20_000);
+
+    it('turning AUTO off during a question cancels the answer clock', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      // Cancel well before the limit; the question must then wait for the host.
+      await engine.setAuto(gameId, false);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect((await engine.get(gameId)).phase).toBe('question');
+    }, 20_000);
+
+    it('turning AUTO off during a board cancels the pending advance', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      await engine.reveal(gameId);
+      await engine.board(gameId);
+      // Cancel before the board timer fires; the host takes over.
+      await engine.setAuto(gameId, false);
+
+      await new Promise((resolve) => setTimeout(resolve, BOARD_MS + 400));
+      const game = await engine.get(gameId);
+      expect(game.phase).toBe('board');
+      expect(game.currentIndex).toBe(0);
+    }, 20_000);
+
+    it('turning AUTO off during a reveal does not stop the fixed reveal window', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      await engine.reveal(gameId);
+      // The reveal window is not AUTO-controlled: turning AUTO off must not stop
+      // the pending advance to the board.
+      await engine.setAuto(gameId, false);
+
+      await new Promise((resolve) => setTimeout(resolve, REVEAL_MS + 400));
+      expect((await engine.get(gameId)).phase).toBe('board');
+    }, 20_000);
+
+    it('setting the value it already has is a no-op and arms nothing extra', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      // AUTO is already off; a second "off" must not throw and must not arm a
+      // transition, so the open question stays put.
+      expect(await engine.setAuto(gameId, false)).toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect((await engine.get(gameId)).phase).toBe('question');
+    }, 20_000);
+
+    it('restores the mode from the event log across a restart', async () => {
+      const { gameId } = await startedGame(twoQuizId);
+      await engine.setAuto(gameId, true);
+      await engine.reveal(gameId);
+
+      engine.evict(gameId);
+      const reloaded = await engine.get(gameId);
+      // The mode is persisted as an `auto` event, so a fresh process resumes it.
+      expect(reloaded.auto).toBe(true);
+    });
   });
 });

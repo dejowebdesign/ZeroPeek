@@ -3136,12 +3136,12 @@ body::before {
    --------------------------------------------------------------------------- */
 
 /**
- * The scene bar: the current scene's name and the presentation-mode toggle. The
- * scene is display-only — derived from the authoritative phase — so the bar has
- * no manual navigation. It never sends a game command, is hidden while a game is
- * not under control, and never hides the host controls — it sits above them.
+ * The AUTO toggle (Phase 6.9.3): the host's manual/automatic switch. It sits
+ * above the control bar with a quiet status line, so the host can read the mode
+ * at a glance from across the room. It draws only from existing tokens — no new
+ * colour — and never hides the host controls.
  */
-.show__scene-bar {
+.show__auto {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3151,13 +3151,6 @@ body::before {
   padding-top: var(--space-3);
   border-top: var(--hairline) solid var(--border);
   width: 100%;
-}
-
-.show__scene-label {
-  font-size: var(--type-help);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
 }
 
 /* The lobby-phase scenes: welcome, join and participants share one card. */
@@ -3236,27 +3229,4 @@ body::before {
   .show__board {
     animation: none;
   }
-}
-
-/**
- * Presentation mode (Phase 6.9.2): a clean beamer stage. Hiding the host
- * controls and the scene steps leaves only the scene itself; the toggle stays so
- * the host can leave the mode. Nothing is removed from the DOM — only hidden —
- * so a step back restores the console exactly as it was.
- */
-.show__present {
-  display: flex;
-  justify-content: center;
-}
-
-.show-presentation .show__controls,
-.show-presentation .host-connection {
-  display: none;
-}
-
-/* In presentation mode the bar keeps only the scene name and the toggle, so it
-   reads as a quiet status line rather than a console. */
-.show-presentation .show__scene-bar {
-  border-top: none;
-  padding-top: 0;
 }

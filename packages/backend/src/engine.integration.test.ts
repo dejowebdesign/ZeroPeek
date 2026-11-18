@@ -149,8 +149,11 @@ describe.skipIf(!available)('game engine integration', () => {
     expect((await prisma.game.findUnique({ where: { id: gameId } }))!.phase).toBe('end');
   });
 
-  it('reveals automatically once every player has answered', async () => {
+  it('reveals automatically once every player has answered, under AUTO', async () => {
     const { gameId, playerId } = await freshGame(['Ada']);
+    // The early reveal on a full roster is an AUTO transition (Phase 6.9.3): it
+    // is off by default, so turn it on to exercise the automatic path.
+    await engine.setAuto(gameId, true);
     await engine.start(gameId);
     await engine.skipLead(gameId);
     const question = engine.publicQuestion(await engine.get(gameId));
@@ -158,6 +161,19 @@ describe.skipIf(!available)('game engine integration', () => {
     // The auto-reveal is fire-and-forget; give it a tick to run.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect((await engine.get(gameId)).phase).toBe('reveal');
+  });
+
+  it('waits for the host when everyone has answered with AUTO off', async () => {
+    const { gameId, playerId } = await freshGame(['Ada']);
+    // AUTO is off by default: a full roster must not resolve the answers itself.
+    await engine.start(gameId);
+    await engine.skipLead(gameId);
+    const question = engine.publicQuestion(await engine.get(gameId));
+    await engine.submitAnswer(gameId, playerId, question.id, 0);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect((await engine.get(gameId)).phase).toBe('question');
+    // The host can still resolve by hand.
+    expect(await engine.reveal(gameId)).toBe('reveal');
   });
 
   it('awards no points for a wrong answer but still records it', async () => {
@@ -320,10 +336,12 @@ describe.skipIf(!available)('game engine integration', () => {
   });
 
   it('reveals once when the last players answer the final question together', async () => {
-    // Test E – the auto-reveal is triggered by the answered count; with the last
-    // players arriving simultaneously it must still fire exactly once, and every
-    // answer must be stored.
+    // Test E – the auto-reveal is triggered by the answered count under AUTO; with
+    // the last players arriving simultaneously it must still fire exactly once,
+    // and every answer must be stored.
     const { gameId, playerIds } = await freshGame(['Ada', 'Bob', 'Cy']);
+    // The early reveal on a full roster is an AUTO transition (Phase 6.9.3).
+    await engine.setAuto(gameId, true);
     await engine.start(gameId);
     await engine.skipLead(gameId);
     const first = engine.publicQuestion(await engine.get(gameId));
@@ -399,9 +417,11 @@ describe.skipIf(!available)('game engine integration', () => {
     // concurrently and the reveal's `setPhase('reveal')` could land *after*
     // `setPhase('end')`, leaving a finished game persisted as `reveal` with no
     // `endedAt`. This drives that race many times to catch the interleaving.
+    // AUTO must be on, because that early reveal is an AUTO transition (6.9.3).
     let stuck = 0;
     for (let attempt = 0; attempt < 60; attempt += 1) {
       const { gameId, playerId } = await freshGame(['Ada']);
+      await engine.setAuto(gameId, true);
       await engine.start(gameId);
       await engine.skipLead(gameId);
       const question = engine.publicQuestion(await engine.get(gameId));
@@ -669,7 +689,9 @@ describe.skipIf(!available)('game engine integration', () => {
     it('a paused question never auto-reveals on its own', async () => {
       // A one-player game would normally auto-reveal once the lone player answers,
       // and the timer would reveal on expiry. Pausing must disable both paths.
+      // AUTO is on so the auto paths this guards against are actually armed.
       const { gameId } = await freshGame(['Ada']);
+      await engine.setAuto(gameId, true);
       await engine.start(gameId);
       await engine.skipLead(gameId);
       await engine.pause(gameId);

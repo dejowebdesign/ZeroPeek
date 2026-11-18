@@ -18,6 +18,11 @@ change and no change to any existing event or game rule.
 > report — the scene bar offered a manual scene step, and an idempotent phase command could cancel
 > the server's auto-advance timer and stall the game. Both are fixed; see **§8**.
 
+> **Superseded in part (Phase 6.9.3):** the presentation mode and the scene bar described here were
+> removed again in Phase 6.9.3 in favour of a single host/beamer view with an optional `AUTO` switch
+> (default off). The scene model and the display-only rule stay; see
+> `docs/reports/phase-6-9-3-host-auto-control.md` and roadmap §9.6.
+
 ## 1. Starting point (verified in the code, not assumed)
 
 From the Phase 6.9 analysis (`docs/analysis/phase-6-9-game-show-analysis.md`, §2, §7, §10) and the

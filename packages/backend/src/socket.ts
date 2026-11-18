@@ -322,6 +322,19 @@ export function attachSocketIO(
       command((id) => engine.skipLead(id)),
     );
 
+    socket.on('host:auto', (payload: { gameId?: string; auto?: unknown }, ack) => {
+      guard(ack, async () => {
+        const gameId = asString(payload?.gameId, 'gameId');
+        // `auto` must be a real boolean; a missing or non-boolean value is a
+        // client error rather than a silent default, so a malformed toggle can
+        // never flip the mode.
+        if (typeof payload?.auto !== 'boolean') throw badRequest('auto must be a boolean.');
+        await assertHost(gameId);
+        const auto = await engine.setAuto(gameId, payload.auto);
+        return { auto };
+      });
+    });
+
     socket.on('host:kick', (payload: { gameId?: string; playerId?: string }, ack) => {
       guard(ack, async () => {
         const gameId = asString(payload?.gameId, 'gameId');
@@ -525,6 +538,11 @@ export function attachSocketIO(
   engine.on('resumed', ({ gameId, questionId, remainingMs }) => {
     hosts.to(hostRoom(gameId)).emit('host:resumed', { questionId, remainingMs });
     players.to(playerRoom(gameId)).emit('game:resumed', { questionId, remainingMs });
+  });
+
+  engine.on('auto', ({ gameId, auto }) => {
+    // The AUTO mode is a host concern only (Phase 6.9.3): players never see it.
+    hosts.to(hostRoom(gameId)).emit('host:auto', { auto });
   });
 
   engine.on('board', ({ gameId, players: list, ranks }) => {

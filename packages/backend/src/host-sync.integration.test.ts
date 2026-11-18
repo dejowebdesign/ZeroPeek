@@ -355,10 +355,12 @@ describe.skipIf(!available)('host state synchronisation', () => {
   it('I – keeps the phase lock: a finished game stays finished under a racing reveal', async () => {
     // Regression guard for PR #29: the fire-and-forget auto-reveal must never
     // overwrite an `end`. Run it repeatedly, because a single pass can win by luck.
+    // AUTO is on, because that early reveal is an AUTO transition (6.9.3).
     for (let round = 0; round < 40; round += 1) {
       const { host, gameId, pin } = await createGame();
       const ada = await joinPlayer(pin, 'Ada');
 
+      await request(host, 'host:auto', { gameId, auto: true });
       await request(host, 'host:start', { gameId });
       await request(host, 'host:skipLead', { gameId });
       const question = await request<HostState>(host, 'host:join', { gameId });
