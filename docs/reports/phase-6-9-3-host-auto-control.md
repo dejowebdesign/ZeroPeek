@@ -274,7 +274,8 @@ guard still validates every transition.
 
 The **answer clock** is the server-side deadline of the running question. It is derived from
 `openedAt` (the server timestamp the question opened) and `limitMs(question)`
-(`timeLimit · 1000 + ANSWER_GRACE_MS`), and it is exposed to clients as `PublicQuestion.openedAt`.
+(`timeLimit · 1000 + ANSWER_GRACE_MS`; since Phase 6.9.5 the grace was removed, so it is exactly
+`timeLimit · 1000`), and it is exposed to clients as `PublicQuestion.openedAt`.
 It is the single source of truth and it **always runs**, whatever the AUTO mode. AUTO never stops,
 resets or restarts it, and never changes its end time.
 
