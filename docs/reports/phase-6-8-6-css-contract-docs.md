@@ -144,3 +144,10 @@ DATABASE_URL=… npx vitest run --root packages/backend   # 385 tests, 0 skipped
 `docs/analysis/phase-6-8-inventory.md`.
 
 **New:** `docs/reports/phase-6-8-6-css-contract-docs.md`.
+
+---
+
+> **Status note (documentation audit, after Phase 6.9.5):** this report was written while the
+> work was still awaiting approval. It has since been merged into `main` via **PR #46**
+> (merge commit `177b63c`). The content above is the historical completion report and is
+> unchanged; only this note was added.

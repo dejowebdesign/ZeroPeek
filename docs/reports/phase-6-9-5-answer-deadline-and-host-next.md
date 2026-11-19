@@ -157,3 +157,10 @@ This is presentation only: the server remains the sole authority on whether an a
    bundle after a deploy — the likely cause of the "Next missing" report. Adding a no-cache policy
    for `*.html` (hashed `/assets/*` may stay long-lived) is a small, self-contained follow-up; it
    touches the frontend image's Caddyfile, so it is left for a separate, approved change.
+
+---
+
+> **Status note (documentation audit, after Phase 6.9.5):** this report was written while the
+> work was still awaiting approval. It has since been merged into `main` via **PR #52**
+> (merge commit `18e271f`). The content above is the historical completion report and is
+> unchanged; only this note was added.

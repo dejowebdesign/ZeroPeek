@@ -78,3 +78,10 @@ Design points worth stating explicitly:
 1. **`End game` on the last leaderboard.** It is kept, so the host still has an explicit way
    to close the round. If the last board should instead end on its own, that is a product
    decision.
+
+---
+
+> **Status note (documentation audit, after Phase 6.9.5):** this report was written while the
+> work was still awaiting approval. It has since been merged into `main` via **PR #51**
+> (merge commit `0d9b8f9`). The content above is the historical completion report and is
+> unchanged; only this note was added.

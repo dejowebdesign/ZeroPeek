@@ -52,15 +52,15 @@ unabhängige Arbeit vorgezogen, nicht die abhängige).
 
 **Kritische Abhängigkeiten:**
 
-| Phase | Braucht zwingend                                          | Ohne das blockiert     |
-| ----- | --------------------------------------------------------- | ---------------------- |
-| 6.3   | Rolle `PLAYER`, Spielerkonto-Modell, E-Mail-Bestätigung   | 6.6, 6.7, 6.8          |
-| 6.4   | Quiz-Snapshot (verbindlich, §8.7)                         | Autospeichern, Reports |
-| 6.7   | **Charakter-Assets des Projektverantwortlichen** (fehlen) | 6.7, 6.10              |
-| 6.8   | Levelkurve + XP-Ledger; Gastkonto-Übernahme               | 6.8, 6.12              |
-| 6.9   | Beamer-Grafiken (kombinierte Host-Ansicht bleibt)         | 6.10                   |
-| 6.11  | **Audio-Assets des Projektverantwortlichen** (fehlen)     | 6.11                   |
-| 6.12  | Entscheidungen zu Modi/Redis                              | 6.12                   |
+| Phase | Braucht zwingend                                                                 | Ohne das blockiert     |
+| ----- | -------------------------------------------------------------------------------- | ---------------------- |
+| 6.3   | Rolle `PLAYER`, Spielerkonto-Modell, E-Mail-Bestätigung                          | 6.6, 6.7, 6.8          |
+| 6.4   | Quiz-Snapshot (verbindlich, §8.7)                                                | Autospeichern, Reports |
+| 6.7   | Charakter-Assets: Ethan/Maya geliefert; Pixel, Biene, Dr. Obscura, O-Bots fehlen | Avatar-Layer, 6.10     |
+| 6.8   | Levelkurve + XP-Ledger; Gastkonto-Übernahme                                      | 6.8, 6.12              |
+| 6.9   | Beamer-Grafiken (kombinierte Host-Ansicht bleibt)                                | 6.10                   |
+| 6.11  | **Audio-Assets des Projektverantwortlichen** (fehlen)                            | 6.11                   |
+| 6.12  | Entscheidungen zu Modi/Redis                                                     | 6.12                   |
 
 ---
 
@@ -389,7 +389,7 @@ GameSnapshot, IP-Erkennung.
 | **Abnahmekriterien**       | Gegenstände sind **nur dem vorgesehenen Charakter** zugeordnet; serverseitig validiert; Avatarwechsel löscht nichts; keine erfundenen Koordinaten                                              |
 | **Aufwand**                | hoch                                                                                                                                                                                           |
 
-**Status: umgesetzt (PR nach Freigabe).** Die Grafikdateien für **Ethan** und **Maya** wurden vom
+**Status: umgesetzt und gemergt (PR #38 `887efc1`, PR #39 `befe52d`).** Die Grafikdateien für **Ethan** und **Maya** wurden vom
 Projektverantwortlichen geliefert (ZIP, sieben WebP je Figur) und **unverändert** nach
 `packages/frontend/public/characters/<id>/` kopiert (byte-identisch geprüft, Alpha erhalten). Der
 Avatar-Katalog ist **Code** (`shared`), nicht Datenbank: die Datenbank speichert nur **Besitz/Zustand**
@@ -543,6 +543,8 @@ Punkte-/Rangdeltas. **Additiv, ohne Schemaänderung, ohne neue Abhängigkeit.**
 
 Report: `docs/reports/phase-6-9-1-server-show-state.md`.
 
+**Status: umgesetzt und gemergt (PR #47, Merge `31a7783`).**
+
 ### 9.5 Szenen-Grundgerüst und Szenensteuerung der Show (Phase 6.9.2)
 
 Das Grundgerüst der 13 Show-Szenen und ihre Steuerung — **rein clientseitig**, additiv, ohne
@@ -563,6 +565,8 @@ Server-, Vertrags- oder Schemaänderung. Baut unmittelbar auf 6.9.1 auf.
 - **Szenenleiste + Präsentationsmodus:** Anzeige der Szene und Präsentations-Umschalter (keine
   Darstellungs-Schritte); der Präsentationsmodus **blendet** die Host-Steuerung aus (entfernt sie
   nicht), sodass der Beamer eine ruhige Bühne zeigt.
+  **Überholt durch 6.9.3:** Szenenleiste und Präsentationsmodus wurden wieder **entfernt**; es gibt
+  nur noch **eine** Host-/Beamer-Ansicht ohne Umschalter (siehe §9.6).
 - **Korrektur (2026-11-17):** Die manuelle Szenen-Navigation der Szenenleiste wurde entfernt
   (die Szene folgt ausschließlich der Serverphase), und ein idempotenter Phasenbefehl (`reveal`/
   `board`) löscht nicht mehr den Auto-Advance-Timer — sonst konnte das Spiel auf Rangliste/
@@ -574,6 +578,8 @@ Server-, Vertrags- oder Schemaänderung. Baut unmittelbar auf 6.9.1 auf.
   Szenen; Hintergrundbilder bleiben Block D (6.10), Sound bleibt 6.11.
 
 Report: `docs/reports/phase-6-9-2-game-show-skeleton.md`.
+
+**Status: umgesetzt und gemergt (PR #48, Merge `9d9cde2`; Flow-Fixes PR #49, Merge `e3bf47d`).**
 
 ### 9.6 Korrektur der Host-Steuerung und optionaler AUTO-Betrieb (Phase 6.9.3)
 
@@ -627,6 +633,8 @@ ANSWER_GRACE_MS`; seit Phase 6.9.5 ohne die Kulanzfrist, also `timeLimit · 1000
 
 Report: `docs/reports/phase-6-9-3-host-auto-control.md`.
 
+**Status: umgesetzt und gemergt (PR #50, Merge `30e286e`).**
+
 ### 9.7 Korrektur: Bestätigungsdialog und Next-Schaltfläche der Host-Steuerung
 
 Zwei Fehler aus dem Praxistest der Phase 6.9.3, beide rein in der Host-Steuerung. Rein additiv
@@ -651,6 +659,8 @@ geändert.
 
 Report: `docs/reports/host-next-and-confirmation-fix.md`.
 
+**Status: umgesetzt und gemergt (Phase 6.9.4, PR #51, Merge `0d9b8f9`).**
+
 ### 9.8 Korrektur: Antwortfrist deckungsgleich mit der sichtbaren Uhr (Phase 6.9.5)
 
 Ein Fehler aus dem Praxistest: der Server nahm Antworten noch **1,5 s nach** dem sichtbaren
@@ -674,9 +684,15 @@ Migration, **kein** Punktwert geändert.
 
 Report: `docs/reports/phase-6-9-5-answer-deadline-and-host-next.md`.
 
+**Status: umgesetzt und gemergt (PR #52, Merge `18e271f`).**
+
 ---
 
 ## 10. Phase 6.9 – Game-Show-Modus (in der bestehenden Host-Ansicht)
+
+**Status: umgesetzt und vollständig gemergt (6.9.1–6.9.5).** 6.9.1 PR #47 (`31a7783`), 6.9.2
+PR #48 (`9d9cde2`) + Flow-Fixes PR #49 (`e3bf47d`), 6.9.3 PR #50 (`30e286e`), 6.9.4 PR #51
+(`0d9b8f9`), 6.9.5 PR #52 (`18e271f`). Stand `main`: `18e271f`.
 
 **Verbindlich:** Die bestehende **kombinierte Host-/Beamer-Ansicht bleibt erhalten.** Es wird
 **keine** separate Beamer-Surface und **keine** eigene Route eingeführt. Ein Show-Token ist **nicht
@@ -702,6 +718,9 @@ zweite Oberfläche eingeführt. Sicherheitsfragen eines separaten Beamer-Zugangs
 
 ## 11. Phase 6.10 – Hintergrundbilder
 
+**Status: geplant – nicht begonnen.** Kein Code, keine Assets, kein Branch. Voraussetzung sind die
+vom Projektverantwortlichen gelieferten Bilder; 6.9 (Show-Ansicht) ist abgeschlossen.
+
 | Punkt                      | Inhalt                                                                                                                                |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | **Ziel**                   | Hintergrundbilder einbinden **und** die **Zufallsauswahl** je Runde umsetzen.                                                         |
@@ -725,6 +744,9 @@ Neonflächen, keine gerenderten 3D-Räume (`game-design-concept.md` §10.5).
 ---
 
 ## 12. Phase 6.11 – Sound und Musik
+
+**Status: geplant – nicht begonnen.** Kein Code, keine Assets, kein Branch. Voraussetzung sind die
+vom Projektverantwortlichen gelieferten Audio-Dateien und das bestehende Asset-Briefing.
 
 | Punkt                      | Inhalt                                                                                    |
 | -------------------------- | ----------------------------------------------------------------------------------------- |
