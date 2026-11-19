@@ -198,3 +198,10 @@ there permanently. Reproduced end-to-end (host double-click on "Leaderboard" →
 and fixed by moving `clearTimer` **after** the guards, so only a real transition clears it. Guarded
 by three new backend tests in `gameplay-reliability.integration.test.ts` (they fail without the
 fix).
+
+---
+
+> **Status note (documentation audit, after Phase 6.9.5):** this report was written while the
+> work was still awaiting approval. It has since been merged into `main` via **PR #48**
+> (merge commit `9d9cde2`). The content above is the historical completion report and is
+> unchanged; only this note was added.

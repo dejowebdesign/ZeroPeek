@@ -300,3 +300,10 @@ Consequences, each covered by a test:
 The audit also confirmed that `setAuto(false)` never called `clearTimer` on the clock in a way that
 could stop it, and that the clock's anchor (`openedAt`) is untouched by any AUTO change. The only
 defect found was the orphaned-timer bookkeeping described in §3.2.
+
+---
+
+> **Status note (documentation audit, after Phase 6.9.5):** this report was written while the
+> work was still awaiting approval. It has since been merged into `main` via **PR #50**
+> (merge commit `30e286e`). The content above is the historical completion report and is
+> unchanged; only this note was added.

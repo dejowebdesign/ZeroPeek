@@ -146,3 +146,10 @@ new phase changed.
 - No final round, no outro statistics (open product decisions, §5.5/§5.6 of the analysis).
 - No schema change and no migration.
 - The support note ("Mit Unterstützung von …") is **not** added.
+
+---
+
+> **Status note (documentation audit, after Phase 6.9.5):** this report was written while the
+> work was still awaiting approval. It has since been merged into `main` via **PR #47**
+> (merge commit `31a7783`). The content above is the historical completion report and is
+> unchanged; only this note was added.
