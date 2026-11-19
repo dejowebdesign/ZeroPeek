@@ -189,6 +189,7 @@ describe('screenForSync', () => {
       placement: null,
       skipped: false,
       lead: null,
+      background: 'synthwave_skyline',
       ...overrides,
     };
   }

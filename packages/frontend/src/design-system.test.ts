@@ -637,3 +637,53 @@ describe('avatar editor surface (Phase 6.7)', () => {
     expect(preview).not.toContain('position: absolute');
   });
 });
+
+describe('round background layer (Phase 6.10)', () => {
+  /** The Phase 6.10 block of `backdrop.css`. */
+  const round = backdrop.slice(backdrop.indexOf('[data-round-background] {'));
+
+  it('fills the viewport without distorting the supplied file', () => {
+    expect(round).toContain('background-size: cover');
+    expect(round).toContain('background-position: center');
+    expect(round).toContain('background-repeat: no-repeat');
+  });
+
+  it('paints behind the content and never intercepts a click', () => {
+    const base = round.slice(0, round.indexOf('[data-round-background]::after'));
+    expect(base).toContain('position: fixed');
+    expect(base).toContain('pointer-events: none');
+    expect(base).toContain('z-index: -3');
+  });
+
+  it('keeps the quiz surface readable with a dark scrim over the image', () => {
+    // The brief requires a dark, readable quiz surface over the background. The
+    // scrim is a gradient of the existing surface colour, so contrast never
+    // depends on the motif, and the image itself is held well below full opacity.
+    expect(round).toContain('[data-round-background]::after');
+    expect(round).toContain('linear-gradient');
+    expect(round).toMatch(/opacity: 0\.5;/);
+  });
+
+  it('dims further on a phone and without transparency support', () => {
+    const small = round.slice(round.indexOf('@media (max-width: 767px)'));
+    expect(small).toContain('opacity: 0.4');
+    const reduce = round.slice(round.indexOf('@media (prefers-reduced-transparency: reduce)'));
+    expect(reduce).toContain('opacity: 0.28');
+  });
+
+  it('does not restyle any existing quiz surface', () => {
+    // The layer is additive: it must not re-declare a question, option, card or
+    // glass rule, so the existing quiz surface is untouched by this phase.
+    for (const surface of [
+      '.question',
+      '.option',
+      '.card',
+      '.show__board',
+      '.participant',
+      '.lobby__pin',
+      '.centered',
+    ]) {
+      expect(round).not.toContain(`${surface} {`);
+    }
+  });
+});

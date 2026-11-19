@@ -10,18 +10,20 @@
  *    never accumulate duplicate listeners (the bug this phase fixes).
  */
 
-import type {
-  GamePhase,
-  HostConnectionStatus,
-  HostReveal,
-  HostState,
-  LeadState,
-  PointsDelta,
-  PublicPlayer,
-  PublicQuestion,
-  Question,
-  QuestionType,
-  RankDelta,
+import {
+  BACKGROUND_CATALOGUE,
+  backgroundName,
+  type GamePhase,
+  type HostConnectionStatus,
+  type HostReveal,
+  type HostState,
+  type LeadState,
+  type PointsDelta,
+  type PublicPlayer,
+  type PublicQuestion,
+  type Question,
+  type QuestionType,
+  type RankDelta,
 } from '@zeropeek/shared';
 import { questionDisplay } from '@zeropeek/shared';
 
@@ -220,6 +222,50 @@ export function autoHint(auto: boolean): string {
     : 'Manual play: you resolve the answers and start the next question yourself.';
 }
 
+/**
+ * The label of the background picker (Phase 6.10).
+ *
+ * The server owns the value, so the label names the background that is actually
+ * in force — not the one the host last clicked. An unknown id still shows the
+ * default's name (the shared helper falls back), so the label can never be blank.
+ */
+export function backgroundLabel(background: string): string {
+  return `Background: ${backgroundName(background)}`;
+}
+
+/**
+ * The one-line description shown under the picker, so the host knows the choice
+ * is round-wide before changing it mid-show.
+ */
+export function backgroundHint(): string {
+  return 'The chosen background is shown on every screen and stays for the whole round.';
+}
+
+/** One row of the picker: the catalogue entry plus whether it is in force. */
+export interface BackgroundChoice {
+  id: string;
+  name: string;
+  file: string;
+  active: boolean;
+}
+
+/**
+ * The picker's rows: the whole catalogue, with the active background flagged.
+ *
+ * The catalogue is always complete (never filtered by availability), so the host
+ * sees every supplied image, and `active` is decided by the server's current
+ * value alone. The filename is carried through so the host can identify a motif
+ * without a visual preview.
+ */
+export function backgroundChoices(active: string): BackgroundChoice[] {
+  return BACKGROUND_CATALOGUE.map((item) => ({
+    id: item.id,
+    name: item.name,
+    file: item.file,
+    active: item.id === active,
+  }));
+}
+
 /** The events a host socket delivers, as consumed by the page. */
 export interface HostEventHandlers {
   lobby: (payload: { pin: string; players: PublicPlayer[] }) => void;
@@ -232,6 +278,7 @@ export interface HostEventHandlers {
   paused: (payload: { questionId: string; remainingMs: number }) => void;
   resumed: (payload: { questionId: string; remainingMs: number }) => void;
   auto: (payload: { auto: boolean }) => void;
+  background: (payload: { background: string }) => void;
 }
 
 /**
@@ -298,6 +345,7 @@ export function attachHostHandlers(
     ['host:paused', forward((h) => h.paused as RawListener)],
     ['host:resumed', forward((h) => h.resumed as RawListener)],
     ['host:auto', forward((h) => h.auto as RawListener)],
+    ['host:background', forward((h) => h.background as RawListener)],
   ];
 
   for (const [event, listener] of listeners) register(event, listener);

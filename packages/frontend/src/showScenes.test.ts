@@ -75,6 +75,7 @@ function state(overrides: Partial<HostState> = {}): HostState {
     points: null,
     ranks: null,
     hasNext: false,
+    background: 'synthwave_skyline',
     ...overrides,
   };
 }

@@ -335,6 +335,17 @@ export function attachSocketIO(
       });
     });
 
+    socket.on('host:background', (payload: { gameId?: string; background?: unknown }, ack) => {
+      guard(ack, async () => {
+        const gameId = asString(payload?.gameId, 'gameId');
+        // The value is validated against the catalogue inside the engine, so a
+        // hand-made id is rejected there rather than silently stored.
+        const background = asString(payload?.background, 'background');
+        await assertHost(gameId);
+        return { background: await engine.setBackground(gameId, background) };
+      });
+    });
+
     socket.on('host:kick', (payload: { gameId?: string; playerId?: string }, ack) => {
       guard(ack, async () => {
         const gameId = asString(payload?.gameId, 'gameId');
@@ -543,6 +554,13 @@ export function attachSocketIO(
   engine.on('auto', ({ gameId, auto }) => {
     // The AUTO mode is a host concern only (Phase 6.9.3): players never see it.
     hosts.to(hostRoom(gameId)).emit('host:auto', { auto });
+  });
+
+  engine.on('background', ({ gameId, background }) => {
+    // The background is a show-wide setting (Phase 6.10): every client renders
+    // the same image, so both namespaces receive the change.
+    hosts.to(hostRoom(gameId)).emit('host:background', { background });
+    players.to(playerRoom(gameId)).emit('game:background', { background });
   });
 
   engine.on('board', ({ gameId, players: list, ranks, hasNext }) => {

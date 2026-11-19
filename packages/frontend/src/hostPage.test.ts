@@ -169,6 +169,7 @@ function lobbyState(): HostState {
     points: null,
     ranks: null,
     hasNext: false,
+    background: 'synthwave_skyline',
   };
 }
 
@@ -493,5 +494,116 @@ describe('host page – destructive controls and the leaderboard advance', () =>
       if (screen().includes('Next question')) throw new Error('dead Next after resync');
     });
     expect(buttons().some((b) => (b.textContent ?? '').includes('End game'))).toBe(true);
+  });
+});
+
+describe('host page – background picker (Phase 6.10)', () => {
+  /** The picker currently on screen, or null when it is not offered. */
+  const picker = (): HTMLElement | null => app().querySelector<HTMLElement>('.show__background');
+  const pickerLabel = (): string =>
+    picker()?.querySelector('.show__background-label')?.textContent?.trim() ?? '';
+  /** The layer the background module paints, or null before it is created. */
+  const layer = (): HTMLElement | null =>
+    document.querySelector<HTMLElement>('[data-round-background]');
+  const layerImage = (): string => layer()?.style.getPropertyValue('--round-background') ?? '';
+
+  it('is offered in the lobby and names the server background', async () => {
+    await enterLobby();
+    expect(picker()).not.toBeNull();
+    expect(pickerLabel()).toBe('Background: Synthwave – Skyline');
+  });
+
+  it('paints the supplied file, not a placeholder', async () => {
+    await enterLobby();
+    expect(layerImage()).toContain('/backgrounds/zeropeek_synthwave_skyline.webp');
+  });
+
+  it('sends the chosen id to the server and never decides locally', async () => {
+    await enterLobby();
+    // The server would answer with a different background than the one asked for
+    // in a broken implementation; here it echoes the request, as the engine does.
+    fake.routes.set('host:background', (payload) => ({
+      background: (payload as { background: string }).background,
+    }));
+
+    clickButton('Synthwave – Wüste');
+
+    await vi.waitFor(() => {
+      if (!fake.sent.includes('host:background')) throw new Error('no command sent');
+    });
+    await vi.waitFor(() => {
+      if (!layerImage().includes('zeropeek_synthwave_wueste.webp')) {
+        throw new Error('layer not repainted from the ACK');
+      }
+    });
+    expect(pickerLabel()).toBe('Background: Synthwave – Wüste');
+  });
+
+  it('repaints from the broadcast, so a second host stays in step', async () => {
+    await enterLobby();
+    fake.trigger('host:background', { background: 'synthwave_weltraum' });
+    await vi.waitFor(() => {
+      if (!layerImage().includes('zeropeek_synthwave_weltraum.webp')) {
+        throw new Error('broadcast not applied');
+      }
+    });
+    expect(pickerLabel()).toBe('Background: Synthwave – Weltraum');
+  });
+
+  it('offers a Random control that sends the sentinel, not a client-side roll', async () => {
+    await enterLobby();
+    let sent: unknown = null;
+    fake.routes.set('host:background', (payload) => {
+      sent = (payload as { background: string }).background;
+      return { background: 'synthwave_skyline' };
+    });
+
+    clickButton('Random');
+    await vi.waitFor(() => {
+      if (sent === null) throw new Error('no command sent');
+    });
+    // The client must ask the server to choose; it must not pick an id itself.
+    expect(sent).toBe('random');
+  });
+
+  it('is hidden once the game leaves the lobby', async () => {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+    await enterLobby();
+    expect(picker()).not.toBeNull();
+
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    await vi.waitFor(() => {
+      if (!screen().includes('Get ready!')) throw new Error('lead not shown');
+    });
+    expect(picker()).toBeNull();
+  });
+
+  it('is restored by a reconnect snapshot, because a reload arrives as a sync', async () => {
+    fake.routes.set('host:create', () => lobbyState());
+    await boot();
+    clickButton('Start');
+    await vi.waitFor(() => {
+      if (!screen().includes('1234')) throw new Error('lobby not rendered');
+    });
+
+    // A reconnect is what a browser reload produces: the state arrives as a
+    // `sync` snapshot, not as a `lobby` event. The picker must still be there.
+    fake.routes.set('host:join', () => ({
+      ...lobbyState(),
+      background: 'synthwave_unterwasser_v3',
+    }));
+    // The page treats the first `connect` as the initial connection and only
+    // resyncs from the second one on, so the test has to open the socket first.
+    fake.trigger('connect');
+    fake.trigger('disconnect');
+    fake.trigger('connect');
+    await vi.waitFor(() => {
+      if (!layerImage().includes('zeropeek_synthwave_unterwasser_v3.webp')) {
+        throw new Error('reconnect did not restore the background');
+      }
+    });
+    expect(picker()).not.toBeNull();
+    expect(pickerLabel()).toBe('Background: Synthwave – Unterwasser');
   });
 });

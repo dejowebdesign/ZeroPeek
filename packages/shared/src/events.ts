@@ -169,6 +169,12 @@ export interface PlayerSync {
    * the clock sync.
    */
   lead: LeadState | null;
+  /**
+   * The background image of the round (Phase 6.10), as a catalogue id. The same
+   * value every other client shows: it comes from the server, never from the
+   * client, and a reconnect restores exactly the background the round is using.
+   */
+  background: string;
 }
 
 /**
@@ -244,6 +250,17 @@ export interface HostState {
    * reloads or reconnects on the board restores exactly the right controls.
    */
   hasNext: boolean;
+  /**
+   * The background image of the round (Phase 6.10), as a catalogue id.
+   *
+   * Server-authoritative: the host picks it (or asks for a random one), the
+   * engine stores the concrete id and every client renders that same id, so the
+   * host, the beamer and the players can never show different backgrounds. It is
+   * fixed for the whole round — a new value appears only when the host changes
+   * it deliberately — and always present, so a fresh game and a resumed one are
+   * indistinguishable.
+   */
+  background: string;
 }
 
 /** The host's own connection state, as shown in the control bar. */
@@ -331,6 +348,13 @@ export interface PlayerServerEvents {
   'game:resumed': (payload: { questionId: string; remainingMs: number }) => void;
   /** The server's reply to a `clock:ping`, used to correct the local clock. */
   'clock:pong': (payload: ClockPong) => void;
+  /**
+   * The round's background changed (Phase 6.10). Sent to every player socket
+   * when the host picks a different background. The payload is the catalogue id,
+   * so a client that does not know it falls back to its default rather than
+   * showing nothing.
+   */
+  'game:background': (payload: { background: string }) => void;
 }
 
 /** Player → server events (namespace `/`). */
@@ -405,6 +429,12 @@ export interface HostServerEvents {
    * The server owns the value; this event only mirrors it.
    */
   'host:auto': (payload: { auto: boolean }) => void;
+  /**
+   * The round's background changed (Phase 6.10). Broadcast to every host socket
+   * of the game, so a second host tab (or a reconnect) stays in step. The server
+   * owns the value; this event only mirrors it.
+   */
+  'host:background': (payload: { background: string }) => void;
   /** The server's reply to a `clock:ping`, used to correct the local clock. */
   'clock:pong': (payload: ClockPong) => void;
 }
@@ -439,6 +469,17 @@ export interface HostClientEvents {
    * cannot arm a second timer. The ACK carries the authoritative value.
    */
   'host:auto': (payload: { gameId: string; auto: boolean }, ack: Ack<{ auto: boolean }>) => void;
+  /**
+   * Choose the round's background (Phase 6.10). `background` is either a
+   * catalogue id or the `random` sentinel, which the server resolves to one
+   * concrete id **once**; the ACK carries the id that is now in force, so the
+   * host renders the server's choice rather than its own guess. The server
+   * validates the value against the catalogue, so a hand-made id is rejected.
+   */
+  'host:background': (
+    payload: { gameId: string; background: string },
+    ack: Ack<{ background: string }>,
+  ) => void;
   /**
    * Measure the server clock (Phase 6.8.5). Fire-and-forget: the server answers
    * with a `clock:pong` event carrying the same `id`. See `PlayerClientEvents`.

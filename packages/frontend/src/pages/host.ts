@@ -9,6 +9,10 @@
  */
 
 import {
+  BACKGROUND_CATALOGUE,
+  DEFAULT_BACKGROUND_ID,
+  RANDOM_BACKGROUND,
+  backgroundPath,
   type GamePhase,
   type HostConnectionStatus,
   type HostReveal,
@@ -25,6 +29,7 @@ import { appShell } from '../navigation.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
 import { ClockSync } from '../clockSync.js';
 import { playerAvatar } from '../avatar.js';
+import { applyRoundBackground, clearRoundBackground } from '../background.js';
 import {
   leaderboardRow,
   participantCard,
@@ -35,6 +40,9 @@ import {
   attachHostHandlers,
   autoHint,
   autoLabel,
+  backgroundChoices,
+  backgroundHint,
+  backgroundLabel,
   canAct,
   connectionStatus,
   forgetGame,
@@ -130,6 +138,14 @@ const show = new ShowController();
 let autoMode = false;
 /** The AUTO toggle currently on screen, so its label can be repainted in place. */
 let autoNode: HTMLButtonElement | null = null;
+/**
+ * The round's background id (Phase 6.10), mirrored from the server. The server
+ * owns the value; this mirror exists only so a repaint can redraw the picker's
+ * active row without another round trip. It is never used to decide the image.
+ */
+let backgroundId = DEFAULT_BACKGROUND_ID;
+/** The picker's label node, so a background change can repaint it in place. */
+let backgroundLabelNode: HTMLElement | null = null;
 /** The host's own connection state, shown in the control bar. */
 let connection: HostConnectionStatus = 'connected';
 /** Whether the socket has connected at least once (so a `connect` is a reconnect). */
@@ -365,6 +381,12 @@ function ensureSocket(): HostSocket {
         lastLiveEventAt = Date.now();
         setAuto(payload.auto);
       },
+      // The round's background changed (Phase 6.10). The server owns the value, so
+      // this only repaints the layer and the picker — it never moves the game.
+      background: (payload) => {
+        lastLiveEventAt = Date.now();
+        setBackground(payload.background);
+      },
     } satisfies HostEventHandlers);
 
     host.on('connect', () => {
@@ -474,9 +496,12 @@ let lastRender: HostRender | null = null;
 function renderHostState(input: HostRender): void {
   lastRender = input;
   show.sync(descriptorOf(input));
-  if (input.kind === 'sync') autoMode = input.state.auto;
-
   if (input.kind === 'sync') {
+    autoMode = input.state.auto;
+    // The authoritative background arrives with every snapshot, so a reload or a
+    // reconnect restores exactly the image the round is using (Phase 6.10).
+    backgroundId = input.state.background;
+    applyRoundBackground(backgroundId);
     activeGame = { id: input.state.gameId, pin: input.state.pin };
     const screen = hostScreen(input.state);
     if (screen === 'lobby') return showLobby(input.state.pin, input.state.players ?? []);
@@ -538,6 +563,97 @@ function autoToggle(): HTMLElement | null {
   return el('div', { class: 'show__auto' }, autoNode);
 }
 
+/**
+ * The background picker (Phase 6.10).
+ *
+ * Shown on the lobby screen, which is where the host prepares the round. It lists
+ * the whole supplied catalogue by display name **and** filename — the brief asks
+ * for a preview based on those two labels, and neither requires looking at the
+ * image. The active row is marked from the server's value.
+ *
+ * The picker never decides anything locally: a click sends the id to the server
+ * and the `host:background` broadcast repaints. That is what keeps the host, the
+ * beamer and the players on the same image.
+ */
+function backgroundPicker(): HTMLElement | null {
+  backgroundLabelNode = null;
+  if (lastRender === null) return null;
+  // Only in the lobby: the image must not be swapped mid-question by accident.
+  // A reconnect arrives as a `sync` snapshot, so that path is matched through the
+  // derived screen — otherwise the picker would vanish on a reload.
+  const inLobby =
+    lastRender.kind === 'lobby' ||
+    (lastRender.kind === 'sync' && hostScreen(lastRender.state) === 'lobby');
+  if (!inLobby) return null;
+
+  backgroundLabelNode = el(
+    'span',
+    { class: 'show__background-label' },
+    backgroundLabel(backgroundId),
+  );
+
+  const rows = backgroundChoices(backgroundId).map((choice) =>
+    button(choice.name, {
+      variant: choice.active ? 'secondary' : 'ghost',
+      small: true,
+      ariaLabel: `${choice.name} (${choice.file})`,
+      onClick: () => void chooseBackground(choice.id),
+    }),
+  );
+
+  const random = button('Random', {
+    variant: 'ghost',
+    small: true,
+    ariaLabel: 'Pick a random background for this round',
+    onClick: () => void chooseBackground(RANDOM_BACKGROUND),
+  });
+
+  return el(
+    'div',
+    { class: 'show__background' },
+    el(
+      'div',
+      { class: 'show__background-head' },
+      backgroundLabelNode,
+      el('span', { class: 'muted show__background-hint' }, backgroundHint()),
+    ),
+    el('div', { class: 'show__background-options' }, random, ...rows),
+  );
+}
+
+/** Ask the server to change the round's background; the broadcast repaints. */
+async function chooseBackground(choice: string): Promise<void> {
+  if (!canAct(connection)) {
+    toast('Reconnect before you continue.', 'error');
+    return;
+  }
+  const gameId = currentGameId();
+  if (!gameId) return;
+  try {
+    const { background } = await request<{ background: string }>(
+      ensureSocket(),
+      'host:background',
+      { gameId, background: choice },
+    );
+    setBackground(background);
+  } catch (error) {
+    toast(errorText(error), 'error');
+  }
+}
+
+/**
+ * Apply the server's background value to the layer and the picker label.
+ *
+ * Called from the `host:background` broadcast, from a snapshot and from the ACK,
+ * so all three paths end in the same paint and a repaint can never disagree with
+ * the server.
+ */
+function setBackground(background: string): void {
+  backgroundId = background;
+  applyRoundBackground(background);
+  if (backgroundLabelNode) backgroundLabelNode.textContent = backgroundLabel(background);
+}
+
 /** Ask the server to flip the AUTO mode; the `host:auto` broadcast repaints. */
 async function toggleAuto(): Promise<void> {
   if (!canAct(connection)) {
@@ -596,6 +712,11 @@ async function showHome(): Promise<void> {
   lastRender = null;
   autoMode = false;
   autoNode = null;
+  // Leaving the show drops the round background too, so an image from a previous
+  // game cannot linger behind the quiz picker (Phase 6.10).
+  backgroundId = DEFAULT_BACKGROUND_ID;
+  backgroundLabelNode = null;
+  clearRoundBackground();
   show.sync(null);
   try {
     const [{ quizzes }, { games }] = await Promise.all([
@@ -945,6 +1066,7 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
         { class: `card lobby anim-fade-in${wide ? ' lobby--wide' : ''}` },
         connectionBanner(),
         body,
+        backgroundPicker(),
         autoToggle(),
         controlsFor('lobby'),
       ),

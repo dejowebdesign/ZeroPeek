@@ -195,25 +195,42 @@ geometrische Architektur, gedämpfte Farben**. **Keine** gerenderten 3D-Objekte,
 | **Zielpfad**         | `packages/frontend/public/backgrounds/<name>.webp`                          |
 | **Animation**        | nein (Bewegung nur dezent per CSS, wo sinnvoll)                             |
 
-**Vorgeschlagene Motive (Umgebungen aus Phase 5c):**
+**Geliefert (Phase 6.10) – zehn Dateien, byte-identisch eingebunden:**
 
-| Asset-Name                   | Verwendung                   | Motiv (Wireframe, dunkel)                          |
-| ---------------------------- | ---------------------------- | -------------------------------------------------- |
-| `bg-retro-grid`              | Zufallspool / Szene 1        | Retro Grid, ruhig                                  |
-| `bg-future-classroom`        | Zufallspool                  | Future Classroom, dezente Architektur              |
-| `bg-quiz-arena`              | Zufallspool / Szene 5–7      | Quiz Arena, **starke zentrale Freifläche**         |
-| `bg-spaceship-bridge`        | Zufallspool                  | Spaceship Bridge, perspektivisch                   |
-| `bg-simulation-room`         | Zufallspool                  | Simulation Room, geometrisch                       |
-| `bg-blockworld-future-world` | Zufallspool                  | Blockwelt Future World, dezent                     |
-| `beamer-welcome-background`  | Szene 1 Begrüßung            | ruhige Game-Show-Bühne                             |
-| `beamer-lobby-background`    | Szene 2/3 Beitritt/Übersicht | Platz für PIN, QR-Code und Avatar-Wand             |
-| `beamer-reveal-background`   | Szene 8/9 Auflösung/Punkte   | Raum für Balken                                    |
-| `beamer-board-background`    | Szene 10 Rangliste           | Platz für Liste                                    |
-| `beamer-final-background`    | Szene 11/12 Finale/Podium    | dramatische Finalkulisse                           |
-| `beamer-podium-background`   | Szene 12 Gewinnerpodium      | Siegerpodium, Platz für 3 Figuren                  |
-| `beamer-outro-background`    | Szene 13 Abschluss           | ruhiger Ausklang                                   |
-| `login-background`           | Login                        | Sternenhimmel-Basis (violette/cyanfarbene Akzente) |
-| `adventure-landscape`        | optional Profil/Startseite   | Blockwelt-Abenteuerlandschaft                      |
+| Datei (in `packages/frontend/public/backgrounds/`) | Katalog-ID                          |
+| -------------------------------------------------- | ----------------------------------- |
+| `zeropeek_palmen_tron_background.webp`             | `palmen_tron_background`            |
+| `zeropeek_synthwave_bruecke_zwei_berge.webp`       | `synthwave_bruecke_zwei_berge`      |
+| `zeropeek_synthwave_forschungsstation_muted.webp`  | `synthwave_forschungsstation_muted` |
+| `zeropeek_synthwave_lagerhalle_minimal.webp`       | `synthwave_lagerhalle_minimal`      |
+| `zeropeek_synthwave_megacity_detail.webp`          | `synthwave_megacity_detail`         |
+| `zeropeek_synthwave_raumstation_ohne_boden.webp`   | `synthwave_raumstation_ohne_boden`  |
+| `zeropeek_synthwave_skyline.webp`                  | `synthwave_skyline`                 |
+| `zeropeek_synthwave_unterwasser_v3.webp`           | `synthwave_unterwasser_v3`          |
+| `zeropeek_synthwave_weltraum.webp`                 | `synthwave_weltraum`                |
+| `zeropeek_synthwave_wueste.webp`                   | `synthwave_wueste`                  |
+
+Alle zehn liegen als WebP mit RIFF-Header vor und werden **unverändert** ausgeliefert. Die
+Katalog-ID wird ausschließlich aus dem Dateinamen abgeleitet (`packages/shared/src/backgrounds.ts`);
+es findet **keine** Bildanalyse statt. Ein Bild ist die **Runde**-Hintergrund, nicht einer
+bestimmten Szene zugeordnet: die Zuordnung Motiv → Szene ist eine offene Produktentscheidung.
+
+**Noch offen (nicht geliefert, nicht angefordert):**
+
+| Asset-Name                  | Verwendung                   | Motiv (Wireframe, dunkel)              |
+| --------------------------- | ---------------------------- | -------------------------------------- |
+| `beamer-welcome-background` | Szene 1 Begrüßung            | ruhige Game-Show-Bühne                 |
+| `beamer-lobby-background`   | Szene 2/3 Beitritt/Übersicht | Platz für PIN, QR-Code und Avatar-Wand |
+| `beamer-reveal-background`  | Szene 8/9 Auflösung/Punkte   | Raum für Balken                        |
+| `beamer-board-background`   | Szene 10 Rangliste           | Platz für Liste                        |
+| `beamer-final-background`   | Szene 11/12 Finale/Podium    | dramatische Finalkulisse               |
+| `beamer-podium-background`  | Szene 12 Gewinnerpodium      | Siegerpodium, Platz für 3 Figuren      |
+| `beamer-outro-background`   | Szene 13 Abschluss           | ruhiger Ausklang                       |
+| `login-background`          | Login                        | Sternenhimmel-Basis (violett/cyan)     |
+| `adventure-landscape`       | optional Profil/Startseite   | Blockwelt-Abenteuerlandschaft          |
+
+Solange diese Dateien fehlen, bleibt es bei **einem** Runden-Hintergrund; es werden **keine**
+Ersatzbilder erzeugt oder eingesetzt.
 
 **Regel:** Fragen und Antworten bleiben **immer** im Vordergrund. Hintergründe dürfen Text nicht
 schwer lesbar machen (ausreichend Kontrast in der zentralen Fläche).
