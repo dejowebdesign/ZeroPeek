@@ -3153,6 +3153,57 @@ body::before {
   width: 100%;
 }
 
+/**
+ * The background picker (Phase 6.10).
+ *
+ * Sits in the lobby card above the AUTO bar, following the same width, spacing and
+ * hairline rules so it reads as part of the existing controls rather than a new
+ * panel. The rows wrap, so on a phone they stack into a readable list without a
+ * horizontal scroll.
+ */
+.show__background {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: var(--hairline) solid var(--border);
+}
+
+.show__background-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.show__background-label {
+  font-weight: var(--weight-card);
+}
+
+.show__background-hint {
+  font-size: var(--type-label);
+}
+
+.show__background-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+/* On a narrow screen the chips stack full width, so every name stays readable
+   and the tap target keeps its height. */
+@media (max-width: 640px) {
+  .show__background-options {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* The lobby-phase scenes: welcome, join and participants share one card. */
 .lobby__title {
   margin: 0 0 var(--space-2);

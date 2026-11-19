@@ -299,3 +299,64 @@ body::after {
     --wire-opacity: 0.4;
   }
 }
+
+/* ---------- round background image (Phase 6.10) ---------- */
+
+/**
+ * The background image the host picked for the round.
+ *
+ * `background.ts` creates one `[data-round-background]` element and only
+ * rewrites its `--round-background` custom property, so a change swaps the image
+ * without re-creating the DOM. The element is fixed and inert: it paints behind
+ * every surface and never receives a pointer event.
+ *
+ * The image is deliberately dim. It is a *background* layer, not content: at this
+ * opacity the existing dark surface and glass cards keep their contrast, so
+ * question text and answer buttons stay readable over any motif. `cover` plus
+ * `center` fills the viewport without distorting the supplied file, and no file
+ * is ever resized, cropped on disk or re-encoded.
+ *
+ * Nothing here changes an existing quiz style; the layer is additive and can be
+ * removed without touching any other rule.
+ */
+[data-round-background] {
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  background-image: var(--round-background, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  /* The supplied motifs are bright; the scrim below brings them down to a level
+     the dark UI was designed for, and the fade keeps the first paint calm. */
+  opacity: 0.5;
+  filter: saturate(0.9);
+  transition: opacity 400ms ease;
+}
+
+/* A dark scrim between the image and the UI, so text contrast never depends on
+   the motif. It is a gradient of the existing surface colour, not a new colour. */
+[data-round-background]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(6, 8, 20, 0.55), transparent 70%),
+    linear-gradient(to bottom, rgba(6, 8, 20, 0.72), rgba(6, 8, 20, 0.86));
+}
+
+/* A phone has less room for text and a smaller GPU budget: dim further and drop
+   the transition so scrolling stays smooth. */
+@media (max-width: 767px) {
+  [data-round-background] {
+    opacity: 0.4;
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  [data-round-background] {
+    opacity: 0.28;
+  }
+}

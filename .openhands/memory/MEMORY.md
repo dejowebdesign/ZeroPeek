@@ -1016,3 +1016,31 @@ Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts i
      needs approval): add no-cache for `*.html` in the frontend Caddyfile.
   Counts: backend **431**, frontend **523**, shared **179**; all gates green. **No push/PR/merge.**
 
+
+## Phase 6.10 — round backgrounds (branch `feat/phase-6-10-background-library`)
+- Ten owner-supplied WebP files live in `packages/frontend/public/backgrounds/`
+  (`zeropeek_*.webp`), integrated **byte-identically** (SHA-256 checked). Never
+  re-encode them. `unzip` is NOT installed here — use Python `zipfile`.
+- `packages/shared/src/backgrounds.ts` is the only source of truth. Catalogue ids are
+  derived **from filenames only** (no image analysis, per briefing §29–31):
+  `synthwave_skyline`, `synthwave_weltraum`, `synthwave_wueste`, `synthwave_megacity_detail`,
+  `synthwave_bruecke_zwei_berge`, `synthwave_forschungsstation_muted`,
+  `synthwave_lagerhalle_minimal`, `synthwave_raumstation_ohne_boden`,
+  `synthwave_unterwasser_v3`, `palmen_tron_background`.
+- **`RANDOM_BACKGROUND` (`'random'`) is resolved server-side, once.** Clients only ever send the
+  sentinel; `resolveBackgroundChoice()` returns a concrete id or `undefined`. Never let a client
+  pick an id itself — two devices would roll two images.
+- Background is chosen in `engine.create` and appended as a `background` `GameEvent`; it is
+  **never** re-rolled by join/start/question. No migration — `load()` restores the last valid
+  event, so `engine.evict()` is the restart-path test.
+- `setBackground()` is idempotent: unchanged resolved id = no-op (stops double-click swap).
+- **`attachHostHandlers` needs an explicit entry in its `listeners` array** for every new host
+  event. Adding it to the `HostEventHandlers` *type* is not enough — the handler silently never
+  fires and only the command ACK still works. This bit us with `host:background`.
+- A host reload arrives as `{ kind: 'sync' }`, **not** `{ kind: 'lobby' }`. Gate lobby-only UI on
+  `hostScreen(state)`, never on `lastRender.kind`, or it disappears exactly on reconnect.
+- The frontend paints via one inert `[data-round-background]` div; only the
+  `--round-background` custom property is rewritten (no DOM recreation). `backdrop.css` adds a
+  dark scrim so quiz text stays readable on any motif.
+- **Open product decision:** no image is mapped to a specific screen (lobby/final/podium). The ten
+  files are a round-wide pool; motif→scene mapping is the owner's call.

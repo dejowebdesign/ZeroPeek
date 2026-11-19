@@ -20,6 +20,7 @@ import type {
 
 import { get } from '../api.js';
 import { playerAvatar, playerBadge } from '../avatar.js';
+import { applyRoundBackground, clearRoundBackground } from '../background.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
@@ -576,6 +577,9 @@ const app: HTMLElement = appElement;
    * point for a reconnect, so the client never decides the phase itself.
    */
   function renderSync(sync: PlayerSync): void {
+    // The background comes from the server with every snapshot, so a reconnect
+    // restores exactly the image the round is using (Phase 6.10).
+    applyRoundBackground(sync.background);
     switch (screenForSync(sync)) {
       case 'lead':
         if (sync.lead) showLead(sync.lead);
@@ -623,6 +627,9 @@ const app: HTMLElement = appElement;
   // the clock sync, so every device counts down together.
   socket.on('game:lead', (lead) => showLead(lead));
   socket.on('game:question', (question) => showQuestion(question));
+  // The host changed the round's background (Phase 6.10). The payload is the
+  // catalogue id the server owns, so every player shows the same image.
+  socket.on('game:background', (payload) => applyRoundBackground(payload.background));
   socket.on('game:reveal', (payload) => showResult(payload.questionId, payload.result));
   socket.on('game:board', (payload) => showBoard(payload.players));
   socket.on('game:ended', (payload) => showEnd(payload));
@@ -668,6 +675,7 @@ const app: HTMLElement = appElement;
   // The host removed this player. Clear the stored session so a reload does not
   // try to reclaim a slot that no longer exists, and return to the join form.
   socket.on('game:kicked', () => {
+    clearRoundBackground();
     clearSession();
     hostStatus = null;
     showJoin('You were removed from the game by the host.');

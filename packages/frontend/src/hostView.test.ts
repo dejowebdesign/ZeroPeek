@@ -11,10 +11,15 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { BACKGROUND_CATALOGUE } from '@zeropeek/shared';
+
 import type { HostReveal, HostState } from '@zeropeek/shared';
 
 import {
   attachHostHandlers,
+  backgroundChoices,
+  backgroundHint,
+  backgroundLabel,
   autoHint,
   autoLabel,
   canAct,
@@ -49,6 +54,7 @@ function state(overrides: Partial<HostState> = {}): HostState {
     points: null,
     ranks: null,
     hasNext: false,
+    background: 'synthwave_skyline',
     ...overrides,
   };
 }
@@ -383,7 +389,10 @@ describe('attachHostHandlers', () => {
     detach();
     socket.emit('host:lobby', { pin: '1', players: [] });
     expect(lobby).not.toHaveBeenCalled();
-    expect(socket.offCalls.count).toBe(10);
+    // Every listener the module registers is unregistered again; the count is
+    // derived from the handler set so adding an event cannot silently leave one
+    // attached.
+    expect(socket.offCalls.count).toBe(Object.keys(handlersFor()).length);
 
     attachHostHandlers(socket, handlersFor({ lobby }));
     socket.emit('host:lobby', { pin: '1', players: [] });
@@ -442,6 +451,7 @@ function handlersFor(overrides: Partial<HostEventHandlers> = {}): HostEventHandl
     paused: vi.fn(),
     resumed: vi.fn(),
     auto: vi.fn(),
+    background: vi.fn(),
     ...overrides,
   };
 }
@@ -479,5 +489,45 @@ describe('revealBody (Phase 6.5.3, decision B)', () => {
     expect(html).toContain('Capital of France?');
     expect(html).toContain('Correct: Paris');
     expect(html).not.toContain('Question skipped');
+  });
+});
+
+describe('background picker (Phase 6.10)', () => {
+  it('names the background that is actually in force', () => {
+    expect(backgroundLabel('synthwave_skyline')).toBe('Background: Synthwave – Skyline');
+  });
+
+  it('falls back to the default name for an unknown id, never a blank label', () => {
+    expect(backgroundLabel('gone')).toBe(`Background: ${BACKGROUND_CATALOGUE[0]!.name}`);
+  });
+
+  it('lists the whole catalogue, so no supplied image is hidden from the host', () => {
+    const choices = backgroundChoices('synthwave_skyline');
+    expect(choices).toHaveLength(BACKGROUND_CATALOGUE.length);
+    expect(choices.map((choice) => choice.id)).toEqual(BACKGROUND_CATALOGUE.map((item) => item.id));
+  });
+
+  it('flags exactly the active background', () => {
+    const active = backgroundChoices('synthwave_wueste').filter((choice) => choice.active);
+    expect(active).toHaveLength(1);
+    expect(active[0]!.id).toBe('synthwave_wueste');
+  });
+
+  it('flags nothing when the active id is unknown', () => {
+    // The layer still falls back to the default, but the picker must not claim a
+    // row is in force when the server value matches none of them.
+    expect(backgroundChoices('gone').filter((choice) => choice.active)).toHaveLength(0);
+  });
+
+  it('carries the filename so the host can identify a motif without a preview', () => {
+    const row = backgroundChoices('synthwave_skyline').find(
+      (choice) => choice.id === 'synthwave_skyline',
+    )!;
+    expect(row.file).toBe('zeropeek_synthwave_skyline.webp');
+    expect(row.name).toBe('Synthwave – Skyline');
+  });
+
+  it('tells the host the choice is round-wide', () => {
+    expect(backgroundHint()).toContain('whole round');
   });
 });

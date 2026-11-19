@@ -19,12 +19,16 @@ import { EventEmitter } from 'node:events';
 import type { Prisma } from '@prisma/client';
 
 import {
+  DEFAULT_BACKGROUND_ID,
   correctnessOf,
+  findBackground,
   GAME_PHASES,
   isAnswerable,
   isSuspiciouslyFast,
   questionDisplay,
+  pickRandomBackground,
   rankPlayers,
+  resolveBackgroundChoice,
   scoreAnswer,
   snapshotToQuiz,
   type GamePhase,
@@ -98,6 +102,13 @@ interface RuntimeGame {
    * controlled — they always run.
    */
   auto: boolean;
+  /**
+   * The background image of the round (Phase 6.10), as a catalogue id. Chosen
+   * once when the game is created (or explicitly re-chosen by the host) and then
+   * held for the whole round, so it never changes on a render, a join or a
+   * question change. Persisted in the event log, so a restart restores it.
+   */
+  background: string;
   /** Server timestamp (ms) the `lead` countdown started, or null. */
   leadStartedAt: number | null;
   /** Server timestamp (ms) the `lead` countdown ends, or null. */
@@ -121,6 +132,8 @@ export interface EngineEvents {
   resumed: [{ gameId: string; questionId: string; remainingMs: number }];
   /** The AUTO mode changed (Phase 6.9.3), broadcast to every host socket. */
   auto: [{ gameId: string; auto: boolean }];
+  /** The round's background changed (Phase 6.10), broadcast to every client. */
+  background: [{ gameId: string; background: string }];
 }
 
 /**
@@ -303,6 +316,10 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       remainingMs: null,
       skippedQuestionId: null,
       auto: false,
+      // The background is decided once, here, and then held for the round: a
+      // random pick at creation means every client that joins later sees the
+      // same image, and nothing re-rolls it per render or per join.
+      background: pickRandomBackground(),
       leadStartedAt: null,
       leadEndsAt: null,
       players: new Map(),
@@ -311,6 +328,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     };
     this.games.set(row.id, runtime);
     await logEvent(row.id, 'created', { quizId });
+    await logEvent(row.id, 'background', { background: runtime.background });
     return runtime;
   }
 
@@ -352,6 +370,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       remainingMs: null,
       skippedQuestionId: null,
       auto: false,
+      background: DEFAULT_BACKGROUND_ID,
       leadStartedAt: null,
       leadEndsAt: null,
       players: new Map(),
@@ -400,7 +419,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     const events = await prisma.gameEvent.findMany({
       where: {
         gameId: runtime.id,
-        type: { in: ['lead', 'question', 'paused', 'resumed', 'skipped', 'auto'] },
+        type: { in: ['lead', 'question', 'paused', 'resumed', 'skipped', 'auto', 'background'] },
       },
       select: { type: true, data: true, createdAt: true },
     });
@@ -430,6 +449,20 @@ export class GameEngine extends EventEmitter<EngineEvents> {
         .map((event) => (event.data as { auto?: boolean }).auto)
         .filter((value): value is boolean => typeof value === 'boolean')
         .at(-1) ?? false;
+
+    // The background is restored the same way (Phase 6.10): the last
+    // `background` event wins, and an unknown or absent id falls back to the
+    // catalogue default, so a restart never renders a broken image. The value is
+    // validated against the catalogue, so a hand-edited event log cannot make
+    // the engine serve a background that was never supplied.
+    const backgroundEvents = events
+      .filter((event) => event.type === 'background')
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    runtime.background =
+      backgroundEvents
+        .map((event) => (event.data as { background?: unknown }).background)
+        .filter((value): value is string => findBackground(value as string) !== undefined)
+        .at(-1) ?? DEFAULT_BACKGROUND_ID;
 
     // The start countdown (Phase 6.9.1). Its window is rebuilt from the `lead`
     // event's server `endsAt`, so a restart mid-countdown re-arms for the
@@ -973,6 +1006,34 @@ export class GameEngine extends EventEmitter<EngineEvents> {
   }
 
   /**
+   * Choose the round's background (Phase 6.10).
+   *
+   * The server owns the value. `choice` is a catalogue id or the `random`
+   * sentinel; the sentinel is resolved to **one** concrete id here, so a random
+   * pick happens once per host action and never per render or per client. The
+   * value is validated against the catalogue before it is stored, so a hand-made
+   * id is rejected rather than persisted.
+   *
+   * A change is broadcast to every client (host, players, beamer) and appended to
+   * the event log, which is what makes it survive a restart. Setting the value
+   * that is already in force is a no-op: it neither re-rolls a random pick nor
+   * writes an event, so a duplicate click cannot swap the image under the show.
+   */
+  async setBackground(gameId: string, choice: string): Promise<string> {
+    return this.withPhaseLock(gameId, async () => {
+      const game = await this.get(gameId);
+      const resolved = resolveBackgroundChoice(choice);
+      if (!resolved) throw badRequest('That background is not available.');
+      if (game.background === resolved) return game.background;
+
+      game.background = resolved;
+      await logEvent(gameId, 'background', { background: resolved });
+      this.emit('background', { gameId, background: resolved });
+      return game.background;
+    });
+  }
+
+  /**
    * Bring the running question's AUTO resolution up to date after AUTO was turned
    * on (Phase 6.9.3). A no-op unless the game is on a live, unpaused, answerable
    * question. If the whole roster has answered, or the clock has already expired,
@@ -1146,6 +1207,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       placement: null,
       skipped: false,
       lead: null,
+      background: game.background,
     };
 
     // The start countdown (Phase 6.9.1): a player who reconnects during it sees
@@ -1248,6 +1310,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       points: null,
       ranks: null,
       hasNext: false,
+      background: game.background,
     };
 
     // The start countdown (Phase 6.9.1): a host that reconnects mid-countdown

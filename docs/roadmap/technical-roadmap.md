@@ -718,8 +718,9 @@ zweite Oberfläche eingeführt. Sicherheitsfragen eines separaten Beamer-Zugangs
 
 ## 11. Phase 6.10 – Hintergrundbilder
 
-**Status: geplant – nicht begonnen.** Kein Code, keine Assets, kein Branch. Voraussetzung sind die
-vom Projektverantwortlichen gelieferten Bilder; 6.9 (Show-Ansicht) ist abgeschlossen.
+**Status: umgesetzt auf Branch `feat/phase-6-10-background-library` – wartet auf Freigabe.**
+Kein Merge, kein Deployment. Die zehn gelieferten WebP-Dateien sind byte-identisch eingebunden;
+Auswahl und Zufall liegen beim Server. Report: `docs/reports/phase-6-10-background-library.md`.
 
 | Punkt                      | Inhalt                                                                                                                                |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -740,6 +741,23 @@ Platzhalter als endgültige Lösung verwendet. Fehlende Bilder werden angeforder
 **Verbindlich (Phase 5c):** Standard **Zufall**; genau **einmal** je Runde bestimmt, für alle
 gleich, bleibt die ganze Runde. Stil: dunkel, Wireframe, dezente Architektur – keine grellen
 Neonflächen, keine gerenderten 3D-Räume (`game-design-concept.md` §10.5).
+
+**Umsetzung (Stand Branch):**
+
+- `packages/shared/src/backgrounds.ts` – Katalog der zehn gelieferten Dateien, abgeleitet **nur**
+  aus den Dateinamen (kein Bildinhalt, keine Bildanalyse); `resolveBackgroundChoice` liefert eine
+  konkrete ID oder `undefined`.
+- `packages/frontend/public/backgrounds/*` – die zehn Dateien, unverändert; Vite kopiert sie nach
+  `dist/backgrounds/`.
+- `RuntimeGame.background` – beim Anlegen einmalig zufällig bestimmt und als `background`-Event
+  protokolliert; `engine.setBackground` (unter `withPhaseLock`, ungültige Werte abgelehnt,
+  unveränderter Wert = No-op); Wiederherstellung aus dem Event-Log.
+- `HostState.background` / `PlayerSync.background`; Broadcast `host:background` und
+  `game:background`.
+- `background.ts` – eine inerte Layer-Div, nur `--round-background` wird umgeschrieben;
+  `backdrop.css` ergänzt ausschließlich die Layer-Regeln inkl. dunklem Scrim für Lesbarkeit.
+
+**Keine** Schemaänderung, **keine** Migration, **keine** neue Abhängigkeit.
 
 ---
 
