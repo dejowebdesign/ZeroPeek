@@ -217,7 +217,21 @@ async function enterLobby(): Promise<void> {
   });
 }
 
+/**
+ * jsdom has no media pipeline: `play()` and `pause()` are unimplemented and log
+ * to stderr. The host page now starts its soundtrack on the question phase
+ * (Phase 6.11), so every test that reaches that phase would log. The two calls
+ * are stubbed for the whole file; nothing else about the player is replaced.
+ */
+let realPlay: typeof HTMLMediaElement.prototype.play;
+let realPause: typeof HTMLMediaElement.prototype.pause;
+
 beforeEach(() => {
+  realPlay = HTMLMediaElement.prototype.play;
+  realPause = HTMLMediaElement.prototype.pause;
+  HTMLMediaElement.prototype.play = () => Promise.resolve();
+  HTMLMediaElement.prototype.pause = () => undefined;
+
   fake.handlers.clear();
   fake.routes.clear();
   fake.sent = [];
@@ -225,6 +239,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  HTMLMediaElement.prototype.play = realPlay;
+  HTMLMediaElement.prototype.pause = realPause;
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
@@ -605,5 +621,106 @@ describe('host page – background picker (Phase 6.10)', () => {
     });
     expect(picker()).not.toBeNull();
     expect(pickerLabel()).toBe('Background: Synthwave – Unterwasser');
+  });
+});
+
+describe('host music control on the live screens (Phase 6.11)', () => {
+  /** The music bar currently on screen, or null. */
+  const musicBar = (): HTMLElement | null => app().querySelector<HTMLElement>('.music');
+  const musicSlider = (): HTMLInputElement | null =>
+    app().querySelector<HTMLInputElement>('[data-music-volume]');
+  const musicMute = (): HTMLButtonElement | null =>
+    app().querySelector<HTMLButtonElement>('[data-music-mute]');
+  const musicLevel = (): string =>
+    app().querySelector<HTMLElement>('.music__value')?.textContent ?? '';
+
+  it('is not offered on the quiz picker, which is not the show', async () => {
+    await boot();
+    expect(musicBar()).toBeNull();
+  });
+
+  it('is offered in the lobby and during the question', async () => {
+    await enterLobby();
+    expect(musicBar()).not.toBeNull();
+
+    fake.trigger('host:lead', leadPayload());
+    await vi.waitFor(() => {
+      if (!screen().includes('Get ready!')) throw new Error('lead not shown');
+    });
+    expect(musicBar()).not.toBeNull();
+
+    fake.trigger('host:question', publicQuestion(0, 'q1'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Question 1 of 3')) throw new Error('question not shown');
+    });
+    expect(musicBar()).not.toBeNull();
+    expect(musicSlider()).not.toBeNull();
+    expect(musicMute()).not.toBeNull();
+  });
+
+  it('shows the volume as a percentage and follows the slider', async () => {
+    await enterLobby();
+    const slider = musicSlider();
+    expect(slider).not.toBeNull();
+    expect(slider!.value).toBe('50');
+    expect(musicLevel()).toBe('50%');
+
+    slider!.value = '25';
+    slider!.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => {
+      if (musicLevel() !== '25%') throw new Error(`level is "${musicLevel()}"`);
+    });
+  });
+
+  it('mutes and unmutes without losing the level', async () => {
+    await enterLobby();
+    const slider = musicSlider()!;
+    slider.value = '80';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => {
+      if (musicLevel() !== '80%') throw new Error('level not applied');
+    });
+
+    clickButton('Mute');
+    await vi.waitFor(() => {
+      if (!musicBar()!.classList.contains('music--muted')) throw new Error('not muted');
+    });
+    // The handle keeps the level the host set, so unmute restores it.
+    expect(musicSlider()!.value).toBe('80');
+    expect(musicLevel()).toBe('80%');
+
+    clickButton('Unmute');
+    await vi.waitFor(() => {
+      if (musicBar()!.classList.contains('music--muted')) throw new Error('still muted');
+    });
+    expect(musicSlider()!.value).toBe('80');
+  });
+
+  it('keeps the level across a phase change', async () => {
+    await enterLobby();
+    const slider = musicSlider()!;
+    slider.value = '35';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => {
+      if (musicLevel() !== '35%') throw new Error('level not applied');
+    });
+
+    fake.trigger('host:question', publicQuestion(0, 'q1'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Question 1 of 3')) throw new Error('question not shown');
+    });
+    expect(musicSlider()!.value).toBe('35');
+    expect(musicLevel()).toBe('35%');
+  });
+
+  it('sends nothing to the server when the mix changes', async () => {
+    await enterLobby();
+    fake.sent = [];
+    const slider = musicSlider()!;
+    slider.value = '10';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    clickButton('Mute');
+    // The mix is the host's own; it is never a command.
+    expect(fake.sent).toEqual([]);
   });
 });

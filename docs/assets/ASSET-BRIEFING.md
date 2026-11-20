@@ -276,7 +276,8 @@ richtig, falsch, Uhr, Verbindung, Ton an/aus, Pause, Weiter, Beenden, Zufall.
 
 ## Block G – Hintergrundmusik
 
-> **Diese Dateien fehlen vollständig.** Benötigt für Phase 6.11.
+> **Teilweise geliefert.** `music-question` liegt vor (Phase 6.11, Branch
+> `feat/phase-6-11-host-music`); die übrigen drei Stücke fehlen.
 
 | Feld           | Inhalt                                                               |
 | -------------- | -------------------------------------------------------------------- |
@@ -288,26 +289,26 @@ richtig, falsch, Uhr, Verbindung, Ton an/aus, Pause, Weiter, Beenden, Zufall.
 
 **Benötigte Stücke (aus Briefing §33):**
 
-| Name             | Einsatz                       |
-| ---------------- | ----------------------------- |
-| `music-lobby`    | ruhige Musik beim Beitritt    |
-| `music-question` | spannungsaufbauende Quizmusik |
-| `music-final`    | dynamische Finalmusik         |
-| `music-victory`  | Sieger und Abschluss          |
+| Name             | Einsatz                       | Status                                                            |
+| ---------------- | ----------------------------- | ----------------------------------------------------------------- |
+| `music-lobby`    | ruhige Musik beim Beitritt    | **fehlt**                                                         |
+| `music-question` | spannungsaufbauende Quizmusik | **geliefert** als `question-background.ogg` (Ogg Vorbis, 96 kbps) |
+| `music-final`    | dynamische Finalmusik         | **fehlt**                                                         |
+| `music-victory`  | Sieger und Abschluss          | **fehlt**                                                         |
 
 ---
 
 ## Zusammenfassung des Asset-Bedarfs
 
-| Block | Inhalt                         | Dateien (ca.) | Blockiert Phase    | Priorität |
-| ----- | ------------------------------ | ------------- | ------------------ | --------- |
-| A     | Logo/Favicon optimiert         | 1–2           | 6.3 (Optik)        | niedrig   |
-| B     | Charaktere (ca. 15)            | 15+           | **6.7, 6.9, 6.10** | **hoch**  |
-| C     | Avatar-Gegenstände (pro Figur) | 80–150        | **6.7, 6.8**       | **hoch**  |
-| D     | Hintergrundbilder/Host-Show    | 12–15         | **6.9, 6.10**      | **hoch**  |
-| E     | Icons                          | 25–30         | 6.2, 6.5           | mittel    |
-| F     | Soundeffekte                   | 15            | 6.11               | mittel    |
-| G     | Musik                          | 4             | 6.11               | mittel    |
+| Block | Inhalt                         | Dateien (ca.)   | Blockiert Phase    | Priorität |
+| ----- | ------------------------------ | --------------- | ------------------ | --------- |
+| A     | Logo/Favicon optimiert         | 1–2             | 6.3 (Optik)        | niedrig   |
+| B     | Charaktere (ca. 15)            | 15+             | **6.7, 6.9, 6.10** | **hoch**  |
+| C     | Avatar-Gegenstände (pro Figur) | 80–150          | **6.7, 6.8**       | **hoch**  |
+| D     | Hintergrundbilder/Host-Show    | 12–15           | **6.9, 6.10**      | **hoch**  |
+| E     | Icons                          | 25–30           | 6.2, 6.5           | mittel    |
+| F     | Soundeffekte                   | 15              | 6.11               | mittel    |
+| G     | Musik                          | 4 (1 geliefert) | 6.11               | mittel    |
 
 **Hinweis zu Block C (Phase 5c):** Weil Gegenstände **charakterexklusiv** sind, wächst die Zahl der
 Dateien mit der Zahl der Charaktere (jede Figur erhält ihre eigenen Layer in ihren eigenen Slots).

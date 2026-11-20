@@ -15,7 +15,7 @@
  * the concept calls out (Fehlerquelle 4).
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -309,6 +309,12 @@ describe('design-system components', () => {
     'avatar__loadout-name',
     'avatar__loadout-empty',
     'avatar__loadout-action',
+    // Host background music control (Phase 6.11).
+    'music',
+    'music__icon',
+    'music__slider',
+    'music__value',
+    'music--muted',
   ];
 
   for (const name of classes) {
@@ -509,6 +515,33 @@ describe('fallbacks and accessibility', () => {
 
   it('strengthens contrast on request', () => {
     expect(tokens).toContain('@media (prefers-contrast: more)');
+  });
+});
+
+describe('host music stays off the player devices (Phase 6.11)', () => {
+  // The soundtrack is a show feature: it plays on the host/beamer only. A player
+  // device must never download or start it, so the guard is structural — the
+  // player entry must not reach the music module at all.
+  const playerSurfaces = ['pages/player.ts', 'playerView.ts', 'index.html'];
+
+  for (const file of playerSurfaces) {
+    it(`${file} does not reference the music module or track`, () => {
+      const source = read(file);
+      expect(source).not.toContain('hostMusic');
+      expect(source).not.toContain('/audio/');
+    });
+  }
+
+  it('the host surface does load the track', () => {
+    expect(read('pages/host.ts')).toContain("from '../hostMusic.js'");
+  });
+
+  it('the supplied track lives under the documented audio folder', () => {
+    // The asset briefing puts music in `public/audio/music/`, so the module's
+    // path and the real file must agree.
+    const music = read('hostMusic.ts');
+    expect(music).toContain("'/audio/music/question-background.ogg'");
+    expect(existsSync(join(here, '../public/audio/music/question-background.ogg'))).toBe(true);
   });
 });
 
