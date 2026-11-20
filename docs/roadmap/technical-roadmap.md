@@ -718,8 +718,8 @@ zweite Oberfläche eingeführt. Sicherheitsfragen eines separaten Beamer-Zugangs
 
 ## 11. Phase 6.10 – Hintergrundbilder
 
-**Status: umgesetzt auf Branch `feat/phase-6-10-background-library` – wartet auf Freigabe.**
-Kein Merge, kein Deployment. Die zehn gelieferten WebP-Dateien sind byte-identisch eingebunden;
+**Status: umgesetzt und gemergt (PR #54, Merge `ad935fa`).** Deployment liegt beim
+Projektverantwortlichen. Die zehn gelieferten WebP-Dateien sind byte-identisch eingebunden;
 Auswahl und Zufall liegen beim Server. Report: `docs/reports/phase-6-10-background-library.md`.
 
 | Punkt                      | Inhalt                                                                                                                                |
@@ -742,7 +742,7 @@ Platzhalter als endgültige Lösung verwendet. Fehlende Bilder werden angeforder
 gleich, bleibt die ganze Runde. Stil: dunkel, Wireframe, dezente Architektur – keine grellen
 Neonflächen, keine gerenderten 3D-Räume (`game-design-concept.md` §10.5).
 
-**Umsetzung (Stand Branch):**
+**Umsetzung (Stand `main`, PR #54):**
 
 - `packages/shared/src/backgrounds.ts` – Katalog der zehn gelieferten Dateien, abgeleitet **nur**
   aus den Dateinamen (kein Bildinhalt, keine Bildanalyse); `resolveBackgroundChoice` liefert eine
