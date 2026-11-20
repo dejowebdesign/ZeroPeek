@@ -813,6 +813,32 @@ im Zoom-Betrieb hörbar ankommt, wird später **praktisch geprüft** (`game-desi
 - **Keine** Schemaänderung, **keine** Migration, **keine** neue Abhängigkeit, **keine** Änderung an
   Punktevergabe, Fragen, Antworten, Konten oder Rechten.
 
+### Phase 6.11.2 – Finale-Effekte auf dem Siegerpodium
+
+**Status: umgesetzt, Freigabe offen** (Branch `feat/phase-6-11-2-finale-effects`). Report:
+`docs/reports/phase-6-11-2-finale-effects.md`. Eigene Untersektion, damit die vom Briefing
+vorgegebene Nummer 6.12 (Erweiterungen, §13) nicht belegt wird.
+
+- Zwei gelieferte Effekte als OGG übernommen (nur umkodiert, nicht geschnitten oder normalisiert):
+  `finale-fireworks.ogg` (3,16 s) und `finale-crowd.ogg` (5,17 s) in `public/audio/sfx/`.
+- `finaleEffects.ts` – Canvas-Sequenz: Rakete (Ziel **exakt** bei 1500 ms, aus der Zeit abgeleitet,
+  nicht aus einer Geschwindigkeit integriert), Explosion in drei Farbschichten, Konfetti, Ausblenden
+  bei 7 s. Partikelobergrenze 420, fester 1/60-s-Schritt, Device-Pixel-Ratio ≤ 2.
+- Auslöser ist die autoritative `end`-Phase in `showPodium()`; **zwei** Merker (`key`, `playedKey`)
+  verhindern ein zweites Abspielen nach Repaint, Reconnect und Podium→Outro. Verlassen der Phase
+  oder „Back to home" stoppt Bild und Ton.
+- Trennung wieder **strukturell**: nur `pages/host.ts` importiert das Modul; im Build enthält nur
+  `dist/assets/host-*.js` die beiden Effektpfade, der Player-Einstieg null Referenzen.
+- Musik bleibt unberührt: sie endet weiterhin mit dem Spielende (6.11). Die Effekte haben eine
+  eigene Lautstärke (`SFX_VOLUME`) und werden von der Musik-Stummschaltung nicht beeinflusst.
+- `prefers-reduced-motion`: **kein** Canvas, aber der Ton markiert den Sieg; der Applaus kommt per
+  Timer.
+- **Keine** Schemaänderung, **keine** Migration, **keine** neue Abhängigkeit.
+
+**Offen für die Freigabe:** der Ton hat seine Spitze bei 0,02 s und seinen Burst bei 1,42 s, nicht
+bei 1,5 s (Messwerte im Report). Die Explosion liegt bewusst bei 1,5 s; eine Angleichung an 1,42 s
+wäre eine Konstante.
+
 ---
 
 ## 13. Phase 6.12 – Erweiterungen

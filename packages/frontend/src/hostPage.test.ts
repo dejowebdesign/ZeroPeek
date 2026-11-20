@@ -8,7 +8,7 @@
  * and sends `host:auto` rather than changing anything locally.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import type { HostState, PublicQuestion } from '@zeropeek/shared';
 
@@ -227,6 +227,25 @@ async function enterLobby(): Promise<void> {
 let realPlay: typeof HTMLMediaElement.prototype.play;
 let realPause: typeof HTMLMediaElement.prototype.pause;
 let mediaCalls: { play: number; pause: number };
+let canvasContext: MockInstance | undefined;
+
+/** The smallest object that satisfies the calls `FinaleEffects` makes. */
+function noopContext(): CanvasRenderingContext2D {
+  return {
+    clearRect: () => undefined,
+    beginPath: () => undefined,
+    arc: () => undefined,
+    fill: () => undefined,
+    fillRect: () => undefined,
+    save: () => undefined,
+    restore: () => undefined,
+    translate: () => undefined,
+    rotate: () => undefined,
+    scale: () => undefined,
+    set globalAlpha(_value: number) {},
+    set fillStyle(_value: string) {},
+  } as unknown as CanvasRenderingContext2D;
+}
 
 beforeEach(() => {
   realPlay = HTMLMediaElement.prototype.play;
@@ -239,6 +258,12 @@ beforeEach(() => {
   HTMLMediaElement.prototype.pause = () => {
     mediaCalls.pause += 1;
   };
+  // jsdom has no 2D context either. The finale (Phase 6.11.2) asks for one as soon
+  // as the podium appears; a no-op recorder keeps the console clean without
+  // pretending to draw anything.
+  canvasContext = vi
+    .spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue(noopContext());
 
   fake.handlers.clear();
   fake.routes.clear();
@@ -247,6 +272,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  canvasContext?.mockRestore();
   HTMLMediaElement.prototype.play = realPlay;
   HTMLMediaElement.prototype.pause = realPause;
   vi.unstubAllGlobals();
@@ -780,5 +806,90 @@ describe('host music control on the live screens (Phase 6.11)', () => {
     // One play for the whole round, and not a single pause.
     expect(mediaCalls.play).toBe(1);
     expect(mediaCalls.pause).toBe(0);
+  });
+});
+
+describe('host page – the finale on the winner podium (Phase 6.11.2)', () => {
+  const podiumPlayers = [
+    { id: 'p1', nickname: 'Ada', avatar: '', score: 30, connected: true },
+    { id: 'p2', nickname: 'Grace', avatar: '', score: 20, connected: true },
+    { id: 'p3', nickname: 'Linus', avatar: '', score: 10, connected: true },
+  ];
+
+  /** Reach the podium through the real host path, with one question played. */
+  async function reachPodium(): Promise<void> {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    await vi.waitFor(() => {
+      if (!screen().includes('countdown')) throw new Error('lead not shown');
+    });
+    // One question, so the round has really started — the music bed begins here
+    // and must survive into the finale.
+    fake.trigger('host:question', publicQuestion(0, 'q1'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Question 1 of 3')) throw new Error('question not shown');
+    });
+    fake.trigger('host:ended', { players: podiumPlayers });
+    await vi.waitFor(() => {
+      if (!screen().includes('Final results')) throw new Error('podium not shown');
+    });
+  }
+
+  it('starts the finale when the podium appears and plays the fireworks', async () => {
+    await reachPodium();
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
+    // The module creates its elements through `new Audio()`, not markup, so the
+    // proof is the play count: one for the music, one for the fireworks.
+    expect(mediaCalls.play).toBe(2);
+  });
+
+  it('keeps the winner names and placements readable above the canvas', async () => {
+    await reachPodium();
+    const text = screen();
+    expect(text).toContain('Ada');
+    expect(text).toContain('Grace');
+    expect(text).toContain('Linus');
+    // The canvas is decoration only: it is hidden from assistive tech and cannot
+    // swallow a click on the host's own controls.
+    const canvas = document.querySelector('canvas.finale');
+    expect(canvas?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('does not replay the finale when the podium is repainted', async () => {
+    await reachPodium();
+    const playsAfterFirst = mediaCalls.play;
+
+    // The same authoritative snapshot arrives again, as after a reconnect.
+    fake.trigger('host:ended', { players: podiumPlayers });
+    await vi.waitFor(() => {
+      if (!screen().includes('Final results')) throw new Error('podium not repainted');
+    });
+
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
+    expect(mediaCalls.play).toBe(playsAfterFirst);
+  });
+
+  it('removes the canvas and silences the effects when the show is left', async () => {
+    await reachPodium();
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
+
+    clickButton('Back to home');
+    await vi.waitFor(() => {
+      if (document.querySelectorAll('canvas.finale').length !== 0) {
+        throw new Error('finale canvas still mounted');
+      }
+    });
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(0);
+  });
+
+  it('leaves the music rule untouched and plays only the finale effects', async () => {
+    await reachPodium();
+    // The music bed runs for the round and stops when the game ends, exactly as
+    // Phase 6.11 defines it. The finale must not change that: it adds its own
+    // two sounds and never re-cues or restarts the bed.
+    expect(mediaCalls.play).toBe(2);
+    expect(mediaCalls.pause).toBe(1);
   });
 });
