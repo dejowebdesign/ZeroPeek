@@ -219,15 +219,34 @@ async function enterLobby(): Promise<void> {
 
 /**
  * jsdom has no media pipeline: `play()` and `pause()` are unimplemented and log
- * to stderr. The host page runs its soundtrack for the whole round (Phase 6.11),
- * so every test that reaches the show would log. The two calls are stubbed for
- * the whole file, and counted, so a test can prove the bed is never re-cued;
- * nothing else about the player is replaced.
+ * to stderr. The host page runs its soundtrack for the whole round (Phase 6.11)
+ * and the finale adds two more sounds (Phase 6.11.2), so every test that reaches
+ * the show would log. The two calls are stubbed for the whole file and recorded,
+ * so a test can prove *which* sound played and in what order — not just how many
+ * times something played. Nothing else about the player is replaced.
+ *
+ * The recording is essential: a bare counter turns every assertion into a race
+ * against the wall clock, because the applause fires on a 2100 ms timer and a
+ * slow CI runner can reach it before the assertion runs.
  */
 let realPlay: typeof HTMLMediaElement.prototype.play;
 let realPause: typeof HTMLMediaElement.prototype.pause;
 let mediaCalls: { play: number; pause: number };
+/** The `src` of every `play()`, in call order, so the audio direction is testable. */
+let playedSources: string[];
+/** The `src` of every `pause()`, in call order. */
+let pausedSources: string[];
 let canvasContext: MockInstance | undefined;
+
+/** The trailing file name of a media `src`, e.g. `finale-crowd.ogg`. */
+function sourceName(src: string): string {
+  return src.split('/').pop() ?? src;
+}
+
+/** The `src` names that were played, in order. */
+function playedNames(): string[] {
+  return playedSources.map(sourceName);
+}
 
 /** The smallest object that satisfies the calls `FinaleEffects` makes. */
 function noopContext(): CanvasRenderingContext2D {
@@ -251,12 +270,17 @@ beforeEach(() => {
   realPlay = HTMLMediaElement.prototype.play;
   realPause = HTMLMediaElement.prototype.pause;
   mediaCalls = { play: 0, pause: 0 };
-  HTMLMediaElement.prototype.play = () => {
+  playedSources = [];
+  pausedSources = [];
+  // `function` (not arrow) so `this` is the media element whose src we record.
+  HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
     mediaCalls.play += 1;
+    playedSources.push(this.src ?? '');
     return Promise.resolve();
   };
-  HTMLMediaElement.prototype.pause = () => {
+  HTMLMediaElement.prototype.pause = function (this: HTMLMediaElement) {
     mediaCalls.pause += 1;
+    pausedSources.push(this.src ?? '');
   };
   // jsdom has no 2D context either. The finale (Phase 6.11.2) asks for one as soon
   // as the podium appears; a no-op recorder keeps the console clean without
@@ -837,12 +861,16 @@ describe('host page – the finale on the winner podium (Phase 6.11.2)', () => {
     });
   }
 
-  it('starts the finale when the podium appears and plays the fireworks', async () => {
+  it('starts the finale when the podium appears and plays the fireworks first', async () => {
     await reachPodium();
     expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
     // The module creates its elements through `new Audio()`, not markup, so the
-    // proof is the play count: one for the music, one for the fireworks.
-    expect(mediaCalls.play).toBe(2);
+    // proof is the recorded source. The assertion names the sound instead of
+    // counting calls: the applause is on a 2100 ms timer, so a slow runner could
+    // legitimately have started it before this line runs. What must hold on every
+    // machine is *which* sound came first.
+    expect(playedNames()[0]).toBe('question-background.ogg');
+    expect(playedNames()[1]).toBe('finale-fireworks.ogg');
   });
 
   it('keeps the winner names and placements readable above the canvas', async () => {
@@ -859,7 +887,7 @@ describe('host page – the finale on the winner podium (Phase 6.11.2)', () => {
 
   it('does not replay the finale when the podium is repainted', async () => {
     await reachPodium();
-    const playsAfterFirst = mediaCalls.play;
+    const fireworksAfterFirst = playedNames().filter((name) => name === 'finale-fireworks.ogg');
 
     // The same authoritative snapshot arrives again, as after a reconnect.
     fake.trigger('host:ended', { players: podiumPlayers });
@@ -868,7 +896,11 @@ describe('host page – the finale on the winner podium (Phase 6.11.2)', () => {
     });
 
     expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
-    expect(mediaCalls.play).toBe(playsAfterFirst);
+    // A repaint must not re-cue the fireworks. Counting all plays would be racy
+    // here too, so the assertion is on the specific sound.
+    expect(playedNames().filter((name) => name === 'finale-fireworks.ogg')).toEqual(
+      fireworksAfterFirst,
+    );
   });
 
   it('removes the canvas and silences the effects when the show is left', async () => {
@@ -884,12 +916,21 @@ describe('host page – the finale on the winner podium (Phase 6.11.2)', () => {
     expect(document.querySelectorAll('canvas.finale')).toHaveLength(0);
   });
 
-  it('leaves the music rule untouched and plays only the finale effects', async () => {
+  it('stops the music at the end and never restarts it during the finale', async () => {
     await reachPodium();
     // The music bed runs for the round and stops when the game ends, exactly as
     // Phase 6.11 defines it. The finale must not change that: it adds its own
     // two sounds and never re-cues or restarts the bed.
-    expect(mediaCalls.play).toBe(2);
-    expect(mediaCalls.pause).toBe(1);
+    expect(playedNames()[0]).toBe('question-background.ogg');
+    // The bed was started exactly once for the whole round — the finale did not
+    // re-cue it when the podium appeared.
+    expect(playedNames().filter((name) => name === 'question-background.ogg')).toHaveLength(1);
+    // The bed was paused at the end phase...
+    expect(pausedSources.map(sourceName)).toContain('question-background.ogg');
+    // ...and the finale sounds are separate elements, played after it.
+    expect(playedNames()).toContain('finale-fireworks.ogg');
+    expect(playedNames().indexOf('finale-fireworks.ogg')).toBeGreaterThan(
+      playedNames().indexOf('question-background.ogg'),
+    );
   });
 });

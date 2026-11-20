@@ -268,6 +268,49 @@ describe('finale on the host surface', () => {
     expect(instance.isRunning).toBe(false);
   });
 
+  it('stops and rewinds both effect sounds at the end of the sequence', () => {
+    const instance = effects();
+    instance.start('game-1');
+    advance(instance, CROWD_MS);
+    // Both sounds are live by now, one play each.
+    expect(audios.map((audio) => audio.src)).toEqual([
+      '/audio/sfx/finale-fireworks.ogg',
+      '/audio/sfx/finale-crowd.ogg',
+    ]);
+    for (const audio of audios) expect(audio.play).toBe(1);
+
+    advance(instance, FINALE_END_MS);
+    // Each element is paused and rewound exactly once, so a later run starts
+    // from the top rather than resuming mid-sound.
+    for (const audio of audios) {
+      expect(audio.pause).toBe(1);
+      expect(audio.currentTime).toBe(0);
+    }
+  });
+
+  it('plays each effect sound exactly once, never in parallel duplicates', () => {
+    const instance = effects();
+    instance.start('game-1');
+    // Walk the whole sequence in small steps, past every confetti cue.
+    for (let ms = 0; ms <= FINALE_END_MS + 500; ms += 50) advance(instance, ms);
+    // Two elements in total, each played once: the fireworks and the crowd.
+    expect(audios).toHaveLength(2);
+    for (const audio of audios) expect(audio.play).toBe(1);
+  });
+
+  it('keeps the two effects on separate elements so one can start while the other plays', () => {
+    const instance = effects();
+    instance.start('game-1');
+    advance(instance, CROWD_MS);
+    const [fireworks, crowd] = audios;
+    expect(fireworks).not.toBe(crowd);
+    expect(fireworks!.src).toBe('/audio/sfx/finale-fireworks.ogg');
+    expect(crowd!.src).toBe('/audio/sfx/finale-crowd.ogg');
+    // The fireworks are still playing when the crowd starts: the rocket sound is
+    // not cut off, the two overlap only where the direction allows it.
+    expect(fireworks!.pause).toBe(0);
+  });
+
   it('keeps the particle count bounded', () => {
     const instance = effects();
     instance.start('game-1');
