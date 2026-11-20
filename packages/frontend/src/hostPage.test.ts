@@ -231,6 +231,8 @@ async function enterLobby(): Promise<void> {
  */
 let realPlay: typeof HTMLMediaElement.prototype.play;
 let realPause: typeof HTMLMediaElement.prototype.pause;
+let realRequestFrame: typeof window.requestAnimationFrame;
+let realCancelFrame: typeof window.cancelAnimationFrame;
 let mediaCalls: { play: number; pause: number };
 /** The `src` of every `play()`, in call order, so the audio direction is testable. */
 let playedSources: string[];
@@ -269,6 +271,8 @@ function noopContext(): CanvasRenderingContext2D {
 beforeEach(() => {
   realPlay = HTMLMediaElement.prototype.play;
   realPause = HTMLMediaElement.prototype.pause;
+  realRequestFrame = window.requestAnimationFrame;
+  realCancelFrame = window.cancelAnimationFrame;
   mediaCalls = { play: 0, pause: 0 };
   playedSources = [];
   pausedSources = [];
@@ -282,6 +286,15 @@ beforeEach(() => {
     mediaCalls.pause += 1;
     pausedSources.push(this.src ?? '');
   };
+  // The finale is a page-level singleton that draws on `requestAnimationFrame`
+  // and never stops itself until 7 s have passed. Left real, that loop outlives
+  // the test that started it: the module graph is reset between tests, but the
+  // rAF callback chain is not, so a previous test's applause cue fires into the
+  // next test's recorder. The frame callback is therefore inert here — the
+  // canvas is mounted synchronously in `start()`, which is all these tests
+  // assert, and no animation ever ticks, so nothing can leak across tests.
+  window.requestAnimationFrame = () => 0;
+  window.cancelAnimationFrame = () => undefined;
   // jsdom has no 2D context either. The finale (Phase 6.11.2) asks for one as soon
   // as the podium appears; a no-op recorder keeps the console clean without
   // pretending to draw anything.
@@ -299,6 +312,8 @@ afterEach(() => {
   canvasContext?.mockRestore();
   HTMLMediaElement.prototype.play = realPlay;
   HTMLMediaElement.prototype.pause = realPause;
+  window.requestAnimationFrame = realRequestFrame;
+  window.cancelAnimationFrame = realCancelFrame;
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
@@ -865,12 +880,11 @@ describe('host page – the finale on the winner podium (Phase 6.11.2)', () => {
     await reachPodium();
     expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
     // The module creates its elements through `new Audio()`, not markup, so the
-    // proof is the recorded source. The assertion names the sound instead of
-    // counting calls: the applause is on a 2100 ms timer, so a slow runner could
-    // legitimately have started it before this line runs. What must hold on every
-    // machine is *which* sound came first.
-    expect(playedNames()[0]).toBe('question-background.ogg');
-    expect(playedNames()[1]).toBe('finale-fireworks.ogg');
+    // proof is the recorded source. The order is exact and deterministic: the
+    // music bed opens the round, the fireworks mark the podium. The applause is
+    // on a 2100 ms cue and cannot appear here, because rAF is inert in this file
+    // (see the stub in `beforeEach`), so no finale ever advances a frame.
+    expect(playedNames()).toEqual(['question-background.ogg', 'finale-fireworks.ogg']);
   });
 
   it('keeps the winner names and placements readable above the canvas', async () => {
