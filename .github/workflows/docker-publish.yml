@@ -14,6 +14,14 @@ on:
   push:
     branches: [main]
     tags: ['v*.*.*']
+    # Documentation-only pushes must not rebuild or republish images. This is a
+    # denylist on purpose: an unlisted path still triggers a build, so a new
+    # build input can never be skipped silently. Tags ignore path filters, so a
+    # release tag always builds.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.openhands/**'
   workflow_dispatch:
 
 # Least privilege by default; the publishing job raises `packages` to write.
