@@ -1,1046 +1,518 @@
 # Project memory — ZeroPeek
 
-Durable, expensive-to-learn facts about this repo. Deep detail belongs in the
-daily logs; keep this file short.
+Durable, expensive-to-learn facts about this repo. Keep it short: the daily logs
+(`YYYY-MM-DD.md`) hold the narratives and measurements; this file holds what a future
+session must not get wrong. Prune it as its own change, never inside a feature branch.
 
-> NOTE: this file is far over the intended budget (~45 KB) and still carries
-> sections from unrelated projects (IHK, "Phase 12 header", the IHK verification
-> env). It needs a pruning pass — do that as its own change, not inside a feature
-> branch. `.openhands/memory/MEMORY.md` IS tracked in git, so keep it out of
-> feature PRs.
+**Read the code first.** `main` is far ahead of several older notes below; every status
+claim here is dated. Verify with `grep '^model ' packages/backend/prisma/schema.prisma`,
+`ls packages/backend/prisma/migrations/`, `ls packages/*/src/` before trusting a phase
+description.
 
-## Local verification environment (rebuild after any sandbox restart)
+## Local verification environment (rebuild after a sandbox restart)
 
-`/tmp` is wiped on restart, so keep verification assets in `/var/tmp/ihkverify/`.
+`/tmp` is wiped on restart. Postgres runs in the compose stack; expose it to the host and
+point the suites at a **separate** database.
 
 ```bash
-# DB + servers
-DATABASE_URL="file:/var/tmp/ihkverify/ihk.db" npx -w backend prisma db push --skip-generate --accept-data-loss
-DATABASE_URL="file:/var/tmp/ihkverify/ihk.db" ADMIN_TOKEN=testtoken ADMIN_PASSWORD=testpass123 PORT=12001 npm -w backend run serve &
-cd frontend && BACKEND_URL=http://localhost:12001 npx next start -p 12000 &
+# 1. DB: create once, then forward the port out of the container
+sudo docker exec <db-container> psql -U zeropeek -c 'CREATE DATABASE zeropeek_test'
+sudo docker run -d --network <proj>_zeropeek -p 15432:5432 alpine/socat \
+  tcp-listen:5432,fork,reuseaddr tcp-connect:db:5432
 
-# browser automation (puppeteer-core, NOT puppeteer — chromium is already installed)
-cd /var/tmp/ihkverify && npm install puppeteer-core@23
-# executablePath: /usr/bin/chromium, args: --no-sandbox --disable-dev-shm-usage
+# 2. Prisma reads DATABASE_URL, not TEST_DATABASE_URL
+export DATABASE_URL=postgresql://zeropeek:<pw>@localhost:15432/zeropeek_test
+export TEST_DATABASE_URL="$DATABASE_URL"
+npx prisma migrate deploy --schema packages/backend/prisma/schema.prisma   # idempotent
+npm test
 ```
 
-- Credentials: `admin` / `testpass123`, `pruefer1` / `prueferpass1` (create the
-  examiner via `POST /api/users`).
-- An **empty** DB makes `GET /api/ihk*` return **503** ("no data available
-  yet") — that is expected, not a bug. Seed a `SUCCESS` `ImportRun` + `Sheet` +
-  `IhkLocation` rows to get real content. `GET /api/ihk*` also needs auth.
-- `@prisma/client` resolves from the **repo root** `node_modules`, not
-  `backend/node_modules`.
+- Backend suites **silently skip** without these vars (the run looks green but is
+  incomplete). `resetDatabase()` truncates whatever `DATABASE_URL` points at — never point
+  it at the live DB. `packages/backend/vitest.config.ts` sets `fileParallelism: false`
+  because every DB suite truncates the shared DB; keep it.
+- Running `npm test` deletes the bootstrap admin, so a later dev login 401s — restart the
+  backend before any manual check (bootstrap re-creates it).
+- `npm ci` does **not** run `prisma generate`; see the CI trap below.
+- A dockerd is often already running: use `sudo docker ...` (`docker info` as the non-root
+  user fails). Start one only if `sudo docker info` fails; never delete a live `docker.pid`.
+
+## Git / push in this sandbox
+
+- **Always `git fetch origin main` before claiming anything about `main`.** A merge done on
+  GitHub does not move the local `main` ref, so `git rev-parse main` will happily report a
+  stale commit. `git ls-remote origin refs/heads/main` is authoritative.
+- `git push -u origin <branch>` **works** when the credential helper is populated (verified
+  2026-11-19 on `feat/phase-6-10-background-library`). If it prompts for a username instead
+  of pushing, fall back to a one-shot URL
+  `git push "https://x-access-token:${GITHUB_TOKEN}@github.com/dejowebdesign/ZeroPeek.git" <branch>`
+  and then `git remote set-url origin <clean>` **and** unset `branch.<name>.remote/.merge`,
+  because `git push` writes the token-bearing URL into `.git/config` (verified: it does).
+- The `create_pr` tool works directly (owner/repo `dejowebdesign/ZeroPeek`). The `gh` CLI is
+  usually **not** authenticated — use `curl -H "Authorization: Bearer $GITHUB_TOKEN"
+  https://api.github.com/...` when a REST call is needed, or the public API for reads.
+- **Do not push, open a PR, merge or deploy without explicit approval.** The owner merges and
+  deploys himself, and he may merge while a session is still running.
 
 ## ZeroPeek repo (github.com/dejowebdesign/ZeroPeek)
 
-- Was an **empty scaffold** (`ebbdd79` "Initial commit", only a 1-line README).
-- Stack declared by the customer: TypeScript, Node.js, Socket.IO, PostgreSQL, Docker.
-- Remote `origin` is set; develop on per-phase branches, e.g. `phase-0/project-foundation`,
-  `feat/ci-docker-portainer`.
-- **Do not push / open PRs without explicit approval** — the user stops for approval at the
-  end of every phase.
-- Phase 0 layout: npm workspaces `packages/{shared,backend,frontend}`; docs/architecture holds
-  7 ADRs; `docs/reports/phase-N.md` holds the per-phase report. Open product questions are
-  tracked as Q1–Q7 in `docs/architecture/README.md` (scoring formula, "too fast" threshold,
-  cheat-report signals, team assignment, IP retention, tie-breakers, self-paced mode).
-- **State on `main` @ `1cf30be` (PR #15, favicon + admin logo link) is far past Phase 0**: the
-  whole domain is implemented — 13 question types, server-authoritative engine, 2 socket
-  namespaces, 4 surfaces (player `/`, host/beamer `/host.html`, editor, admin), 8 Prisma models,
-  Argon2id + server sessions + CSRF + strict CSP. `npm ci` → `prisma:generate` → `typecheck` →
-  `test` → `build` → `format:check` all green.
-  **CORRECTION (Phase 5b): with a real PostgreSQL all DB suites run → 181 tests green (94 backend
-  + 25 frontend + 62 shared).** The engine is verified by integration tests, NOT by browser E2E
-  (R-1 disarmed, R-12 still open). Recipe:
-  `CREATE DATABASE zeropeek_test`, expose it (socat `-p 15432:5432` on the compose network), set
-  `TEST_DATABASE_URL` + `DATABASE_URL`, `prisma migrate deploy`, `npm test`.
-- **Missing entirely (only `avatar String` free-text exists)**: profiles, XP/level/inventory/
-  achievements, a standalone beamer surface (the host page IS the beamer), sound, show graphics,
-  global leaderboards. `GAME_PHASES` declares `lead` but it is never entered; `GamePlayer.team`
-  and `ideas` voting are data-only. **Player accounts/registration now EXIST (Phase 6.3,
-  `feat/phase-6-3-auth-registration`):** role `PLAYER`, `email_verified_at`, `email_verification_tokens`,
-  `POST /api/auth/{register,verify,resend}`, an auth page (`auth.html`) with the starfield login.
-- **Landmines found (verified, not assumed):** (1) `PlayerAnswer.questionId` is
-  `onDelete: Cascade` and `quizService.updateQuiz` deletes+recreates all questions, so **editing a
-  quiz destroys the answer history of its games** — so "autosave" in the editor is unsafe.
-  (2) `engine.get()` rebuilds state after a restart but sets `openedAt=null`, no timer, and
-  `answeredQuestionId=null`, so a running question never auto-reveals and a repeat answer hits
-  Prisma P2002 → generic 500. (3) `player:rejoin` does not re-send the current question (R-5).
-  (4) **No rate limit on socket events** (`@fastify/rate-limit` is HTTP-only) and **no Redis
-  socket adapter** despite `redisUrl` (single-instance design).
-- **Assets (Phase 5b, optimised in the working tree):** `logo.png` 2172×724 RGBA 1.2 MB →
-  **480×160 / 81 KB**; `favicon.png` 1254² RGB no-alpha 1.63 MB → **256² / 110 KB**; orphaned
-  `favicon.svg` **removed**; dead CSS rule `.brand-mark` **removed**. Favicon border is **not**
-  homogeneous white (RGB 200–255; only 30.4 % near-white) → do NOT auto-key-out transparency;
-  a transparent master must come from the project owner (Dejan Popovic).
-- **Branding is fine — no "double Z":** the DOM renders exactly one `<img class="brand__logo"
-  src="/logo.png">`; `.brand-mark` (a gradient square that used to hold a "Z") is dead code.
-- **Logo palette (measured):** 38.9 % violet/indigo (255–285°), 23.2 % cyan (≈187°), 17.5 %
-  magenta, 20.3 % blue, 14.9 % silver. Existing tokens `#7c5cff`/`#22d3ee` are in-family but not
-  exact — propose a brand accent ladder alongside, never overwrite the tokens.
-- **Capacity measured (Phase 5b, `tools/loadtest.mjs`):** 25 players → join wall 95 ms, answer
-  p95 28 ms, 135 MB RSS; 35 players → join 134 ms, p95 35 ms, 143 MB. Target "25 + host" is
-  comfortable on one process; R-2 only matters for several hundred players.
-- **Engine tempo (by design):** `REVEAL_MS = 4000`, `BOARD_MS = 5000`; the answer deadline is
-  exactly the visible `timeLimit` (`ANSWER_GRACE_MS` was **removed** in Phase 6.9.5 — see below);
-  the two scheduled transitions are gated on the host's **AUTO** mode (Phase 6.9.3, default **off**);
-  the answer clock and the start countdown always run. Host can force "next" at any time.
-- **The Phase 1–5 concept docs were first committed in Phase 5b** (they had existed only in the
-  working tree; PR #9 was closed unmerged). `main` now holds them via PR #16, extended by Phase 5c
-  (PR #17).
-- **Phase 1–5 concept deliverables** (docs only, no code): `docs/analysis/
-  phase-1-technical-inventory.md`, `docs/concept/{design,game-design}-concept.md`,
-  `docs/concept/README.md`, `docs/roadmap/technical-roadmap.md`, `docs/assets/ASSET-BRIEFING.md`,
-  `docs/reports/phase-5-concept-report.md`, plus `docs/reports/phase-5b-revision-and-first-works.md`.
-  They answer the blockwelt-heroes brief and list the
-  open decisions; the project waits for the project owner's approval + character/beamer/audio assets before
-  any Phase 6 implementation. **Do not start Phase 6 or generate any images/characters.**
-- **Phase 5b merged** (`main` = `f6582c4`, PR #16, "Konzeptüberarbeitung, Asset-Optimierung und
-  gemessene Kapazität"). **Phase 5c** (`docs/phase-5c-product-decisions`, PR #17) folds the owner's
-  **binding product decisions** into the docs — docs-only, no code/schema/migration/assets:
-  XP = quiz points + placement bonus 1500/1000/500; level curve L1→L10 = 10.000 each, L10→L11 =
-  11.000 then +1.000 each; voluntary registration with verified email; guest-account takeover of the
-  **just-finished round only** (one-time, server-side claim); items are **character-exclusive** and
-  visibly equippable; personal stats player-visible but quiz history **admin-only**; immutable
-  `GameSnapshot` per game (R-3 defused); random background once per round; show audio host-only;
-  default language German; Redis not required at start; 25 players + host (load-test ~35).
-  **Superseded — never resurrect:** `10 XP/answer`, `100 × (n−1)^1.5` 7-level curve, separate beamer
-  route/show-token, `GET /api/profile/history`, single global cosmetic catalog.
-- Owner is **Dejan Popovic** (sole decision-maker). **chrisB is NOT an approver/blocker** — one
-  factual mention remains that chrisB supplied the original NoPeek raw version.
-- Docs convention: new `.md` under `docs/` must pass `npm run format:check` (run
-  `npx prettier --write` on them); tables get reflowed by Prettier, that is expected.
-- Frontend decision is **Vanilla TS + Vite multi-page** (player/host/editor), NOT Angular —
-  reasons in ADR 0002; strict CSP forbids inline styles so the client styles via the CSSOM.
-- Deployment (Phase 0.5): `.github/workflows/docker-publish.yml` publishes
+- Public repo. npm-workspaces monorepo: `packages/{shared,backend,frontend}`, `docs/`,
+  `docker/`, two compose files. TypeScript strict, Fastify 5 + Socket.IO 4 + Prisma,
+  PostgreSQL 16, Redis 7 (present but **unused** by the backend), Caddy, Vanilla TS + Vite
+  multi-page frontend. Node 22 in CI, 24 locally.
+- **Frontend is a Vite multi-page build**, not a SPA and not Angular (ADR 0002): entries
+  `index` (player), `host`, `editor`, `admin`, `auth`, `profile`, `inventory`, … served by
+  `docker/Caddyfile.frontend` via `try_files {path} {path}.html {path}/index.html`, so
+  `/admin` and `/admin.html` both work but `/admin/` does not. Strict CSP forbids inline
+  styles, so the client styles via the CSSOM — **no `innerHTML` anywhere**.
+  **Open follow-up:** no `Cache-Control` for `*.html` (only a weak ETag), so a stale bundle can
+  be served after a deploy; a `no-cache` rule is proposed but NOT implemented (needs approval).
+- **Four surfaces:** player `/`, host/beamer `/host.html` (there is **one** host view that is
+  also the beamer; no separate presentation mode), editor, admin.
+- **Socket.IO namespaces: player = default `/`, host = `/host`** (auth-gated). Wrappers live
+  in `packages/frontend/src/socket.ts`.
+- Deploy: `.github/workflows/docker-publish.yml` publishes
   `ghcr.io/dejowebdesign/zeropeek-{backend,frontend}` (tags `sha-<short>`, `main`, `latest`);
-  `docker-compose.portainer.yml` is the self-contained production stack (no `build:`, Caddyfile
-  inline via Compose `configs.content`, only the proxy publishes a port). Docs in
-  `docs/deployment/`. CI (`ci.yml`) is PR-only; publish workflow owns `main`+tags.
+  `docker-compose.portainer.yml` is the self-contained production stack (no `build:`,
+  Caddyfile inline via Compose `configs.content`, only the proxy publishes a port). `ci.yml`
+  is **pull_request-only**; the publish workflow owns `main` + tags. Repo and GHCR packages
+  are public, so Portainer pulls anonymously. The `deploy` job **skips with exit 0** (not a
+  failure) while `PORTAINER_WEBHOOK_URL` is unset — a green run with no redeploy is expected.
+- Untracked workspace files that are NOT from the repo: `nopeek-audit.md` and the owner's
+  `ZeroPeek_*` ZIPs (character library, background library) — **never commit a ZIP**.
+  `.openhands/memory/MEMORY.md` **is** tracked in git.
 
-### Fresh-checkout trap (broke real CI, found by `act`)
+### Fresh-checkout trap (broke real CI)
 
 `packages/shared` exposes `dist/` only (`main`/`types` point at `dist`). A clean clone has no
-`dist`, so typechecking backend/frontend fails with `TS2307: Cannot find module '@zeropeek/shared'`.
-The root `typecheck`/`test` scripts must therefore run `build:shared` first. Never reorder them.
+`dist`, so typechecking backend/frontend fails with `TS2307: Cannot find module
+'@zeropeek/shared'`. The root `typecheck`/`test` scripts must run `build:shared` first. Never
+reorder them.
+
+### CI trap: the Prisma client is NOT generated by `npm ci`
+
+`@prisma/client` ships as a **stub**; without `prisma generate` the backend does not compile
+(**28 errors**: TS2305 for `PrismaClient`/`Prisma`/`UserRole`/`InputJsonValue` plus TS7006
+implicit-any in every row callback). Both workflows run
+`npm run prisma:generate -w @zeropeek/backend` **before** typecheck and `prisma migrate
+deploy`. Reproducing locally is the trap: `composite: true` + `tsconfig.tsbuildinfo` makes
+`tsc` skip re-checking, so deleting `.prisma` appears to change nothing. Delete the build
+cache **and** the client: `rm -f packages/*/tsconfig.tsbuildinfo && rm -rf
+packages/backend/dist && mv node_modules/.prisma /tmp/bak`.
+
+### Docker trap (cost ~1 build cycle)
+
+`tsc` with `composite: true` leaves `*.tsbuildinfo` in the package dir. If those files reach
+a Docker build context, `tsc` thinks the package is already built and emits **no** `dist/`,
+so dependents fail with `TS2307`. `.dockerignore` must contain `**/*.tsbuildinfo` (and
+`**/dist`).
 
 ### Verifying workflows without a real push
 
-`act` (nektos) runs the workflow in a container: `sudo /tmp/act push -W
+`act` (nektos) runs a workflow in a container: `sudo /tmp/act push -W
 .github/workflows/docker-publish.yml -j verify -P ubuntu-latest=catthehacker/ubuntu:act-latest
---pull=false`. Note: **act < 0.2.86 has known CVEs** — use 0.2.94+. `actionlint` catches
-expression errors. The sandbox has no GHCR creds, so a real `docker push` can't be tested here;
+--pull=false`. `act < 0.2.86` has known CVEs — use 0.2.94+. `actionlint` catches expression
+errors. The sandbox has no GHCR credentials, so a real `docker push` cannot be tested here;
 build locally with the exact GHCR tag instead.
 
-### Real pipeline facts (confirmed on GitHub, not just locally)
+## Portainer stack: compose, TLS, DB
 
-- `docker-publish.yml` on `main` really works: run `41497604769` → verify ✓, both
-  images published (`main`, `latest`, `sha-6db36e1`), deploy job skipped cleanly (no
-  `PORTAINER_WEBHOOK_URL` secret). This is the authoritative test; the sandbox cannot push.
-- The repo and its GHCR packages are **public**, so Portainer pulls anonymously — no registry
-  credentials needed. `.env.portainer.example` default `ZEROPEEK_IMAGE_TAG` can stay `latest`
-  or be pinned to a `sha-…`.
-- Pushing from this sandbox: `gh auth setup-git` fails and plain `git push` prompts for a
-  username (non-interactive → hangs). Use a one-shot URL
-  `git push "https://x-access-token:${GITHUB_TOKEN}@github.com/...git" HEAD:<branch>`, then
-  **immediately** `git remote set-url origin <clean>` **and** unset
-  `branch.<name>.remote/.merge`, because `git push` writes the token-bearing URL into
-  `.git/config` (verified: it does).
+- **Compose `:?` guards that remain (exactly four, all intentional):**
+  `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD` + `SESSION_SECRET`. Everything else has a
+  default — never re-add a `:?` guard to a variable that has one. Guarding `APP_BASE_URL`
+  once broke the stack (`required variable APP_BASE_URL is missing a value`).
+- **`DATABASE_URL` is derived, not required:** the backend builds it from
+  `POSTGRES_{USER,PASSWORD,DB}` with URL-safe encoding (verified: `p@ss:w/rd?#%!*z` →
+  `p%40ss%3Aw%2Frd%3F%23%25%21%2Az`). Leave it empty. `REDIS_URL` is unused; never guard it.
+- **`COOKIE_SECURE`** empty = derive from the `APP_BASE_URL` scheme. A `Secure` cookie over
+  plain HTTP is silently dropped → login breaks. A localhost `APP_BASE_URL` is a **warning**,
+  not fatal (internal plain-HTTP deploys need it). `CORS_ORIGIN` empty ⇒ defaults to
+  `APP_BASE_URL` (same-origin), so it needs no entry.
+- **Canonical public URL is `https://zeropeek.xubi.org`** (Portainer CE 2.45.3).
+- **TLS = `ZP_SITE_ADDRESS` + `CADDY_CONTAINER_PORT` + `HTTP_PORT` (all three agreeing);**
+  empty address = plain HTTP on 80. `ZP_HTTP_CHALLENGE_PORT` is the separate ACME listener below.
+- **TLS needs container port 80 published** for ACME HTTP-01 + the HTTP→HTTPS redirect; Caddy
+  binds it only in TLS mode. Compose publishes
+  `'${ZP_HTTP_CHALLENGE_PORT:-${HTTP_PORT:-3737}}:80'`. The nested default is deliberate:
+  plain-HTTP mode → `3737:80` twice → Compose **collapses** the dup (unchanged); TLS mode →
+  default `443` **conflicts** with the primary `443:443`, so TLS users set
+  `ZP_HTTP_CHALLENGE_PORT=80`. A duplicate host port inside one `ports:` list passes `config`
+  but a genuine same-host-port pair fails at `up`.
+- **Caddy `/data` MUST be a named volume** (`caddy-data`, `caddy-config`). Without it every
+  recreation forgets the certificate + ACME account and re-requests one → Let's Encrypt "too
+  many certificates (50) already issued". `ZP_ACME_CA` selects the ACME directory.
+- **Compose-vs-Caddy interpolation trap:** the embedded Caddyfile is a `configs.content`
+  block, so Compose substitutes `$VAR` inside it. Caddy's native `{$VAR:default}` becomes
+  `{:default}` (invalid Caddyfile). Use Compose `${VAR:-default}`. A single `$` in an `.env`
+  **value** is still interpolated (`p@ss$word` → `p@ss`); a literal `$$` survives, and in a
+  `healthcheck.test` it reaches the container as one `$` (read from the container env).
+  `${VAR:?msg}` fails for both unset and empty — the desired behaviour.
+- **Postgres `unhealthy` root cause** (`dependency failed to start: container … is
+  unhealthy`) = **empty `POSTGRES_PASSWORD`**: the entrypoint aborts a fresh init, the
+  container restart-loops, and `depends_on: service_healthy` kills the deploy.
+- **Restart: `on-failure:5` on the backend only** (others `unless-stopped`) — it exits non-zero
+  on a misconfiguration or unreachable DB, so `unless-stopped` would loop forever.
+- `pg_isready` is a **bad** healthcheck alone: it returns 0 for a nonexistent user *and*
+  database. The loopback address is `trust` in the image's `pg_hba.conf`, so `psql -h
+  127.0.0.1` accepts *any* password; a login-validating probe must use `psql -h
+  "$(hostname)"` (scram-sha-256).
+- **Existing Postgres volume:** `POSTGRES_*` apply only on first init of an empty `db-data`;
+  on a populated volume they are ignored, so the compose value does NOT change the
+  role/password. To fix a mismatch, put the volume's CURRENT password into
+  `POSTGRES_PASSWORD` — never `ALTER ROLE`, never `down -v`.
+- **Config rule:** use `isNonEmpty(env.X)` for every string fallback; never `env.X ??
+  default` (an empty string is treated as set — an empty `CORS_ORIGIN` made `@fastify/cors`
+  throw, so `/api/health` was 500 even with a reachable DB). Prisma 6 auth errors have **no
+  `code`**; match the message text.
+- Regression guard `packages/backend/src/deployment.compose.test.ts` parses `:?` vs `:-` and
+  asserts the four required vars are documented in PORTAINER.md + ENVIRONMENT.md +
+  `.env.portainer.example`, and that APP_BASE_URL/DATABASE_URL/REDIS_URL/CORS_ORIGIN/
+  COOKIE_SECURE stay unguarded. `.env.portainer.example` has no Prettier parser, so never
+  pass it to a bare `prettier --check <file>` list (the repo-wide `format:check .` is fine).
+- Full-stack test recipe: build `zeropeek-backend:test`/`zeropeek-frontend:test`, run
+  `docker compose -f docker-compose.portainer.yml --env-file <env> -p zptest up -d`, then
+  `down -v`. Image vars are `ZEROPEEK_BACKEND_IMAGE`/`ZEROPEEK_FRONTEND_IMAGE` +
+  `ZEROPEEK_IMAGE_TAG` (separate vars — `repo:tag` inside the image var is an invalid
+  reference).
 
-### Docker trap found here (cost ~1 build cycle)
+## Frontend design system (Phase 6.1, PR #18)
 
-`tsc` with `composite: true` leaves `*.tsbuildinfo` in the package dir. If those files get copied
-into a Docker build context, `tsc` thinks the package is already built and emits **no** `dist/`,
-so dependents fail with `TS2307: Cannot find module '@zeropeek/shared'`. `.dockerignore` must
-contain `**/*.tsbuildinfo` (and `**/dist`). Also: in this sandbox the Docker socket needs
-`sudo docker ...`; the daemon must be started with `sudo dockerd > /tmp/docker.log 2>&1 &`.
+- Style: **"Dark Retro-Futuristic Wireframe & Glassmorphism"** — presentation only.
+  Reference: `docs/design/design-system.md`.
+- `packages/frontend/src/styles/tokens.css` = tokens + all component CSS (single file). Phase
+  0 tokens are FROZEN and asserted byte-for-byte by `src/design-system.test.ts`.
+  `backdrop.css` = wireframe floor grid + horizon + login starfield, CSS-only, no images.
+- `design-system.test.ts` is a **contract**: every class a component emits must be listed
+  there **and** defined in `tokens.css`, or it fails. Extending the system = add a token, add
+  the component to `src/ui.ts` + CSS + `ui.test.ts`, register the class. Never hard-code a
+  value.
+- **Show/beamer sizing:** `--type-show-*`, `--show-gap`, `--show-pad` and the podium
+  `min-height` mix **`vw + vh`**, so a 720p projector shrinks the board instead of scrolling
+  it. `.show__options` is a fixed 2-column grid (stacks < 640px). Beamer markup builders live
+  in `src/showView.ts` (pure, unit-tested) because `pages/host.ts` opens a socket on import.
+- **Dead-vs-kept CSS is decided by "emitted OR documented".** `card--raised`,
+  `card--interactive`, `anim-shake` are emitted by no component but are documented utilities
+  → keep them and their contract entries.
+- **CSS cascade traps:** a `@media` block adds **no specificity**, so a later plain rule
+  defeats a mobile override — place the override after the base rule or out-specify it. At
+  ≥1440px the 768/1024/1440 `min-width` blocks all match, so the widest `:root` value must
+  win **by source order**.
+- **Token-diff gotcha:** to prove Phase 0 tokens are unchanged, extract the **first** `:root`
+  block and parse `--name: value;` in Python. A `grep -oP` over the whole file matches a later
+  redefinition and gives a false "differs".
 
-### Postgres `unhealthy` in the Portainer stack (root cause)
+### Verification is TEXT-ONLY (owner rule, mandatory)
 
-`dependency failed to start: container zero_peek-db-1 is unhealthy` == **empty `POSTGRES_PASSWORD`**.
-The postgres entrypoint aborts a fresh init (`Database is uninitialized and superuser password is
-not specified`), the container restart-loops, and the backend's `depends_on: service_healthy`
-kills the deploy. Fix: `:?` guards on `POSTGRES_DB/USER/PASSWORD` in `docker-compose.portainer.yml`
-so Compose fails fast with a clear message. Do **not** guard `DATABASE_URL`/`REDIS_URL`/
-`APP_BASE_URL`/`SESSION_SECRET` — the Phase 0 backend boots without them.
+chrisB forbids all image work on ZeroPeek — **no screenshots, no PNG/JPEG creation, no image
+analysis, no visual browser checks, no images in docs or PRs**. Verify with
+text/tables/measurements only: `/usr/bin/chromium --headless=new --no-sandbox --disable-gpu
+--window-size=W,H --virtual-time-budget=2500 --dump-dom`, render the REAL modules with
+`npx esbuild <entry.ts> --bundle --format=esm --alias:@zp-frontend=./packages/frontend/src`
+into a scratch page under `dist/`, write `getBoundingClientRect()`/`scrollHeight` into a
+`data-json` attribute, read it back with `--dump-dom`, then delete the scratch page. **Never
+pass `--screenshot`.**
 
-`pg_isready` is a **bad** healthcheck on its own: it returns 0 for a nonexistent user *and*
-database. The loopback address (`127.0.0.1`/`localhost`) is `trust` in the image's `pg_hba.conf`,
-so `psql -h 127.0.0.1` accepts *any* password. A login-validating probe must use
-`psql -h "$(hostname)"` (or the service IP) — that path is `scram-sha-256` and rejects a wrong
-password. `POSTGRES_DB/USER/PASSWORD` are only applied on **first** volume init; on an existing
-volume they are ignored. A failed init leaves the volume empty, so retrying with a correct
-password recovers with no data loss.
-
-### Compose interpolation facts
-
-- `$$` in a `healthcheck.test` is escaped and reaches the container as a single `$`, so the
-  variable is read from the *container* env at runtime (verified via `docker inspect`).
-- A single `$` in an `.env` *value* is still interpolated by Compose (`p@ss$word` → `p@ss` +
-  warning). A literal `$$` survives.
-- `${VAR:?msg}` fails the deploy for both **unset** and **empty** values — the desired behaviour.
-- **Per-route rate limit** in Fastify: pass it as `{ config: { rateLimit: { max, timeWindow } } }`,
-  NOT the shorthand `rateLimit: {...}` key (that fails typecheck, TS2559). Used for the
-  unauthenticated auth routes (Phase 6.3). Nothing else in the repo sets per-route limits.
-- **Mail env var is `MAIL_VERIFY_TTL_HOURS`** (`config.ts`), with `SMTP_URL`, `MAIL_FROM`,
-  `MAIL_FROM_NAME`. `deployment.compose.test.ts` now pins all four across both compose files + docs.
-- **Backend DB tests need BOTH `DATABASE_URL` and `TEST_DATABASE_URL`** — Prisma itself reads
-  `DATABASE_URL`, so overriding only `TEST_DATABASE_URL` still hits the (often dead) default.
+`@supports` cannot be disabled from JS and Chromium has **no flag** for `backdrop-filter`;
+never assert `getComputedStyle().backdropFilter` as proof (it reports the declared value even
+when unsupported).
 
 ## Testing gotchas
 
-- `npm -w backend test` takes ~3 minutes (change-detection tests sleep ~19s
-  each). Not a hang.
-- Frontend tests parse `globals.css` as **text** (regex on rule bodies), so CSS
-  refactors can break them without any runtime change. `rule(selector, marker)`
-  disambiguates repeated selectors by a declaration unique to the rule.
+- Frontend tests parse CSS as **text** (regex on rule bodies), so a CSS refactor can break
+  them with no runtime change. `rule(selector, marker)` disambiguates repeated selectors by a
+  declaration unique to the rule.
+- **A local `const x = vi.fn()` shadows a module-level helper named `x`** — the test then
+  silently calls the spy. Rename spies. `supportsRule(sel)` returns the first match after an
+  `@supports`, which may be the base rule; assert on the raw `css` string when in doubt.
+- **The Prisma client is a `Proxy`:** `vi.spyOn(prisma, '$transaction').mockRestore()` leaves
+  the property **undefined**. Reassign the original method in a `finally`.
+- **`engine.get()` caches a warm runtime** — concurrency repros and regression tests must call
+  `engine.evict(gameId)` first, or the scenario is not exercised.
+- **Concurrency bugs need a looped test.** Engine phase writes are async and fire-and-forget
+  paths interleave; a one-shot assertion passes by luck. Loop 60–150× and count bad states (a
+  real auto-reveal vs. `end` race failed **47/150** while passing single runs).
+  `withPhaseLock` (per-game) serialises start/next/reveal/board/end; `*Internal` bodies avoid
+  re-entering it.
+- **`Question.id` is a global primary key**, so fixtures with hard-coded ids can only be seeded
+  once per DB (`P2002`).
+- `browser_set_storage` **merges** cookies (cannot delete HttpOnly ones) and **overwrites** the
+  real cookie — a stale value silently breaks the session. For a genuine fresh session, log in
+  fresh. To observe `location.assign` in jsdom use
+  `Object.defineProperty(window,'location',{configurable:true,value:{assign,...}})`;
+  `vi.spyOn(location,'assign')` throws.
+- **Acceptance harness `/var/tmp/zpstab`** (wiped on restart; re-create from the daily log):
+  real backend process + real Chromium player UI, programmatic assertions only. Sections A
+  restart recovery, B all 13 types right/wrong/none, B2 time limits, C races, D reconnect →
+  **344/344**. The reusable pattern for end-to-end checks without screenshots.
+- **R-12 stays OPEN: no E2E and no visual tests** (R-1 was disarmed) — the harness above is a
+  manual pattern, not a CI suite, so responsive/design regressions stay undetected.
+- **Real-process-restart tests:** `npx tsx src/server.ts` re-execs, so SIGKILLing only the
+  spawned child leaves the server alive and every "restart" talks to the OLD process. Spawn
+  `detached: true`, `process.kill(-pid,'SIGKILL')` the group, assert `/api/health` is down
+  before restarting.
 
-## Verifying a glass / backdrop-filter header
+## Gameplay engine: timings and invariants
 
-CSS `@supports` cannot be disabled from JS (`CSS.supports` monkey-patching does
-nothing) and Chromium has **no flag** to turn `backdrop-filter` off
-(`--disable-blink-features=BackdropFilter`, `--disable-features=BackdropFilter`
-are both ignored). To prove the blur actually renders:
-
-1. Inject `style` hiding `.site-header__inner > *` (keep the surface + fill).
-2. Screenshot, then inject `backdrop-filter:none !important` and screenshot.
-3. Compare **mean absolute horizontal luminance gradient** inside the bar band.
-   Real measured result: 0.42x (normal) / 0.35x (compact) sharpness with the
-   blur on. Sharpness alone does not separate blur from flat fill — a
-   translucent fill also lowers edge energy — so the on/off pair is required.
-
-Never assert `getComputedStyle().backdropFilter` as proof: it reports the
-declared value even when the feature is unsupported.
-
-## CSS cascade trap found here
-
-A `@media` block adds **no specificity**. The old
-`@media (max-width:560px) { .session__user { display:none } }` (line ~1390) was
-silently defeated by the later plain `.session__user { display:flex }` (line
-~1773), which caused a real **105px horizontal overflow at 320px** in the
-header. When adding a mobile override, place it *after* the base rule or
-out-specify it.
-
-## Phase 12 header — durable facts
-
-- **The username MUST NOT appear in the header** (superseded 2026-10-31 by an
-  explicit customer correction — the earlier "§3 Benutzername" reading was
-  reversed: "admin ADMINISTRATOR" was a duplicate display they rejected). Show
-  **only** the role badge: `.session__role` with `roleLabel()` →
-  admin "Administrator", examiner "Prüfer". No tooltip with the name either.
-  `.session__user` / `.session__name` are deleted — do not reintroduce them.
-  Then `.session__logout` (icon + `.session__logout-text`, text hidden ≤560px).
-- **`--header-h` must equal `--header-bar-h` at every breakpoint.** The band
-  reserved 116px for a 96px bar (20px dead space) and the ≤768px block lowered
-  the bar to 84px without the band (12px gap on mobile). Both showed as an empty
-  strip between the bar and the hero. `<main class="page">` begins at
-  `--header-h`, so the surplus is immediately visible.
-- **Hero flush = `.page:has(> .hero) { padding-top: 0 }`.** `:has()` scopes it
-  to pages whose first child is a full-bleed band; other pages keep
-  `padding: 28px 0 56px`. Any other page needing to sit flush should use the same
-  pattern rather than a blanket `.page` change.
-- **Header grid must be `minmax(0,1fr) auto minmax(0,1fr)`.** Plain `1fr` tracks
-  refuse to shrink, so the identity block pushes the bar wider (measured 21–44px
-  overflow at 320–600px). Below 1049px collapse the middle *track* to `0`
-  (`auto 0 minmax(0,1fr)`) — never `display:none` the `.header__center`, because
-  `.nav--open` is its child and would vanish with it.
-- **Band height is constant** (`--header-h`); the bar compacts inside it, so the
-  page never reflows. The floating gap is padding on the sticky `.site-header`,
-  not a child margin (a sticky child margin collapses and the gap vanishes).
-- Shrink is **width-first** (max-width transition, like the reference), NOT a
-  `scale()` transform (which blurs text). 240ms `cubic-bezier(.22,.61,.36,1)`.
-- Reference glass = `rgba(9,16,30,.76)` + `blur(18px) saturate(150%)` + radius 22
-  + hairline `rgba(110,168,254,.14)`. `sachkunde.duckdns.org` is Angular, so its
-  header only exists after JS runs — measure it in a browser, not via curl.
-- Logo: `frontend/public/ihk-logo.png`, embedded verbatim; `findLogo()` in
-  `layout.tsx` picks the first existing of `ihk-logo.png`/`logo.png`/`logo.svg`.
-
-## Vitest traps
-
-- A local `const x = vi.fn()` shadows a module-level helper named `x`; the test
-  then silently calls the spy. Rename spies to avoid collisions.
-- `supportsRule(sel)` returns the first match after an `@supports`, which may be
-  the base rule; assert on the raw `css` string when in doubt.
-
-## Reverse-engineering audit: NoPeek (nopeek.projekt-chrisb.de), 2026-11-02
-
-Target is a live-quiz web app ("ChrisBy Quiz" module). Full analysis artifacts in
-`/var/tmp/nopeek/` (assets/, pages/, shot/*.png). **Analysis only — no implementation yet.**
-
-- **Stack (confirmed):** vanilla JS (no framework), Socket.IO **v4.8.4** (client bundle
-  served from `/socket.io/socket.io.min.js`), EIO=4 polling-first then upgrade, REST +
-  HttpOnly cookie session + `X-CSRF-Token` + `X-Requested-With: fetch`, strict CSP, behind Cloudflare.
-- **All client code is public & unminified:** `/player.js` (33 KB), `/host.js` (72 KB),
-  `/editor.js` (24 KB), `/quizschema.js` (domain model + validation), `/avatars.js` (SVG
-  catalogue), `/common.js`, `/branding.js`, `/account.js`, `/register.js` + 9 CSS files.
-- **Socket.IO namespaces:** player = `/` (default), host = `/host` (auth-gated →
-  `connect_error` msg `unauthorized` / `terms_required`).
-- **Server is NOT public.** Payload shapes are *inferred from client code*, never observed
-  live (no login → no game). Mark as high-probability, not confirmed.
-- Pages: `/` (player), `/host`, `/register`, `/konto`, `/datenschutz`,
-  `/nutzungsbedingungen`, `/impressum`. No sitemap/manifest.json/favicon.ico/sourcemaps.
-- Socket.IO POST upgrade from raw urllib got **403** (Cloudflare WAF); GET handshake works.
-
-## Repo: dejowebdesign/ZeroPeek (updated 2026-11-02, evening)
-- Public GitHub repo. Default branch `main`. npm-workspaces monorepo:
-  `packages/{shared,backend,frontend}`, `docs/`, `docker/`, 2 compose files.
-- Stack: TS strict, Fastify 5 + Socket.IO 4 + Prisma, PostgreSQL 16, Redis 7,
-  Caddy, Vanilla-TS + Vite frontend. Node 22 in CI, 24 locally.
-- **Status: Phase 0 AND Phase 0.5 complete + PostgreSQL fix merged.**
-  PRs #1 (CI/GHCR/Portainer), #2 (postgres healthcheck) merged into `main`.
-  `main` HEAD `b29b318`. Branch `phase-0/project-foundation` **no longer exists**
-  (the old briefing still references it — don't trust that).
-- **GHCR images are published and PUBLIC** (anonymous pull works, verified):
-  `ghcr.io/dejowebdesign/zeropeek-backend` / `-frontend`, tags `latest`, `main`,
-  `sha-<short>`. Repo is public ⇒ Portainer needs no registry credentials.
-- `docker-publish.yml` already runs verify→publish(both images)→deploy and has
-  succeeded on `main`. `ci.yml` is pull_request-only. Triggers are disjoint.
-  The `deploy` job **skips** (not fails) while `PORTAINER_WEBHOOK_URL` is unset.
-- Verification commands: `npm install && npm run typecheck && npm test &&
-  npm run build && npm run format:check` → 21 tests (7 backend / 5 frontend /
-  9 shared). `npm test` builds shared first (`build:shared`) — a fresh checkout
-  breaks typecheck otherwise.
-- **Caddy/compose trap:** Compose interpolates `$` inside `configs.content`, so
-  a Caddy `{$VAR:default}` placeholder is mangled (`{localhost::80}`), and `$$`
-  is NOT unescaped there either. Build the site address with Compose instead:
-  `${ZP_SITE_ADDRESS:-:80}`. Also `auto_https on` is **invalid** Caddy syntax.
-- **TLS switch (as of PR #3):** set `ZP_SITE_ADDRESS=<domain>`,
-  `CADDY_CONTAINER_PORT=443`, `HTTP_PORT=443` together. Empty `ZP_SITE_ADDRESS`
-  = plain HTTP on :80 (default). `ZP_DOMAIN` is removed — don't reintroduce it.
-- **Proxy host port default is 3737** (as of PR #4), NOT 80: port 80 is often
-  already bound on the Docker host → `failed to bind port 0.0.0.0:80/tcp`. Only
-  the *left* side changed; `CADDY_CONTAINER_PORT` (80 HTTP / 443 TLS) and the
-  embedded Caddyfile are untouched, so the proxy healthcheck (probes the
-  container port) needs no change. `docker-compose.yml` (dev) is a separate
-  file and still uses `PROXY_PORT:-8080`.
-- Test the stack without touching real data: `docker compose -f
-  docker-compose.portainer.yml --env-file <env> -p <proj> up -d`, then `down -v`
-  (unique `-p` keeps named volumes separate). Start dockerd with
-  `sudo nohup dockerd > /tmp/docker.log 2>&1 &` (needs ~12 s).
-- Untracked workspace files that are NOT from the repo: `nopeek-audit.md`.
-  `.openhands/memory/MEMORY.md` **is** tracked in git (added in PR #2), so edits
-  to it show up in `git status`; keep it out of feature PRs.
-
-## ZeroPeek: platform status (verified 2026-11-02, branch `feat/full-platform-implementation`)
-- **Phases 1–7 are implemented and green.** Earlier notes calling `host.html` /
-  `editor.html` "Phase 0 placeholders" are OBSOLETE — delete-on-sight.
-  Backend routes: `authRoutes` (`/api/auth/login|logout|me`), `quizRoutes`,
-  `reportRoutes`, `adminRoutes`. Services: `engine`, `gameService`, `quizService`,
-  `reportService`, `userService`. Pages: `player.ts` (index.html), `host.ts`,
-  `editor.ts`, `admin.ts` (added this session).
-- **Socket.IO namespaces: player = default `/`, host = `/host`** (host is
-  auth-gated). Client wrappers live in `packages/frontend/src/socket.ts`.
-- **Contract traps that cost real debugging time:**
-  - **`engine.submitAnswer` (fixed PR #28, `fix/concurrent-answer-submission`):** it was
-    check-then-act **and** mutated the runtime *before* the DB write, so two overlapping answers
-    both scored and the `@@unique([playerId,questionId])` `P2002` surfaced as a 500. Now: both writes
-    commit in one `prisma.$transaction`, the runtime is mirrored only after it resolves, `P2002` →
-    `conflict('You have already answered.')`, and same-player+question submissions are serialised by
-    `withAnswerLock('playerId:questionId')`. `engine.get()` also shares one in-flight load per game
-    (a cache miss used to build two runtimes; last `games.set` won and the others mutated an orphan).
-    **A warm game is NOT racy** (Node run-to-completion) — repro/regression tests must `engine.evict()`
-    first. Report: `docs/reports/concurrent-answer-submission-fix.md`.
-  - **The Prisma client is a `Proxy`:** `vi.spyOn(prisma, '$transaction').mockRestore()` leaves the
-    property **undefined**. Reassign the original method in a `finally`.
-  - `host:create` ACKs with `{ gameId, pin }` — **not** `{ id, pin }`.
-  - `host:join` ACKs with `{ pin, players }` — resume must paint `players`.
-  - Game report route is `/api/reports/games/:id` and the body is
-    `{ quiz: { id, title, questionCount }, players, questions }` — **not**
-    `/api/reports/:id` with a flat `quizTitle`.
-  - Server rejects a quiz with **zero questions**, so "New quiz" must seed one
-    question and the editor must block removing the last one.
-- **`questionForm.ts` merge bug (fixed):** the form is not re-rendered between
-  edits, so all 28 handlers must merge into a single `latest` holder via
-  `update(patch)`. Spreading the original `question` snapshot silently discards
-  every earlier edit. Regression test: `questionForm.test.ts`.
-- **Vite dev-proxy trap:** the rule must be `'^/api/'`, not `'/api'` — a bare
-  `/api` prefix also swallows the client module `/api.ts`, which Vite serves
-  from the project root, breaking the page. `server.allowedHosts` must include
-  `'.prod-runtime.all-hands.dev'` or the proxied hostname is rejected.
-- **Module E**: `admin.html` + `pages/admin.ts` are new files. Server keeps the
-  last-admin guards (409 on demote/disable of the sole admin; 403 without CSRF).
-- Q1–Q7 in `docs/architecture/README.md` are still unanswered and block the
-  Phase-5 product decisions; the engine exposes them as named `ScoringConfig` /
-  `SpeedPolicy` options with documented defaults rather than hard-coded guesses.
-- Portainer stack and `docker-publish.yml` (verify → publish → optional Portainer
-  webhook) were already in place and reviewed as sound; do not rebuild them.
-
-## Portainer/DB config fix (PR #6, 2026-11-03, branch `fix/portainer-config-and-db-url`)
-- Two causes of `FATAL: database not reachable after 30 attempts.`: a placeholder
-  `DATABASE_URL` passed through unguarded, **and** `loadConfig` using `??` — an
-  empty string is treated as set, and an empty `CORS_ORIGIN` makes
-  `@fastify/cors` throw → `/api/health` = 500 even with a reachable DB. Only the
-  real Docker stack exposed the second one.
-- Rule going forward: use `isNonEmpty(env.X)` for every string fallback; never
-  `env.X ?? default`.
-- `DATABASE_URL` is now derived from `POSTGRES_*` (percent-encoded password);
-  `ConfigError` fails fast in production; backend `restart: on-failure:5`
-  (verified: still auto-starts after a `dockerd` restart, bounded retries).
-- Prisma 6 auth errors have **no `code`** — match the message text.
-- Detail: `.openhands/memory/2026-11-03.md` and `docs/reports/portainer-config-fix.md`.
-
-## CI trap: the Prisma client is NOT generated by `npm ci` (cost ~1 h to find)
-- `@prisma/client` ships as a **stub**. `npm ci` installs it but does not run
-  `prisma generate`, so `node_modules/.prisma/client` does not exist and the
-  backend will not compile: **28 errors** (TS2305 "no exported member
-  PrismaClient/Prisma/UserRole/InputJsonValue/GameUpdateInput" plus a cascade of
-  TS7006 implicit-any in every callback that receives a Prisma row).
-- Both `.github/workflows/ci.yml` and `docker-publish.yml` now run
-  `npm run prisma:generate -w @zeropeek/backend` **before** typecheck and before
-  `prisma migrate deploy`. `docker/backend.Dockerfile` already did this
-  explicitly, which is why only CI broke.
-- **This stayed hidden for a whole branch** because the workflows trigger only
-  on `main` / tags, and `main` had no Prisma-typed code. Pushing a feature
-  branch is the first real test of CI — always watch the run.
-- **Reproducing it locally is the trap.** `composite: true` + `tsconfig.tsbuildinfo`
-  makes `tsc` skip re-checking, so deleting `.prisma` appears to change nothing
-  and returns 0 errors. To reproduce faithfully you must delete the build cache
-  *and* the client:
-  `rm -f packages/backend/tsconfig.tsbuildinfo packages/shared/tsconfig.tsbuildinfo`
-  `rm -rf packages/backend/dist && mv node_modules/.prisma /tmp/bak`
-  then `npm run typecheck -w @zeropeek/backend` → 28 errors without the step,
-  0 after `npm run prisma:generate -w @zeropeek/backend`.
-
-## ZeroPeek Portainer stack: REDIS_URL + ACME (PR #7, 2026-11-03)
-- `REDIS_URL` is **unused** by the backend (no Redis adapter wired into Socket.IO).
-  It is optional now: compose default `redis://cache:6379`, config.ts default the
-  same. Never make it a `:?` guard again — that caused a hard deploy failure.
-- **Caddy `/data` MUST be a named volume** (`caddy-data`, plus `caddy-config`).
-  Without it every container recreation forgets the certificate + ACME account and
-  re-requests one → Let's Encrypt "too many certificates (50) already issued".
-- `ZP_ACME_CA` selects the ACME directory (empty = LE production; set to
-  `https://acme-staging-v02.api.letsencrypt.org/directory` while testing).
-- **Compose-vs-Caddy interpolation trap:** the embedded Caddyfile is a
-  `configs.content` block, so Compose substitutes `$VAR` inside it. Caddy's native
-  `{$VAR:default}` is rewritten to `{:default}` (invalid Caddyfile). Use Compose
-  `${VAR:-default}` — same as the existing `ZP_SITE_ADDRESS`.
-- `COOKIE_SECURE` empty = derive from `APP_BASE_URL` scheme (Secure cookie over
-  plain HTTP is silently dropped → login breaks). A localhost `APP_BASE_URL` is a
-  **warning**, not fatal (internal plain-HTTP deploys need it). `config.warnings`.
-- **Canonical public URL is `https://zeropeek.xubi.org`** (Portainer CE 2.45.3).
-  `APP_BASE_URL` is NOT guarded: compose default `APP_BASE_URL:-https://zeropeek.xubi.org`
-  (PR #8), because the `:?` guard made the stack fail with
-  `required variable APP_BASE_URL is missing a value`. `CORS_ORIGIN` empty ⇒
-  defaults to `APP_BASE_URL` (same-origin), so it needs no entry.
-- `docker-compose.portainer.yml` compose `:?` guards that remain (all intentional,
-  exactly four): `POSTGRES_DB/USER/PASSWORD`, `SESSION_SECRET`. Everything else
-  has a default — never re-add a `:?` guard to a variable that has one.
-- **TLS needs container port 80 published** for ACME HTTP-01 + the HTTP→HTTPS
-  redirect; Caddy binds it only in TLS mode. Compose publishes
-  `'${ZP_HTTP_CHALLENGE_PORT:-${HTTP_PORT:-3737}}:80'` (PR #8). Nested default is
-  deliberate: plain-HTTP mode → `3737:80` twice → Compose **collapses** the dup
-  (no conflict, unchanged); TLS mode → default `443` **conflicts** with the
-  primary `443:443` (`Bind for 0.0.0.0:443 failed: port is already allocated`),
-  so TLS users set `ZP_HTTP_CHALLENGE_PORT=80`. A duplicate host port inside one
-  compose `ports:` list passes `config` but a genuine same-host-port pair fails at `up`.
-- **DATABASE_URL is derived, not required**: the backend builds it from
-  `POSTGRES_{USER,PASSWORD,DB}` with URL-safe encoding (verified: password
-  `p@ss:w/rd?#%!*z` → `p%40ss%3Aw%2Frd%3F%23%25%21%2Az`). Leave it empty.
-- **Existing Postgres volume:** `POSTGRES_*` apply only on first init of an empty
-  `db-data`; on a populated volume they are ignored, so the compose value does NOT
-  change the role/password. To fix a mismatch, put the volume's CURRENT password
-  into `POSTGRES_PASSWORD` — never `ALTER ROLE`, never `down -v`.
-- Regression guard `packages/backend/src/deployment.compose.test.ts` (PR #8)
-  parses `:?` vs `:-` from the compose file and asserts the four required vars are
-  documented in PORTAINER.md + ENVIRONMENT.md + `.env.portainer.example`, and that
-  APP_BASE_URL/DATABASE_URL/REDIS_URL/CORS_ORIGIN/COOKIE_SECURE stay unguarded.
-  Note `.env.portainer.example` has no Prettier parser, so it must not be passed
-  to a bare `prettier --check <file>` list (the repo-wide `format:check .` is fine).
-- Full-stack test recipe: build `zeropeek-backend:test`/`zeropeek-frontend:test`,
-  run `docker compose -f docker-compose.portainer.yml --env-file <env> -p zptest up -d`,
-  then `down -v`. Use `sudo docker` (the daemon runs; see below). Image vars are
-  `ZEROPEEK_BACKEND_IMAGE`/`ZEROPEEK_FRONTEND_IMAGE` + `ZEROPEEK_IMAGE_TAG`
-  (separate vars — a value like `repo:tag` in the image var is an invalid reference).
-- To run the DB-backed integration suites here: create a separate DB
-  (`CREATE DATABASE zeropeek_test`), forward it out with
-  `sudo docker run -d --network <proj>_zeropeek -p 15432:5432 alpine/socat
-  tcp-listen:5432,fork,reuseaddr tcp-connect:db:5432`, set `TEST_DATABASE_URL`,
-  `prisma migrate deploy`, then `npm test` → 61/61. `prisma migrate deploy` is
-  idempotent ("No pending migrations to apply" on the second run).
-- **Prisma reads `DATABASE_URL`, not `TEST_DATABASE_URL`.** The test helper
-  (`src/testing/db.ts`) accepts either, but the client itself only honours
-  `DATABASE_URL`; set `DATABASE_URL=...zeropeek_test...` when running backend
-  suites, or `canConnect()` may skip the integration files entirely.
-- `packages/backend/vitest.config.ts` sets `fileParallelism: false` because every
-  DB suite truncates the shared database. Keep it; parallel files corrupt each
-  other's state.
-- **Concurrency bugs in the engine need a looped test.** The engine's phase writes
-  are async and fire-and-forget paths (auto-reveal, timers) interleave; a one-shot
-  assertion passes by luck. Loop the scenario 60–150× and count bad states. Real
-  example: the auto-reveal vs. `end` race failed **47/150** on `origin/main` yet
-  passed single runs. `withPhaseLock` (per-game) now serialises
-  `start`/`next`/`reveal`/`board`/`end`; `*Internal` bodies avoid re-entering it.
-
-## NoPeek reference project (github.com/dejowebdesign/ZeroPeek docs/analysis)
-- Reference app **NoPeek** lives at `https://nopeek.projekt-chrisb.de` (reachable).
-  No ZIP/source archive is stored in this repo or sandbox — analyse it by
-  fetching the **unminified** client assets (same method as `nopeek-audit.md`):
-  player at `/` (default ns), host at `/host`; assets player.js, host.js,
-  editor.js, common.js, clock.js, quizschema.js, avatars.js, branding.js,
-  app-config.js. Prior `/var/tmp/nopeek/` cache is wiped on sandbox restart.
-- NoPeek specifics worth remembering: Kahoot-style **clock-offset sync** (`clock`
-  ping/pong, best-of-N, re-sync after WS upgrade) drives an absolute `at`
-  timestamp; `leadMs` read-aloud lead phase; host events incl. `lock`/`close`/
-  `review`/`review-end`; player `avatar`/`qa:*`; `build` reload guard; 13 question
-  types (same set as ZeroPeek); team mode; QR code; animated board/podium;
-  per-type reveal views; CSV+Excel+print reports; homework mode; email 2FA.
-  Scoring = base + speed bonus with double/none; exact numbers are server-side.
-- ZeroPeek's analysis docs live in `docs/analysis/nopeek-comparison/` (PR #9,
-  branch `docs/nopeek-comparison`). Do NOT copy NoPeek's scoring formula or store
-  IPs — Q1/Q2/Q4/Q5/Q6/Q7 in `docs/architecture/README.md` gate those.
-- Known ZeroPeek gaps (verified in code, not placeholders): team mode is
-  data-only; `lead` phase declared but never entered; no QR; no clock sync; no
-  host review/shortcuts; report lacks flag/timing columns and Excel/print export;
-  `avatar` is an unvalidated free string; "too fast" rule implemented but off.
-
-## Auth surface + player registration (Phase 6.3, PR #25, branch `feat/phase-6-3-auth-registration`)
-- Additive only: new `PLAYER` role, `User.emailVerifiedAt` (nullable) and `EmailVerificationToken`
-  (stores **SHA-256 hash** only). Migration `20261107120000_phase_6_3_player_role_email_verification`
-  backfills existing rows to `created_at` so no current user is locked out. `requireStaff` (ADMIN+
-  TRAINER) now guards quizzes/reports + the host socket; PLAYER is authenticated but not staff.
-- **Enumeration-safe register (binding, spec §5.3):** a taken **e-mail** is answered **byte-identically**
-  to a fresh registration (`{ ok: true, verificationSent: isMailConfigured(config) }`, derived from
-  config only, never from the attempt) and the password is still Argon2id-hashed to equalise timing.
-  A taken **username** still returns `409 username_taken`. Do not "simplify" this back to a 409.
-- **The verification link/token is never logged, in any environment.** Re-issue from the UI instead.
-- Auth endpoints have per-route limits (`limit()` in `authRoutes.ts`): login 30, register 10, verify 30,
-  resend 5 /min. Governed by `AUTH_RATE_LIMITS` (config `authRateLimits`, default **on** outside
-  tests); a test sets `AUTH_RATE_LIMITS=true` to prove 429s. Rate-limit options must sit under
-  `config: { rateLimit: {...} }` — the shorthand `rateLimit:` key fails typecheck (TS2559).
-- Mail via **nodemailer** from a single `SMTP_URL` (`MAIL_FROM`, `MAIL_FROM_NAME`,
-  `MAIL_VERIFY_TTL_HOURS`). Variable name is `MAIL_VERIFY_TTL_HOURS` (NOT `EMAIL_…`). Unconfigured
-  mail is a **warning**, not fatal; the no-op sender keeps registration working.
-- Frontend: new Vite entry `auth.html` → `pages/auth.ts` (sign in / register / `#verify=<token>`),
-  `starfield.ts` + `backdrop.css` (pure-CSS tiled `radial-gradient` stars, `prefers-reduced-motion`
-  + a persisted "calm" switch), `registerOffer()` shown after a game. **Joining a game stays
-  guest-only** (nickname, no e-mail) — never gate it.
-
-## Immutable game snapshot (Phase 6.4, branch `feat/phase-6-4-quiz-editor-snapshots`)
-- **R-3 (history loss) is closed by construction.** A started game reads its questions from
-  `game_snapshots` (one JSONB envelope per game, unique `game_id`), never from the live quiz.
-  `snapshotService.startWithSnapshot()` writes it inside the **same transaction** as `startedAt`
-  (called from `engine.start()`), so a game is never running without a valid snapshot. Idempotent
-  (repeat start returns the existing row; unique index is the race backstop). Legacy games with no
-  snapshot **self-heal** on the first `quizForGame()` read.
-- Migration `20261108090000_phase_6_4_quiz_editor_game_snapshot` is **additive + data-preserving**:
-  nullable `category`/`difficulty` TEXT on `quizzes` and `questions`; `games.quiz_id` → nullable with
-  `ON DELETE SET NULL`; and it **drops** `player_answers_question_id_fkey` (was `ON DELETE CASCADE`).
-  Never re-add that FK — it is what destroyed answer history when a quiz was deleted. Re-verified on
-  a populated scratch DB: counts preserved, and `DELETE FROM quizzes` leaves game/players/answers.
-- `engine.evict(gameId)` is a test hook to force a DB reload (proves the snapshot, not the cache, is
-  read). `reportService` reads the snapshot; `GameRow`/report types allow `quiz.id: string | null`
-  with a "Deleted quiz" fallback.
-- `category`/`difficulty` are **free text** — no taxonomy is approved. A controlled vocabulary
-  (selects/filter facets) is an owner decision, not a cleanup.
-- Editor pitfall: `validateQuiz` issue paths use the **dot** form (`questions.0.difficulty`), so the
-  editor's matcher must be `/^questions[.[](\d+)[\]]?/`, not `questions[0]`.
-- Report: `docs/reports/phase-6-4-quiz-editor-snapshot.md`. Not committed/pushed — awaiting owner
-  approval (the owner merges and deploys).
-- **Owner asked (2026-11-04) to replace the dropped FK with nullable `question_id` +
-  `ON DELETE SET NULL`. Answered no, with evidence (report §7).** Three variants tested on real
-  PostgreSQL: (A) no FK → id survives, report/CSV correct; (B) nullable + SET NULL → id becomes
-  NULL and `gameReport()` **throws** `Error converting field "questionId" of expected non-nullable
-  type "String"`; (C) `NOT NULL` + SET NULL → the quiz delete itself fails with
-  `null value in column "question_id" ... violates not-null constraint`. So SET NULL is not a
-  matter of taste — it is unimplementable without either breaking reads or blocking deletes.
-  The second reason is decisive: `updateQuiz` **deletes and recreates every question row** on any
-  editor save, so SET NULL would null the attribution of past games when a trainer merely renames
-  a quiz (verified: id became NULL after an ordinary save).
-- `question_id` is the **only** link from an answer to its question; `reportService` attributes by
-  `row.questionId === question.id` against the snapshot. The snapshot, not the live table, is the
-  referential guarantee. A DB-level guard now pins both constraints in
-  `snapshot.integration.test.ts` ("holds the database guarantees that protect history") — no
-  `player_answers_question_id_fkey`, and `games_quiz_id_fkey` is SET NULL (`confdeltype = 'n'`).
-- **Residual edge case (verified, documented, not fixed):** a game started *before* 6.4 has no
-  snapshot; if its quiz is deleted before the game is ever read, a report throws
-  409 `This game has no snapshot and its quiz no longer exists.` Not a regression and not
-  avoidable (the questions exist nowhere). Self-closing: any game started under 6.4+ is frozen in
-  the start transaction, and any legacy game read once self-heals. Mitigation if wanted: backfill
-  a snapshot for snapshot-less games before deleting a quiz (product decision).
-- If a *hard* DB guarantee is ever wanted, reference the immutable copy, not the live quiz: add a
-  `game_snapshot_questions` table (frozen ids per game) and point `question_id` at it with
-  `ON DELETE CASCADE`. Cost: one table, a write on start, a data migration.
-
-## Host state sync (Phase 6.5.2, branch `feat/phase-6-5-2-host-state-sync`)
-- **Host console is server-driven.** New `HostState` (shared) + `engine.hostState(game)`; both
-  `host:create` and `host:join` ACK it. `host:join` also joins `hostRoom`. `HostState` is
-  deliberately NOT `PlayerSync` (host sees the solution + full distribution, is never a player);
-  `question` is the solution-free `PublicQuestion` until `reveal`, so a reconnect cannot leak.
-- **Listener-accumulation bug (fixed):** old `showLobby` registered 5 listeners per call.
-  `attachHostHandlers` registers once per socket; a re-render swaps the handler via a `WeakMap`.
-- **Reload fix:** old `host:join` ACK was `{pin, phase, players}` and `resume()` ignored `phase`,
-  always drawing the lobby → "Start game" then 409. Now `renderHostState` dispatches on
-  `hostScreen(state)`, and `sessionStorage['zeropeek.host.game']` auto-resumes after a reload.
-- Control bar is derived from `hostActions(phase)` (`controlsFor`), so the host can never be
-  offered an action the phase forbids. `ListenerSocket.on` must be typed `(...args: never[]) =>
-  unknown`, else the real `Socket` (literal event union) is not assignable — cast once inside.
-- Tests: `host-sync.integration.test.ts` (10, real Socket.IO + Postgres, loops the PR #29 phase
-  lock 40×) and `hostView.test.ts` (20). Reverting the socket ACK fails 6/10 (real guard).
-  Report `docs/reports/phase-6-5-2-host-state-sync.md`. PR **#30**, CI green (run 42391730209).
-
-## Extended host control (Phase 6.5.3, branch `feat/phase-6-5-3-extended-host-controls`)
-- Adds `host:pause`/`host:resume`/`host:skip` (engine `pause`/`resume`/`skip`), a lobby-only
-  `host:kick` with `game:kicked`, and **host presence** for players (`game:host`, from the
-  `/host` room size, debounced). `PublicQuestion` + `paused`/`remainingMs`; `HostState`/
-  `PlayerSync` + `paused`/`skipped`; `OwnResult.outcome` + `'skipped'`.
-- **No migration:** paused/skipped state is rows in the existing `GameEvent` log;
-  `recoverCurrentQuestion` restores a paused game **paused** (no timer) and the skipped flag
-  from the last `question`/`reveal`/`skipped`. `prisma migrate status` stays "up to date".
-- **Pause maths:** one `limitMs(q) = timeLimit*1000` helper is the only place that expression lives
-  (the old `+ ANSWER_GRACE_MS` was dropped in Phase 6.9.5, so the enforced deadline now equals the
-  visible clock); resume shifts `openedAt` forward by the pause duration and re-arms the timer once.
-  `revealInternal` no-ops while paused unless `skipped`, so a stray timer/racing click cannot
-  un-pause. `submitAnswer` refuses while paused.
-- **Dead buttons:** a paused question offers only Resume+Skip (engine refuses plain reveal while
-  paused); no Pause for a `slide` (engine refuses it). Frontend must mirror engine refusals.
-- **`playerSync` must equal the live event.** A skipped reveal now reports `outcome:'skipped'`
-  from `playerSync` too — otherwise a reconnect mid-skip re-showed the live question.
-- Report `docs/reports/phase-6-5-3-extended-host-controls.md`, roadmap §6.2. Gate: 201+318+89 =
-  **608** green, typecheck/format/lint/build clean. Owner decisions (2026-11-07): a skip
-  **neutralises** the question (points refunded, `refundQuestion` atomic+idempotent; reports mark
-  it: `gameReport.skipped`, CSV `skipped` column, `quizStatistics.skippedGames`); a skipped
-  reveal carries **no solution** (`HostReveal` union, leak impossible by construction); a
-  **slide cannot be paused**. Draft PR opened on explicit owner approval.
-- **Never decide "the latest event" by ordering `GameEvent.createdAt`.** The column is
-  **millisecond precision only**, so two events written in the same tick have no defined order —
-  `reveal` + `skipped` and `paused` + `resumed` are written back to back and do exactly that.
-  This passed locally by timing luck and failed on CI. Recovery reads the game log in **one
-  query** and matches by `questionId` in JS, with no ordering assumption: skipped = a `skipped`
-  event exists; paused = `pauses > resumes` (they strictly alternate); frozen remainder =
-  `min(remainingMs)` over the pauses (successive pauses never increase it).
-
-## Frontend design system (Phase 6.1, PR #18)
-- Style: **"Dark Retro-Futuristic Wireframe & Glassmorphism"** — presentation only.
-  Working reference: `docs/design/design-system.md`.
-- `packages/frontend/src/styles/tokens.css` = tokens + all component CSS (single file).
-  Phase 0 tokens are FROZEN and asserted byte-for-byte by `src/design-system.test.ts`.
-- `packages/frontend/src/styles/backdrop.css` = wireframe floor grid + horizon + login
-  starfield. CSS-only, no images. Both CSS files are linked in all 4 HTML entries.
-- Reusable components live in `src/ui.ts` (`chip`, `progress`, `statTile`, `dialog`,
-  `confirmDialog`, `skeleton`, `countdown`, `emptyState`, `setBusy`; `button()` extended).
-  **No `innerHTML` anywhere** — CSP is `script-src 'self'`/`style-src 'self'` (guard test).
-- Extending the system: add a token, add the component to `ui.ts` + CSS + `ui.test.ts`,
-  and register its class in `design-system.test.ts`. Never hard-code a value.
-- **Show/beamer sizing rule:** `--type-show-*`, `--show-gap`, `--show-pad` and the podium
-  `min-height` mix **`vw + vh`** so a 720p projector shrinks the board instead of scrolling
-  it. `.show__options` is a fixed 2-column grid (stacks < 640px). Beamer markup builders
-  live in `src/showView.ts` (pure, unit-tested) because `pages/host.ts` opens a socket on
-  import. `answerCountNode` in `host.ts` must be assigned in `showQuestion` and nulled in
-  every other screen, or the live answer count silently stops updating.
-- **TEXT-ONLY VERIFICATION (owner rule, 2026-11-05, mandatory):** chrisB forbids all image
-  work on ZeroPeek — **no screenshots, no PNG/JPEG creation, no image analysis/processing, no
-  visual browser checks, no images in docs or PRs**. Verify with text/tables/measurements
-  only. Use `/usr/bin/chromium --headless=new --no-sandbox --disable-gpu
-  --window-size=W,H --virtual-time-budget=2500 --dump-dom`; render the REAL modules with
-  `npx esbuild <entry.ts> --bundle --format=esm --alias:@zp-frontend=./packages/frontend/src`
-  into a scratch page under `dist/`, write `getBoundingClientRect()`/`scrollHeight` into a
-  `data-json` attribute, read it back with `--dump-dom`, then delete the scratch page.
-  **Never pass `--screenshot`.**
-- **Token-diff gotcha:** to prove the Phase 0 tokens are unchanged, extract the first `:root`
-  block (`git show <base>:…/tokens.css`) and parse `--name: value;` in Python. A raw
-  `grep -oP -- "--muted:\s*\K[^;]+"` over the whole file matches a *later* redefinition and
-  gives a false "differs". Parse the block, not the file.
-
-## Git / push in this sandbox
-- `git push -u origin <branch>` **prompts for a username** (no credential helper) and hangs.
-  Push with `git push "https://${GITHUB_TOKEN}@github.com/dejowebdesign/ZeroPeek.git" <branch>`,
-  then set `branch.<name>.remote` back to `origin` — otherwise the token leaks into `.git/config`.
-- `create_pr` tool works directly (owner/repo `dejowebdesign/ZeroPeek`).
-
-## Gameplay engine: timings and known traps
 - **`REVEAL_MS = 4000`, `BOARD_MS = 5000`** (exported from
-  `packages/backend/src/services/engine.ts`). AUTO (Phase 6.9.3; server-authoritative
-  `host:auto`, default **off**, persisted in the existing `GameEvent` log as type
-  `auto`) gates **exactly two** transitions: **question → reveal** (`armQuestionClock`)
-  and **board → next question** (`armBoardAdvance`). The **reveal → board** step
-  (`armRevealWindow`, `REVEAL_MS`) is a **fixed window in BOTH modes** — NOT AUTO-gated.
-  The answer clock (question expiry) and the start countdown are not AUTO transitions and
-  always run. Any E2E/browser test must not assume a `Reveal`/`Next question` button is on
-  screen — drive it tolerantly, or turn AUTO on. A host `next` is only legal from `board`;
-  `board` only from `reveal` (guards added in `fix/complete-gameplay-reliability`) so a
-  stale timer cannot skip a question.
+  `packages/backend/src/services/engine.ts`).
+- **AUTO (Phase 6.9.3) gates EXACTLY TWO transitions:** question → reveal
+  (`armQuestionClock`) and board → next question (`armBoardAdvance`). The **reveal → board**
+  step (`armRevealWindow`, `REVEAL_MS`) is a **fixed window in BOTH modes**. The answer clock
+  and the start countdown always run. AUTO is server-authoritative (`host:auto`, default
+  **off**), persisted in the existing `GameEvent` log (type `auto`, newest-wins), no column
+  and no migration; `setAuto` is a no-op when unchanged.
 - **One timer slot (`game.timer`).** Every arm helper must `clearTimer` first and only arm in
-  its own phase (`armBoardAdvance` only on `board`). Missing the phase guard let `setAuto(true)`
-  orphan the answer timer, which then revealed the question even after AUTO was turned off.
-- **With a single player the question auto-reveals the instant they answer**,
-  so the host `Reveal` button never appears. Use **two** players for any host
-  flow test.
+  its own phase (`armBoardAdvance` returns unless `phase === 'board'`). Missing the phase guard
+  let `setAuto(true)` orphan the answer timer, which then revealed the question after AUTO was
+  switched off again. **Invariant: one timer slot; each helper clears first and arms only in
+  its own phase.**
+- **`engine.revealInternal`/`boardInternal`: `clearTimer` must come AFTER the idempotency
+  guards**, never before — the auto-advance timer is the only thing that moves the game off
+  reveal/board, so clearing it on a duplicate command strands the game there permanently.
+- **The deadline shown is the deadline enforced.** `limitMs()` = exactly `timeLimit·1000`; a
+  hidden `ANSWER_GRACE_MS = 1500` was removed in Phase 6.9.5 (late guard `>` → `>=`). The speed
+  bonus uses `elapsedMs` vs `question.timeLimit`, never `limitMs()`.
+- **Legal phase moves:** host `next` only from `board`; `board` only from `reveal`
+  (`reveal → board → next`). A `slide` renders as "No answer" (never graded) — correct. A
+  `slide` cannot be paused; a paused question offers only Resume+Skip.
+- **With a single player the question auto-reveals the instant they answer**, so the host
+  `Reveal` button never appears — use **two** players for any host flow test.
+- **`lead` is a real server phase** (Phase 6.9.1, `LEAD_SECONDS = 5`): `startInternal` →
+  `enterLead`; only `advanceFromLead`/`skipLead` leave it, both under `withPhaseLock`. Recovery
+  rebuilds the **remaining** window from the `lead` event's `endsAt`, never restarts it.
+  `host:skipLead` is host-only and a duplicate is a `conflict`.
+- **Never decide "the latest event" by ordering `GameEvent.createdAt`.** The column has
+  **millisecond precision only**, so events written in the same tick (`reveal` + `skipped`,
+  `paused` + `resumed`) have no defined order. Recovery reads the log in one query and matches
+  by `questionId` in JS with no ordering assumption: skipped = a `skipped` event exists; paused
+  = `pauses > resumes`; frozen remainder = `min(remainingMs)`.
+- **`submitAnswer`** commits both writes in one `prisma.$transaction`, mirrors the runtime only
+  after it resolves, maps `P2002` → `conflict('You have already answered.')`, and serialises
+  same-player+question submissions via `withAnswerLock('playerId:questionId')`. `engine.get()`
+  shares one in-flight load per game.
+- **Point/rank deltas are READ, never recomputed:** `pointsDeltas` sums the persisted
+  `playerAnswer.points` and derives `previousScore = score − delta`; `rankDeltas` re-ranks with
+  each player's own delta removed. Idempotent and identical live vs. after a cold reload.
+- Contract traps: `host:create` ACKs `{ gameId, pin }` (**not** `{ id, pin }`); `host:join` ACKs
+  `{ pin, players }`; the report route is `/api/reports/games/:id` with body
+  `{ quiz:{id,title,questionCount}, players, questions }`; the server rejects a quiz with
+  **zero questions**, so "New quiz" must seed one and the editor must block removing the last.
+  The host-namespace question event is `host:question`. `PublicPlayer` has no `rank` — rank is
+  the array position.
+
+## Host console (Phases 6.5.2, 6.5.3, 6.9.x)
+
+- **The host console is server-driven.** `HostState` (shared) + `engine.hostState(game)` are
+  ACKed by `host:create`/`host:join`; `renderHostState` dispatches on `hostScreen(state)`, and
+  `sessionStorage['zeropeek.host.game']` auto-resumes after a reload. `HostState` is
+  deliberately NOT `PlayerSync` (the host sees the solution and the full distribution and is
+  never a player); `question` stays the solution-free `PublicQuestion` until `reveal`.
+- **Control bar is derived** from `hostActions(phase, paused, type, hasNext)` via `controlsFor`,
+  so the host can never be offered an action the phase forbids. `hasNext` is server-derived on
+  the `board` event (omits `next` on the last board).
+- **`answerCountNode`** is a single slot in `pages/host.ts`: set in `showQuestion`, `null` on
+  **every** other screen. Miss one reset and the live answer count silently stops updating.
 - **`attachHostHandlers` must bind `socket.on`/`socket.off` to the socket**
-  (`socket.on.bind(socket)`). `socket.on` is a prototype method; extracting it
-  detached (`const register = socket.on`) throws inside the emitter because
-  `this` is `undefined`, which **silently registers no listeners at all** and
-  kills the whole host page. Unit tests missed it because the fake socket is an
-  object literal whose methods ignore `this` — the regression test therefore uses
-  a class with real prototype methods.
-- Backend integration suites call `resetDatabase()` on `zeropeek_test`, the same
-  DB the dev backend uses: running `npm test` deletes the bootstrap admin, so a
-  later dev login 401s. **Restart the backend before browser E2E after a test
-  run** (bootstrap re-creates the admin).
-- **Real-process-restart tests:** `npx tsx src/server.ts` re-execs, so SIGKILLing
-  only the spawned child leaves the server alive and every "restart" silently
-  talks to the OLD process. Spawn with `detached: true` and
-  `process.kill(-pid, 'SIGKILL')` the whole group, then assert `/api/health` is
-  down before restarting. **`Question.id` is a global primary key** — fixtures
-  with hard-coded ids can only be seeded once per DB (`P2002`). Host-namespace
-  question event is `host:question`, not `game:question`. A host must go
-  `reveal → board → next`; `next` from `reveal` is refused. `PublicPlayer` has
-  no `rank` field — rank is the array position. A `slide` renders as "No answer"
-  (never graded) — correct, not a bug.
-- **Acceptance harness `/var/tmp/zpstab`** (wiped on restart; re-create from the
-  daily log): real backend process + real Chromium player UI, programmatic
-  assertions only. Sections A restart recovery (34), B all 13 types
-  right/wrong/none (72/65/78), B2 time limits (7), C races (25×2), D reconnect
-  (38) → **344/344**.
+  (`socket.on.bind(socket)`) — `socket.on` is a prototype method, so extracting it throws inside
+  the emitter because `this` is `undefined`, which **silently registers no listeners** and
+  kills the whole host page. Unit tests missed it because the fake socket is an object literal;
+  the regression test uses a class with real prototype methods.
+- **`attachHostHandlers` needs an explicit entry in its `listeners` array for every new host
+  event.** Adding it to the `HostEventHandlers` *type* is not enough — the handler silently
+  never fires and only the command ACK still works. Derive any listener-count assertion from
+  `Object.keys(handlersFor(...))`, never a hard-coded number.
+- **A host reload arrives as `{ kind: 'sync' }`, not `{ kind: 'lobby' }`.** Gate lobby-only UI
+  on `hostScreen(state)`, never on `lastRender.kind`, or it disappears exactly on reconnect.
+- **`el()` uses `addEventListener`**, so binding a command via `onClick` and then adding
+  `node.onclick = …` runs **both** handlers (Skip/End sent immediately *and* opened the confirm
+  dialog; Cancel could not undo). `hostButton(..., { confirm })` makes the dialog the button's
+  only click action and sends from `onConfirm`. **Invariant: one handler per button.**
+- **Pause/skip/kick:** `host:pause`/`host:resume`/`host:skip`, lobby-only `host:kick` →
+  `game:kicked`, and host presence (`game:host`, from the `/host` room size, debounced).
+  Paused/skipped state is rows in the existing `GameEvent` log — **no migration**. Resume shifts
+  `openedAt` forward by the pause duration and re-arms once; `revealInternal` no-ops while
+  paused unless skipped. A skip **neutralises** the question (points refunded via an atomic
+  idempotent `refundQuestion`; reports mark `gameReport.skipped`, CSV `skipped`,
+  `quizStatistics.skippedGames`) and a skipped reveal carries **no solution**.
+- **Show scenes (Phase 6.9.2) are DISPLAY-ONLY.** `showScenes.ts` is pure (no DOM/socket):
+  `SHOW_SCENES` (13), `SCENE_DEFINITIONS`, `ENTRY_SCENE`, `ShowController.sync` (which
+  **ignores a stale descriptor**, `at < lastAt`). The manual step strip, presentation mode and
+  `.show__scene-*` CSS were **removed** in 6.9.3 — a host step could park the show on a scene
+  the server was not in. `sync` always re-derives `entryScene(phase)`; the scene stays internal.
+  `design-system.test.ts` asserts those classes stay gone.
+- **`ClockSync` is display-only; the server stays authoritative.** `shared/src/clock.ts` is pure
+  NTP maths (`offset = serverTime − (t1+t3)/2`, `CLOCK_SAMPLE_COUNT=5`,
+  `CLOCK_MAX_ROUND_TRIP_MS=2000`, best = smallest round trip, unusable samples dropped, never
+  clamped). `clock:ping`/`clock:pong` on both namespaces; `frontend/src/clockSync.ts` uses
+  `performance.now()` and exposes `serverNow()`. One clock only — never a second one.
 
-## Player profiles (Phase 6.6 / 6.6.1) — ALREADY IMPLEMENTED on main
-- **PR #33 already shipped the full Phase 6.6 profile backend** (commit `6aebe1f`), so a
-  later "Phase 6.6.1" request for the same thing needs **no new production code**. Before
-  implementing any phase, diff the request against real `main`: `grep '^model '
-  packages/backend/prisma/schema.prisma`, `ls packages/backend/prisma/migrations/`,
-  `ls packages/backend/src/{routes,services}`, and the `*.integration.test.ts` names.
-- Present: `model PlayerProfile` (userId `@unique`, `selectedCharacterId String?`,
-  createdAt/updatedAt, FK `onDelete: Cascade`); additive migration
-  `20261109120000_phase_6_6_player_profiles` (new `player_profiles` + nullable
-  `game_players.user_id`, `ON DELETE SET NULL`); `routes/profileRoutes.ts`
-  (`GET`/`PUT /api/profile`, `requireAuth` + CSRF on PUT, `userId` only from session);
-  `services/profileService.ts` (`ensureProfile` = lazy + idempotent; stats computed
-  server-side each request); `shared/profile.ts` (`validateProfileUpdate` rejects any
-  field but `selectedCharacterId`); `profile.integration.test.ts`.
-- Deliberately absent (later phases): XP/level/inventory (6.8), `avatarConfig` (6.7),
-  any player-visible quiz history, **any IP column or hash** (product decision Q5).
-- Test DB is isolated and non-productive: `zeropeek_stabtest` on `localhost:55432`
-  (container `zp-stabtest-pg`, `zpstab`/`zpstab`). Migration checks:
-  `npx prisma migrate status` and
-  `npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "$DATABASE_URL" --exit-code`
-  → "No difference detected". Full chain: create a scratch DB in the container,
-  `prisma migrate deploy` against it, diff, drop it.
+## Auth, identity and profiles
 
-## Phase 6.6.2 – profile UI / character picker
-- The profile **page** already existed from Phase 6.6 (`profile.html`,
-  `pages/profile.ts`, stats + empty state). 6.6.2 only added the **character
-  picker** on top of it. Before "implementing a UI phase", check the page
-  already exists — several phases are partly pre-built.
-- `CHARACTER_CATALOGUE` + `findCharacter` live in `packages/shared/src/profile.ts`
-  (canonical ids `ethan, maya, pixel, bee, dr-obscura, o-bot`; name/tagline/rarity
-  only). **No character artwork exists in the repo** — never invent avatars.
-- The server stays **permissive** on `selectedCharacterId` (any bounded string), so
-  adding a character is a shared/frontend change and needs **no backend change**.
-  The page shows an unknown stored id honestly (never hides or overwrites it).
-- `packages/frontend/src/design-system.test.ts` is a **contract test**: any new class
-  a component emits must be added to its list **and** defined in `tokens.css`, or it
-  fails. Responsive/CSS behaviour is tested by `readFileSync` on `tokens.css`
-  (regex on media queries, `--tap`, reduced-motion) — no browser, no screenshots.
-- `gh` CLI auth may be absent in a fresh sandbox; fall back to
-  `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/...`.
-- Backend DB suites **silently skip** without `DATABASE_URL`/`TEST_DATABASE_URL`
-  (79 passed / 169 skipped) — the run looks green but is incomplete. Export the URL
-  first. `lobby-sync.integration.test.ts` has a **timing flake**; re-run before
-  suspecting a regression.
-
-## Identity contexts (Phase 6.6.3)
-- Two session contexts, not one: **host** = `zp_session` (`COOKIE_NAME`), **player** =
-  `zp_player_session` (`PLAYER_COOKIE_NAME`). `Session.kind` ('host'|'player', default
-  'host') tags each row; a guard only accepts its own kind, so a host cookie never
-  authenticates the player surface (and vice-versa). `requireAuth`/`currentUser` (host)
-  vs `requirePlayerAuth`/`currentPlayer` (player). `GET/PUT /api/profile` use the player
-  guard; player auth lives at `/api/player-auth/{login,logout,me}` (role PLAYER only).
-  `player:join` links a seat via the player cookie ONLY — a host cookie never links a
-  seat. Migration `20261110120000_phase_6_6_3_session_kind` is additive (default 'host').
-- **The sign-in context follows the verified role**: `POST /api/auth/login` (general
-  `auth.html`) issues a **player** session for a `PLAYER` and a **host** session for
-  `ADMIN`/`TRAINER`. Role comes from `verifyCredentials`, never the request.
-  `auth.html` redirects by role (`PLAYER` → `profile.html`, staff → `host.html`) and its
-  boot probes `/api/player-auth/me` too (the player cookie is invisible to `/api/auth/me`).
-  A guard keys on the **cookie name**, so a session id under the wrong cookie name is 401
-  regardless of its `kind`.
-- Acceptance suite `identity-separation.integration.test.ts` (24 tests, T01–T20 + the
-  role-based login cases) proves the separation against real Postgres + real sockets.
-- Verified live (2026-11-04): logout is isolated both ways (host logout → host 401,
-  player 200; and the reverse). CSRF: `POST /api/quizzes` no token → 403, with token →
-  422 (validation) — positive control. **Both logouts are deliberately UNGUARDED** (no
-  CSRF preHandler) and return 200; that predates 6.6.3 and is by design.
-- Backend integration suites run safely against a **throwaway DB**: `prisma migrate
-  deploy` reads `DATABASE_URL` (the live DB), not `TEST_DATABASE_URL`, and there is no
-  `packages/backend/.env`, so exporting BOTH vars wins. `resetDatabase()` truncates
-  whatever `DATABASE_URL`/`TEST_DATABASE_URL` points at — never leave it on the live DB.
-- `browser_set_storage` MERGES cookies (cannot delete HttpOnly ones) and OVERWRITES the
-  real cookie with the value you pass — a stale value silently breaks the browser session
-  even when it looks right. For a genuine fresh session, log in fresh and copy the new
-  value out of the cookie jar.
-- To observe `location.assign` in jsdom: `Object.defineProperty(window,'location',
-  {configurable:true,value:{assign,...}})`; `vi.spyOn(location,'assign')` throws
-  "Cannot redefine property". A redirecting boot renders nothing, so don't wait for a render.
-
-## Docker in this sandbox
-- A dockerd is often **already running** (PID file `/var/run/docker.pid`).
-  `docker info` as the non-root user fails; use **`sudo docker ...`**. Only start
-  a daemon if `sudo docker info` fails, and do not delete a live `docker.pid`.
-- Frontend image smoke test: `sudo docker build -f docker/frontend.Dockerfile -t
-  <tag> .` then run on a spare port and probe `/`, `/host.html`, `/editor.html`,
-  `/admin.html` (all 200). `docker/Caddyfile.frontend` uses
-  `try_files {path} {path}.html {path}/index.html`, so both `/admin` and
-  `/admin.html` work but `/admin/` does not.
-- Pre-existing untracked workspace files (NOT from the repo): `.openhands/`,
-  `nopeek-audit.md`. `.openhands/memory/MEMORY.md` is tracked in git.
-
-## Phase 6.7 avatar system (stacked PR, awaiting approval)
-- Avatar catalogue is **code in `shared`** (`characters.ts`, `cosmetics.ts`), NOT DB. DB stores only
-  state: `PlayerProfile.avatarConfig` JSONB (nullable, additive migration). Character-exclusive items;
-  `validateAvatarConfig` rejects foreign items (422). Slots: backpack, outfit, neckAccessory, visor,
-  wristAccessory.
-- **Do not stack avatar layers.** Supplied Ethan/Maya equipment WebP are NOT aligned to a shared canvas
-  (owner metadata `not_defined`/`not_validated`; per-file dims differ). Preview = supplied figure +
-  per-slot thumbnails. Only `packages/frontend/src/avatar.ts` changes when aligned layers arrive.
-- Frontend asset test asserts every catalogue `assetPath` exists under `public/` and is a real WebP
-  (RIFF/WEBP signature) — renaming an asset fails the build.
-- Branch stacked on 6.6.3; PR must wait for 6.6.3 merge. Untracked ZIP in repo root is the owner's
-  source package — never commit it.
-
-## Phase 6.8.4 — progression / reward matrix / inventory / presentation (awaiting approval)
-- **Level curve (binding):** `requiredXp(level) = 100000 + (level-1)*10000`; `xpForLevel` = 0/100000/
-  210000/330000… Old 10k-per-level table is dead. `xpCostForLevel` → renamed `requiredXp`.
-- `PlayerProfile.xp` is the truth; `level` is **derived on every read** and the column repaired.
-  A curve change may lower an existing account's shown level — intended, no XP lost/duplicated.
+- **Two session contexts.** Host = `zp_session` (`COOKIE_NAME`), player = `zp_player_session`
+  (`PLAYER_COOKIE_NAME`). `Session.kind` ('host'|'player') tags each row and a guard only
+  accepts its own kind. `requireAuth`/`currentUser` (host) vs
+  `requirePlayerAuth`/`currentPlayer` (player). `GET/PUT /api/profile` use the player guard;
+  player auth lives at `/api/player-auth/{login,logout,me}`. `player:join` links a seat via the
+  player cookie ONLY. A guard keys on the **cookie name**, so a session id under the wrong
+  cookie name is 401 regardless of its `kind`.
+- **Sign-in context follows the verified role:** `POST /api/auth/login` issues a **player**
+  session for `PLAYER` and a **host** session for `ADMIN`/`TRAINER`; the role comes from
+  `verifyCredentials`, never the request. `auth.html` redirects by role and its boot probes
+  `/api/player-auth/me` too (the player cookie is invisible to `/api/auth/me`).
+- **Roles:** `PLAYER` (Phase 6.3), `ADMIN`, `TRAINER`. `requireStaff` (ADMIN+TRAINER) guards
+  quizzes/reports + the host socket. The server keeps the last-admin guards (409 on
+  demote/disable of the sole admin; 403 without CSRF).
+- **Neither logout endpoint has a CSRF preHandler:** `POST /api/auth/logout` and `POST
+  /api/player-auth/logout` (both `{ ok: true }`). Do not change without a security review.
+- **Enumeration-safe register (binding, spec §5.3):** a taken **e-mail** is answered
+  **byte-identically** to a fresh registration (`{ ok: true, verificationSent: … }` derived from
+  config only) and the password is still hashed to equalise timing; a taken **username** still
+  returns `409 username_taken`. Do not "simplify" this back to a 409. The verification
+  link/token is **never logged, in any environment** — re-issue from the UI.
+- Auth endpoints have per-route limits (`limit()` in `authRoutes.ts`): login 30, register 10,
+  verify 30, resend 5 /min, governed by `AUTH_RATE_LIMITS` (default on outside tests). Pass them
+  as `{ config: { rateLimit: { max, timeWindow } } }` — the shorthand `rateLimit:` key fails
+  typecheck (TS2559). Socket rate limiting is a separate in-memory token bucket
+  (`socketRateLimit.ts`) keyed ONLY by a server-owned id (`socket:<id>` before a seat,
+  `player:<playerId>` after) — a client field never moves a bucket. `SOCKET_RATE_LIMITS` is
+  default on, **off in the `test` env** unless set. Current `SOCKET_RATE_RULES` (per 10 s):
+  join 10, joinByAddress 60, answer 20, rejoin 15, rejoinBySocket 20. A rejected event runs no
+  handler, so it can never change score or state.
+- Mail via **nodemailer** from one `SMTP_URL` (`MAIL_FROM`, `MAIL_FROM_NAME`,
+  `MAIL_VERIFY_TTL_HOURS` — **not** `EMAIL_…`). Unconfigured mail is a **warning**, not fatal; a
+  no-op sender keeps registration working. `deployment.compose.test.ts` pins all four.
+- **Guest joining stays guest-only** (nickname, no e-mail) — never gate it. A guest account
+  takeover covers the **just-finished round only** (one-time, server-side claim).
+- **Avatar catalogue is code in `shared`** (`characters.ts`, `cosmetics.ts`, `profile.ts`), NOT
+  the DB. DB stores state only: `PlayerProfile.avatarConfig` JSONB (nullable, additive).
+  Character ids: `ethan, maya, pixel, bee, dr-obscura, o-bot`. Items are
+  **character-exclusive**; `validateAvatarConfig` rejects foreign items (422). Slots: backpack,
+  outfit, neckAccessory, visor, wristAccessory. The server stays **permissive** on
+  `selectedCharacterId` (any bounded string), so adding a character needs no backend change.
+- **Do NOT stack avatar layers.** The supplied Ethan/Maya equipment WebP are NOT aligned to a
+  shared canvas (owner metadata `not_defined`/`not_validated`, per-file dims differ). Preview =
+  supplied figure + per-slot thumbnails; only `packages/frontend/src/avatar.ts` changes when
+  aligned layers arrive. `playerAvatar(..., {crop:'head'|'full'})`: head = CSS
+  `object-fit: cover` top (in-game/leaderboard), full = whole figure (podium).
+- **Level curve (binding):** `requiredXp(level) = 100_000 + (level-1)*10_000`; `xpForLevel` =
+  0 / 100k / 210k / 330k… `PlayerProfile.xp` is the truth and `level` is **derived on every
+  read** (the column is repaired); a curve change may lower a shown level — intended, no XP
+  lost. `reconcileLevelRewards(userId, level, characterId)` is the ONE idempotent grant
+  mechanism (grant tx, `PUT /api/profile`, every progress/inventory/equip read) via
+  `rewardItemsUpToLevel` + `skipDuplicates`.
 - **Reward matrix is SLOT-based** (`shared/levelRewards.ts`): L2 outfit, L3 backpack, L4
-  neckAccessory, L5 visor, L6 wristAccessory. Item = the **chosen character's** own item in that
-  slot. L7+ has **no entry on purpose** (grants nothing, never blocks XP). Level 1 = nothing equipped;
-  `defaultAvatarConfig` returns `EMPTY_EQUIPMENT`; `unlockStatus` removed from `CosmeticItem`.
-- **`reconcileLevelRewards(userId, level, characterId)`** = the one idempotent mechanism (grant tx,
-  `PUT /api/profile`, and every progress/inventory/equip read) via `rewardItemsUpToLevel` +
-  `skipDuplicates`. New endpoint `POST /api/inventory/unequip` (body: only `slot`).
-- **Profile vs inventory (final):** profile = character + stats + level/XP + achievements (links
-  "Open inventory"); inventory = items + loadout (per-slot Unequip, per-item Equip/Unequip).
-- **Presentation:** `playerAvatar(..., {crop:'head'|'full'})` — head = CSS `object-fit:cover` top
-  (in-game/leaderboard), full = whole figure (podium). No image edited/generated. `playerBadge`
-  shows head + `Level n · x XP` (player page reads `/api/progress` once at boot, best-effort).
-- `design-system.test.ts` is a contract: every emitted class must be listed there **and** in
-  `tokens.css`. Gates: shared 165 / backend 350 / frontend 458, no migration, no schema change.
-  Report: `docs/reports/phase-6-8-4-progression-inventory-podium.md`. Never commit the owner's
-  untracked `ZeroPeek_Ethan_Maya_Charakterbibliothek.zip`.
+  neckAccessory, L5 visor, L6 wristAccessory; the item is the **chosen character's** own item in
+  that slot. L7+ has **no entry on purpose** (grants nothing, never blocks XP). Level 1 =
+  nothing equipped. Cosmetics give **no gameplay advantage** (no pay-to-win).
+- **XP/inventory are server-side only.** Never compute XP or a grant in the browser; the client
+  displays what the server returns.
 
-## Phase 6.8.5 — clock sync & socket rate limiting (branch, awaiting approval)
-- **Clock sync is display-only; the server stays authoritative.** `shared/src/clock.ts` (pure) holds
-  the NTP offset maths: `offset = serverTime − (t1+t3)/2`, `CLOCK_SAMPLE_COUNT=5`,
-  `CLOCK_MAX_ROUND_TRIP_MS=2000`; `bestOffset` = smallest round-trip, ties → later sample, unusable
-  samples dropped (never clamped). Events `clock:ping` (c→s) / `clock:pong` (s→c) on **both** `/` and
-  `/host`. `frontend/src/clockSync.ts` measures with `performance.now()` and exposes `serverNow()`
-  (falls back to `Date.now()` before the first sample). `pages/host.ts` `startTimer`/`resumed` read it.
-- **Socket rate limiting** (`backend/src/socketRateLimit.ts`): in-memory token bucket, keyed ONLY by a
-  server-owned id — `socket:<id>` before a seat, `player:<playerId>` after; a client field never moves
-  a bucket. `SOCKET_RATE_RULES`: join 10/10s, joinByAddress 60/10s, answer 20/10s, rejoin 15/10s,
-  rejoinBySocket 20/10s. Rejection runs no handler → no score/state change. **No Redis** (per-process,
-  fine for one instance).
-- **`SOCKET_RATE_LIMITS`** (default on; **off in the `test` env** unless set) mirrors `authRateLimits` —
-  without the off-by-default the existing socket suites trip themselves. Wired into both compose files,
-  `.env.portainer.example`, PORTAINER.md, ENVIRONMENT.md.
-- Gates after 6.8.5: shared 179 / frontend 469 / backend 385 (0 skipped with a DB). No migration, no
-  schema change, no new dependency. Report: `docs/reports/phase-6-8-5-clock-sync-and-socket-rate-limit.md`;
-  roadmap §9.3; ADR 0006 updated.
+## Immutable game snapshot (Phase 6.4)
 
-## Phase 6.8.6 — CSS/contract/docs cleanup (branch `maintenance/phase-6-8-6-css-contract-docs`)
-- **Pure maintenance, no behaviour/schema/dependency change.** Removed dead CSS + 3 unused tokens,
-  merged two duplicate rule groups, aligned the docs with merged history. Base `main` @ `da36e76`.
-- **Dead-vs-kept is decided by "emitted OR documented", not by "emitted" alone.** `card--raised`,
-  `card--interactive`, `anim-shake` are emitted by no component but are documented design-system
-  utilities (`docs/design/design-system.md` §3/§7) → **keep** them and their contract entries.
-  `auth__hint` / `input--invalid` are documented nowhere → dead (drop `.auth__hint` entirely; for
-  `.input--invalid` keep the sibling `.input[aria-invalid='true']`, which IS set in `pages/admin.ts`).
-- **Unused-token test:** diff declared `--x` against every `var(--x)`. 18 show as unused; only
-  `--ease-in`, `--ease-out`, `--shadow-nav` are safe to delete. The rest are frozen Phase-0 values,
-  the brand/rarity ramp, the wireframe set (`--wire-*`, `--brand-cyan`), `--dur-show`, `--type-score`,
-  `--blur-input` — several are asserted by `design-system.test.ts`, so deleting breaks the contract.
-- **CSS source-order gotcha:** the 1440px `:root` block must keep `--player-measure` last — at ≥1440px
-  the 768/1024/1440 `min-width` blocks all match, so the widest value must win by order. `--content-max`
-  was folded into that same block.
-- **Docs rule:** historical reports keep their original "awaiting approval" body; add a dated
-  "historical snapshot" note instead of rewriting. `docs/phases.md` + roadmap §14/§19 are the living
-  status tables — update those to "Done (merged, PR #N)".
-- Gates after 6.8.6: frontend 468 (was 469; the `auth__hint` `it` left with its entry) / shared 179 /
-  backend 385 (0 skips with a DB). Report: `docs/reports/phase-6-8-6-css-contract-docs.md`.
+- **History loss (R-3) is closed by construction.** A started game reads its questions from
+  `game_snapshots` (one JSONB envelope per game, unique `game_id`), never from the live quiz.
+  `snapshotService.startWithSnapshot()` writes it in the **same transaction** as `startedAt`
+  (from `engine.start()`), so a game never runs without a valid snapshot. Idempotent; legacy
+  games with no snapshot **self-heal** on the first `quizForGame()` read.
+- The 6.4 migration is **additive + data-preserving**: nullable `category`/`difficulty` on
+  `quizzes`/`questions`, `games.quiz_id` nullable with `ON DELETE SET NULL`, and it **drops**
+  `player_answers_question_id_fkey` (was `ON DELETE CASCADE`). **Never re-add that FK** — it
+  destroyed answer history when a quiz was deleted.
+- **The owner asked to replace the dropped FK with nullable `question_id` + `ON DELETE SET
+  NULL`; the answer is no, with evidence (report §7).** Tested on real PostgreSQL: (A) no FK →
+  id survives, report/CSV correct; (B) nullable + SET NULL → id becomes NULL and `gameReport()`
+  throws; (C) `NOT NULL` + SET NULL → the quiz delete itself fails. Decisive second reason:
+  `updateQuiz` **deletes and recreates every question row** on any save, so SET NULL would null
+  the attribution of past games when a trainer merely renames a quiz. `question_id` is the only
+  link from an answer to its question; the **snapshot** is the referential guarantee. A DB-level
+  guard pins both constraints in `snapshot.integration.test.ts`.
+- **Residual edge case (documented, not fixed):** a game started *before* 6.4 has no snapshot;
+  if its quiz is deleted before the game is ever read, the report 409s. Self-closing for any
+  game started under 6.4+.
+- **`PlayerAnswer.questionId` + `updateQuiz` deleting/recreating questions means "autosave" in
+  the editor is unsafe** — a save destroys the answer history of that quiz's games.
+- `category`/`difficulty` are **free text** — no taxonomy is approved; a controlled vocabulary
+  is an owner decision, not a cleanup.
+- Editor pitfall: `validateQuiz` issue paths use the **dot** form (`questions.0.difficulty`), so
+  the editor's matcher must be `/^questions[.[](\d+)[\]]?/`, not `questions[0]`.
+- **`questionForm.ts` merge rule:** the form is not re-rendered between edits, so all handlers
+  must merge into a single `latest` holder via `update(patch)`. Spreading the original `question`
+  snapshot silently discards every earlier edit (`questionForm.test.ts`).
 
-## Phase 6.9.1 — server show state (`feat/phase-6-9-1-server-show-state`, from `main` @ `177b63c`)
-- **`lead` is now a REAL server phase, not a client timer.** `engine.startInternal` → `enterLead`
-  (`LEAD_SECONDS = 5`, `LEAD_MS`); only `advanceFromLead`/`skipLead` leave it, both under
-  `withPhaseLock` and both guard `phase === 'lead'`, so exactly ONE question opens. Uses the existing
-  single `game.timer`. New engine event `lead` → fan-out `host:lead` / `game:lead`.
-- **Recovery rebuilds the REMAINING window, never restarts it:** `load()` reads the persisted `lead`
-  event's `endsAt` (added `'lead'` to the recovery event-type filter) and re-arms `game.timer` for
-  `endsAt − Date.now()`; already-expired → advance via `setTimeout(…,0)` (deferred because the runtime
-  isn't in `games` until `load` returns).
-- **Countdown is drawn from server `startedAt`/`endsAt` against the existing Phase 6.8.5
-  `ClockSync`** (`clock.serverNow()`), NOT a second clock. Player `pages/player.ts` now owns a
-  `ClockSync` and re-syncs on every `connect`; host uses the existing `clock`.
-- **`host:skipLead`** is a HOST command (session-guarded like `host:skip`), legal only in `lead`;
-  duplicate is a `conflict` (not a silent no-op at the socket layer — the *engine* refuses). No new
-  client-reachable PLAYER event was added (`game:lead` is server→client only), so no rate-limit change.
-- **Additive contracts only** (`packages/shared/src/events.ts`): `PublicQuestion.category?/difficulty?`
-  (display metadata, forwarded by `publicQuestion`, never a solution field); `LeadState`, `PointsDelta`,
-  `RankDelta`; `PlayerSync.lead`, `HostState.{lead,points,ranks}`; `host:reveal` gains `points`,
-  `host:board` gains `ranks`. `hostState()` became **async**.
-- **Deltas are READ, never recomputed:** `pointsDeltas` sums persisted `playerAnswer.points` rows and
-  derives `previousScore = score − delta`; `rankDeltas` re-ranks with each player's own delta removed.
-  Idempotent + identical live vs. after a cold reload (asserted by tests).
-- **Test-fixture gotcha:** the lead phase broke ~75 existing DB tests that assumed `start → question`.
-  Fix: insert `engine.skipLead(gameId)` / `await request(host,'host:skipLead',{gameId})` right after
-  every `start` (mechanical script over the test files). `hostView.test.ts` listener-count assertion
-  went 8→9 (added `host:lead`). `host-sync.integration.test.ts` needed local `collect`/`settle` helpers.
-- Gates after 6.9.1: backend **399** (0 skips with DB), frontend **469**, shared **179**; typecheck +
-  build + format:check green. Report: `docs/reports/phase-6-9-1-server-show-state.md`; pre-push audit
-  `docs/reports/phase-6-9-1-pre-push-audit.md` (verdict **GO**; fixed a `format:check` CI blocker —
-  the new analysis doc was committed unformatted — a wrong report claim, and a timer test that
-  actually called `skipLead`). Every phase must add its own `docs/phases.md` row in the feature commit.
+## Platform facts worth keeping
 
-## Phase 6.9.2 — game-show skeleton & scene control (`feat/phase-6-9-2-game-show-skeleton`, from `main` @ `31a7783`)
-- **New pure module `packages/frontend/src/showScenes.ts`** (no DOM/socket): `SHOW_SCENES` (13),
-  `SCENE_DEFINITIONS` (`order/phase/mode/requires/transitions`), `ENTRY_SCENE` (phase→entry), and
-  `ShowController` (`sync`/`step`/`cycle`, `current`/`currentPhase`/`steppable`). It sends **no**
-  command and has no scoring/answering/phase method.
-- **Every scene has a real `GamePhase`.** `welcome`, `join`, `participants` are all *lobby*-phase
-  views (steppable between each other); `welcome` is NOT a `phase: null` client-only scene. The
-  lobby's **entry** scene is `join` (unchanged PIN view); `welcome` is reached by stepping and is
-  also the mapping result for `sceneForInput(null)` ("no game under control").
-- **Scene is derived through `hostScreen`**, so it inherits the console's fallbacks:
-  `sceneInputOf(state) = { phase: screenPhase(hostScreen(state)), questionId }`. `hostView.ts`
-  gained `'welcome'` in `HostScreen` and `hostScreen(null) => 'welcome'`. `ShowController.sync`
-  **ignores a stale descriptor** (`at < lastAt`) so a late event/resync can't pull the show back;
-  `step`/`cycle` only move within `samePhaseScenes(currentPhase)`.
-- **`pages/host.ts`**: `renderHostState` folds every render into `show.sync(descriptorOf(input))`;
-  helpers `descriptorOf`, `lastRender`+`rerender()`, `sceneBar()`, `presentationToggle()` +
-  `presentationMode`/`presentationClass()`. `sceneBar()` renders for any live phase (scene name +
-  steps + toggle) and never hides the controls. **Presentation mode** hides `.show__controls`,
-  `.show__scene-steps`, `.host-connection` (hides, never removes; in-memory only). Lobby = 3 scenes
-  of one card; question board frames differently per scene; reveal/board/podium get a per-scene
-  heading. Outro fetches **no** report (console-only).
-- **`showView.ts`**: `participantCard(player)` (lg head crop + name) for the participants grid.
-- **`tokens.css`**: additive "game-show skeleton" section only — `.show__scene-bar/-label/-steps`,
-  `.show__present`, `.lobby__welcome|participants|join`, `.lobby--wide`, `.participants`,
-  `.participant`, opacity-only `show-scene-fade` (+ reduced-motion). All values from existing tokens.
-- **Gotchas:** `HostState.reveal.question` is a full `Question` (union incl. `IdeasQuestion`) — a
-  reveal test helper needs a *full* question, not a `PublicQuestion`. Build partial `PublicQuestion`
-  literals with `as PublicQuestion`.
-- Gates after 6.9.2: frontend **512** (was 469), shared **179**, backend **98** (301 DB-skips here);
-  typecheck/build/format:check/lint green. Report: `docs/reports/phase-6-9-2-game-show-skeleton.md`;
-  roadmap §9.5; `docs/phases.md` 6.9.2 row. **No push/PR/merge/deploy** (owner approval pending).
+- **13 question types**, server-authoritative engine, **14 Prisma models**, Argon2id + server
+  sessions + CSRF + strict CSP.
+- **Capacity measured** (`tools/loadtest.mjs`): 25 players → join wall 95 ms, answer p95 28 ms,
+  135 MB RSS; 35 players → 134 ms / 35 ms / 143 MB. Target "25 + host" is comfortable on one
+  process.
+- **Missing / data-only (verified in code):** `GamePlayer.team` and `ideas` voting are
+  data-only (team mode is not a real mode); sound (6.11) and scene-specific background motifs
+  are not started.
+- **Q1–Q7 in `docs/architecture/README.md`** (scoring formula, "too fast" threshold, cheat-report
+  signals, team assignment, IP retention, tie-breakers, self-paced mode) are the owner's calls.
+  The engine exposes them as named `ScoringConfig`/`SpeedPolicy` options with documented
+  defaults rather than hard-coded guesses. **Do not copy NoPeek's scoring formula and never
+  store IPs.**
+- **Binding product decisions (Phase 5c, PR #17)** — docs only: XP = quiz points + placement
+  bonus 1500/1000/500; voluntary registration with verified email; guest-account takeover of the
+  just-finished round only; items character-exclusive and visibly equippable; personal stats
+  player-visible but quiz history **admin-only**; immutable `GameSnapshot` per game; random
+  background once per round; show audio host-only; default language German; Redis not required at
+  start; 25 players + host.
+  **Superseded — never resurrect:** `10 XP/answer`, the `100 × (n−1)^1.5` 7-level curve,
+  separate beamer route/show-token, `GET /api/profile/history`, single global cosmetic catalog.
+- **Vite dev-proxy trap:** the rule must be `'^/api/'`, not `'/api'` — a bare `/api` prefix also
+  swallows the client module `/api.ts`, which Vite serves from the project root.
+  `server.allowedHosts` must include `'.prod-runtime.all-hands.dev'`.
+- **Favicon: never auto-key it.** `favicon.png` has **no alpha** and its background is not
+  homogeneous white (only ~30.4 % near-white), so automatic background removal would eat the
+  artwork — request a **transparent master file** from the owner instead.
+- Owner is **Dejan Popovic** (sole decision-maker). **chrisB is NOT an approver/blocker** — one
+  factual mention remains that chrisB supplied the original NoPeek raw version.
+- Docs convention: a new `.md` under `docs/` must pass `npm run format:check` (run
+  `npx prettier --write` on it); Prettier reflows tables, that is expected. Historical reports
+  keep their original "awaiting approval" body — add a dated "historical snapshot" note instead
+  of rewriting. `docs/phases.md` + the roadmap status tables are the living status documents;
+  update those. **Every phase adds its own `docs/phases.md` row in its feature commit.**
+- **Before implementing a phase, diff the request against real `main`** — several phases were
+  partly pre-built (e.g. the profile page existed before 6.6.2). Check `grep '^model '
+  …/schema.prisma`, `ls …/prisma/migrations/`, `ls …/src/{routes,services}`, and the
+  `*.integration.test.ts` names.
 
-### Phase 6.9.2 correction (`fix/phase-6-9-2-show-flow`, from merged PR #48 `9d9cde2`)
-- **Show scene is DISPLAY-ONLY.** The 6.9.2 scene bar's manual step strip (`ShowController.step/cycle/
-  steppable`) was removed: a host step could park the show on a scene the server is not in
-  (host↔beamer contradiction). `sync` now ALWAYS re-derives `entryScene(phase)`; `sceneBar()` = label
-  + presentation toggle. `.show__scene-steps` CSS + its contract entries dropped;
-  `samePhaseScenes`/`sceneBelongsTo` kept as grouping description only.
-- **`engine.revealInternal`/`boardInternal`: `clearTimer(game)` must come AFTER the idempotency
-  guards, never before.** The auto-advance timer is the ONLY thing that moves the game off reveal/
-  board; clearing it on a duplicate command (double host click, or the auto-timer racing a manual
-  click) stranded the game there permanently. Guarded by 3 new cases in
-  `gameplay-reliability.integration.test.ts` (they fail without the fix).
-- New `packages/frontend/src/hostPage.test.ts` drives the REAL host page in jsdom (fake socket).
-  Counts: frontend **511**, backend **402** (with PG), shared **179**.
-- **Test gotchas:** (1) puppeteer `waitForFunction` uses rAF, throttled in a background tab → false
-  "stall" timeouts; poll with `setTimeout` + `bringToFront()`. (2) The console's real "Leaderboard"/
-  "Reveal" control buttons collide with scene names — scope "no scene-nav" assertions to
-  `.show__scene-bar`.
+## NoPeek reference project
 
-### Phase 6.9.3 — host-control correction + optional AUTO (`feat/phase-6-9-2-host-auto-control`, from merged `main` `e3bf47d`)
-- **Presentation mode and the scene bar are GONE.** `presentationMode`, `presentationClass()`,
-  `presentationToggle()`, `sceneBar()`, the dead `rerender()`, and the CSS `.show__scene-bar`,
-  `.show__scene-label`, `.show__present`, `.show-presentation …` were all removed. The scene stays
-  **internal** (derived from the authoritative phase via `ShowController`); no scene navigation.
-  `design-system.test.ts` now asserts those classes are gone for good.
-- **AUTO is server-authoritative and persisted in the EXISTING `GameEvent` log** (type `auto`,
-  newest-wins on recovery, like `paused`/`resumed`) — **no column, no migration**. New host command
-  `host:auto {gameId, auto}` (validated real boolean, `assertHost`) → `Ack<{auto}>`; new host event
-  `host:auto {auto}` to the host room only. `HostState.auto` added. `setAuto` is a **no-op when
-  unchanged** (no event, no timer churn).
-- **AUTO gates EXACTLY TWO transitions: question → reveal (the answer resolution) and board → next
-  question.** Centralised in three helpers: `armQuestionClock` (AUTO-only), `armRevealWindow`
-  (ALWAYS), `armBoardAdvance` (AUTO-only). The **reveal → leaderboard** step is a fixed `REVEAL_MS`
-  (4 s) window in **both** modes; the start countdown always runs too. The all-players-answered
-  early reveal is gated on `game.auto`. Switching OFF cancels the question clock / board advance
-  (never the reveal window); switching ON resolves at once if the roster is full or the clock
-  already expired, else arms the exact remainder.
-  ⚠️ **The first 6.9.3 draft had this backwards** (gated reveal→board + board→next, left
-  question→reveal automatic). Fixed in `5e46187`; owner rule: *with AUTO off the host owns the
-  answer resolution; reveal→leaderboard is always automatic*.
-- **The ANSWER CLOCK is independent of AUTO (final clock audit).** The clock = `openedAt` +
-  `limitMs(question)` (= exactly `timeLimit·1000` since Phase 6.9.5) and always runs; AUTO gates
-  only the **timer** (the scheduled auto-transition), never the clock's end time. `setAuto` never
-  stops, resets or shifts it.
-  ⚠️ **Real defect found + fixed (this revision):** `armBoardAdvance` had **no phase guard**, and
-  `setAuto(true)` calls it unconditionally — so toggling AUTO on during a **live question** armed a
-  5 s board timer on top of the answer timer, overwriting the single `game.timer` slot and
-  **orphaning** the answer timer; the orphan then fired at the real deadline and revealed the
-  question **even after AUTO was switched off again** (violated "AUTO off ⇒ no auto-resolution").
-  Fix: `armBoardAdvance` now `if (game.phase !== 'board') return;`, and `armQuestionClock` now
-  `clearTimer(game)` before arming. **Invariant: one timer slot; each arm helper clears first and
-  only arms in its own phase.** Regression tests: `gameplay-reliability.integration.test.ts` §C1
-  (clock independent of AUTO) + §C2 (on→off must not resolve; on→off→on resolves exactly once;
-  setAuto during lead doesn't disturb the countdown), using a new `FAST_QUIZ` (5 s limit; the
-  6.5 s clock became exactly 5 s in Phase 6.9.5) to keep expiry tests quick.
-- Frontend: `autoLabel`/`autoHint` in `hostView.ts`; `host:auto` in `HostEventHandlers` (detach
-  9→**10**); toggle in `pages/host.ts` (hidden in lobby + final, `data-auto-toggle`, `aria-pressed`),
-  repainted from the broadcast AND the ACK. New `.show__auto` CSS from existing tokens only.
-- Counts: backend **426** (real PG), frontend **513**, shared **179**; typecheck/build/format:check/
-  lint green. Report: `docs/reports/phase-6-9-3-host-auto-control.md` (§3.2 correction note, §8 =
-  binding rule, §9 = clock independence); roadmap §9.6; `docs/phases.md` 6.9.3 row. **No
-  push/PR/merge/deploy** (owner approval pending).
-- **Host-control fix (2026-11-18, branch `fix/host-next-skip-confirmation`, commit `09ad746`).**
-  Report `docs/reports/host-next-and-confirmation-fix.md`; roadmap §9.7; `docs/phases.md` 6.9.4.
-  1. ⚠️ **`el()` uses `addEventListener`** — so binding a command via `onClick` and then adding
-     `node.onclick = …` runs **both** handlers. That made Skip/End send **immediately** and open the
-     confirm dialog (Cancel could not undo). Fix: `hostButton(..., { confirm })` makes the dialog the
-     button's only click action; the command is sent from `onConfirm`. **Invariant: one handler per
-     button — never `onClick` + a second `onclick`.**
-  2. The board always showed **Next question**, even on the **last** board. New server-derived
-     `hasNext` on the `board` event + `HostState` (forwarded by `socket.ts`); `hostActions(phase,
-     paused, type, hasNext)` omits `next` when false. Display only — `engine.next` still refuses a
-     non-`board` phase. `HostState` fixtures in hostView/hostPage/showScenes tests needed `hasNext`
-     (playerView did not).
-  Counts: backend **429**, frontend **519**, shared **179**; all gates green. **No push/PR/merge.**
+- Reference app **NoPeek** lives at `https://nopeek.projekt-chrisb.de`. No ZIP/source archive is
+  stored here — analyse it by fetching the **unminified** client assets: player at `/` (default
+  ns), host at `/host`; player.js, host.js, editor.js, common.js, clock.js, quizschema.js,
+  avatars.js, branding.js, app-config.js. `/var/tmp/nopeek/` is wiped on restart.
+- NoPeek specifics: Kahoot-style **clock-offset sync** (`clock` ping/pong, best-of-N, re-sync
+  after the WS upgrade) drives an absolute `at`; `leadMs` read-aloud lead; host events
+  `lock`/`close`/`review`/`review-end`; player `avatar`/`qa:*`; `build` reload guard; the same 13
+  question types; team mode; QR code; animated board/podium; per-type reveal views;
+  CSV+Excel+print reports; homework mode; email 2FA. Scoring = base + speed bonus with
+  double/none; exact numbers are server-side. **Analysis only — do not copy.**
+- ZeroPeek's comparison docs live in `docs/analysis/nopeek-comparison/` (PR #9).
 
-- **Answer-deadline fix (2026-11-18, branch `fix/host-next-and-answer-deadline`).** Report
-  `docs/reports/phase-6-9-5-answer-deadline-and-host-next.md`; roadmap §9.8; `docs/phases.md` 6.9.5.
-  1. ⚠️ **Hidden answer grace removed.** `limitMs()` used to add `ANSWER_GRACE_MS = 1500`, so the
-     server accepted answers 1.5 s past the visible `0s` (reproduced via the engine API **and** a real
-     player socket: a 5.2 s answer on a 5 s question was stored). Fix: `limitMs()` = the visible
-     `timeLimit·1000`, constant deleted, late guard `>` → `>=`. **Invariant: the deadline shown is the
-     deadline enforced — never a hidden constant.** Speed bonus uses `elapsedMs` vs `question.timeLimit`
-     (`shared/scoring.ts`), never `limitMs()`, so no point value shifted.
-  2. Player screen had no clock, so its buttons stayed clickable against a closed question. New pure
-     `answerDeadlineRemainingMs(question, serverNow)` in `playerView.ts` + a `questionTimer` in
-     `showQuestion()` that closes the control and shows "Time is up." at the same instant; cleared on
-     every screen change and on `game:resumed`, which rebases `openedAt` on the resumed remainder.
-  3. The reported **missing host Next button was NOT a defect**: PR #51's `hasNext` fix is in `main`
-     and in the running bundle (verified `host-BJOV_daG.js` == local build of `main`). Likely cause of
-     the report: browser cache — `docker/Caddyfile.frontend` sets **no `Cache-Control`** for `*.html`
-     (only a weak ETag), so a stale bundle can be served briefly after a deploy. Follow-up (not done,
-     needs approval): add no-cache for `*.html` in the frontend Caddyfile.
-  Counts: backend **431**, frontend **523**, shared **179**; all gates green. **No push/PR/merge.**
+## Phase 6.10 — round backgrounds (merged, PR #54)
 
-
-## Phase 6.10 — round backgrounds (branch `feat/phase-6-10-background-library`)
-- Ten owner-supplied WebP files live in `packages/frontend/public/backgrounds/`
-  (`zeropeek_*.webp`), integrated **byte-identically** (SHA-256 checked). Never
-  re-encode them. `unzip` is NOT installed here — use Python `zipfile`.
-- `packages/shared/src/backgrounds.ts` is the only source of truth. Catalogue ids are
-  derived **from filenames only** (no image analysis, per briefing §29–31):
-  `synthwave_skyline`, `synthwave_weltraum`, `synthwave_wueste`, `synthwave_megacity_detail`,
+- Ten owner-supplied WebP files in `packages/frontend/public/backgrounds/` (`zeropeek_*.webp`),
+  integrated **byte-identically** (SHA-256 checked). **Never re-encode.** `unzip` is NOT
+  installed — use Python `zipfile`.
+- `packages/shared/src/backgrounds.ts` is the only source of truth; catalogue ids are derived
+  **from filenames only** (no image analysis, per briefing §29–31): `synthwave_skyline`,
+  `synthwave_weltraum`, `synthwave_wueste`, `synthwave_megacity_detail`,
   `synthwave_bruecke_zwei_berge`, `synthwave_forschungsstation_muted`,
   `synthwave_lagerhalle_minimal`, `synthwave_raumstation_ohne_boden`,
   `synthwave_unterwasser_v3`, `palmen_tron_background`.
-- **`RANDOM_BACKGROUND` (`'random'`) is resolved server-side, once.** Clients only ever send the
+- **`RANDOM_BACKGROUND` (`'random'`) is resolved server-side, once.** Clients only send the
   sentinel; `resolveBackgroundChoice()` returns a concrete id or `undefined`. Never let a client
   pick an id itself — two devices would roll two images.
-- Background is chosen in `engine.create` and appended as a `background` `GameEvent`; it is
+- The background is chosen in `engine.create` and appended as a `background` `GameEvent`; it is
   **never** re-rolled by join/start/question. No migration — `load()` restores the last valid
-  event, so `engine.evict()` is the restart-path test.
-- `setBackground()` is idempotent: unchanged resolved id = no-op (stops double-click swap).
-- **`attachHostHandlers` needs an explicit entry in its `listeners` array** for every new host
-  event. Adding it to the `HostEventHandlers` *type* is not enough — the handler silently never
-  fires and only the command ACK still works. This bit us with `host:background`.
-- A host reload arrives as `{ kind: 'sync' }`, **not** `{ kind: 'lobby' }`. Gate lobby-only UI on
-  `hostScreen(state)`, never on `lastRender.kind`, or it disappears exactly on reconnect.
-- The frontend paints via one inert `[data-round-background]` div; only the
-  `--round-background` custom property is rewritten (no DOM recreation). `backdrop.css` adds a
-  dark scrim so quiz text stays readable on any motif.
-- **Open product decision:** no image is mapped to a specific screen (lobby/final/podium). The ten
-  files are a round-wide pool; motif→scene mapping is the owner's call.
+  event, so `engine.evict()` is the restart-path test. `setBackground()` is idempotent.
+- The frontend paints one inert `[data-round-background]` div and only rewrites
+  `--round-background` (no DOM recreation); `backdrop.css` adds a dark scrim so quiz text stays
+  readable on any motif.
+- **Open product decision:** no image is mapped to a specific screen (lobby/final/podium). The
+  ten files are a round-wide pool; motif→scene mapping is the owner's call.

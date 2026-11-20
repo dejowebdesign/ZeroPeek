@@ -50,16 +50,16 @@ Nothing is implemented until the project owner approves it.
 | 6.9.3 | Host-control correction and optional AUTO operation (no presentation mode)     | Done (merged, PR #50, merge `30e286e`) – `docs/reports/phase-6-9-3-host-auto-control.md`; roadmap §9.6                                                                                                                                                             |
 | 6.9.4 | Host-control fix: Skip/End confirmation and leaderboard Next button            | Done (merged, PR #51, merge `0d9b8f9`) – `docs/reports/host-next-and-confirmation-fix.md`; roadmap §9.7                                                                                                                                                            |
 | 6.9.5 | Answer-deadline alignment (no hidden grace) and host Next verification         | Done (merged, PR #52, merge `18e271f`) – `docs/reports/phase-6-9-5-answer-deadline-and-host-next.md`; roadmap §9.8                                                                                                                                                 |
-| 6.10  | Background library (ten supplied WebP files, server-authoritative choice)      | **Complete on branch** – `docs/reports/phase-6-10-background-library.md`; roadmap §11. Awaiting owner approval.                                                                                                                                                    |
+| 6.10  | Background library (ten supplied WebP files, server-authoritative choice)      | Done (merged, PR #54, merge `ad935fa`) – `docs/reports/phase-6-10-background-library.md`; roadmap §11.                                                                                                                                                             |
 
 **Phase 6.9 is complete.** All five sub-phases (6.9.1–6.9.5) are merged into `main`; the state after
 PR #52 is `18e271f`. There is **one** host/beamer view, **no** separate presentation mode, AUTO is
 optional and off by default, the reveal window is 4 s, the leaderboard advance is 5 s, and the
 visible answer clock is the deadline the server enforces.
 
-**Phase 6.10 (background images) is implemented on a branch and awaiting approval.** The ten
-supplied WebP files are integrated byte-identically, and the round's background is chosen once and
-held by the server, so host, beamer and players agree and a reconnect or restart restores it.
+**Phase 6.10 (background images) is merged** (PR #54, merge `ad935fa`). The ten supplied WebP
+files are integrated byte-identically, and the round's background is chosen once and held by the
+server, so host, beamer and players agree and a reconnect or restart restores it.
 
 **Next planned (not implemented):** Phase 6.11 (sound and music) remains **planned** and is blocked
 on audio assets supplied by the project owner. It is not started.
