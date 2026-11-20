@@ -1,16 +1,21 @@
 # Phase 6.11 – Host background music
 
-- **Branch:** `feat/phase-6-11-host-music` (from `origin/main` = `b85dab5`)
-- **Scope:** play the **one** track the project owner supplied during the regular question phases,
-  under host control (mute + volume), **never** on a player device. No schema change, no migration,
-  no new dependency, no change to any scoring value, question, answer, account or permission.
+- **Branches:** `feat/phase-6-11-host-music` (initial, PR #57) and
+  `feat/phase-6-11-continuous-music` (this adjustment, based on the first).
+- **Scope:** play the **one** track the project owner supplied as the bed of the **whole running
+  game** — from the first question through every reveal, leaderboard and inter-round pause until the
+  game ends — under host control (mute + volume), **never** on a player device. No schema change, no
+  migration, no new dependency, no change to any scoring value, question, answer, account or
+  permission.
 - **Status:** work complete on the branch, **awaiting owner approval** — no push, no pull request,
   no merge, no deploy.
 
 ## 0. Result in one sentence
 
-The supplied track plays on the host/beamer page during `question` only, the host can mute it and
-set its volume, the setting survives a repaint and a reload, and the player page never loads it.
+The supplied track plays continuously on the host/beamer page for the entire running game, from the
+first question through answer reveal, leaderboard and inter-round transitions, and stops only when
+the game actually ends. The host can mute it and set its volume, the setting survives a repaint and
+a reload, and the player page never loads it.
 
 ## 1. Rules this phase had to respect
 
@@ -40,25 +45,49 @@ The target folder follows the asset briefing (§Block G), which already reserves
 and is **byte-identical**, so no build step alters the file.
 
 The briefing lists four tracks (`music-lobby`, `music-question`, `music-final`, `music-victory`).
-**One** was supplied, so **one** is wired up, and it plays in the phase it was supplied for: the
-regular question phase. Lobby, final and victory music stay open (see §7).
+**One** was supplied, so **one** is wired up. Lobby, final and victory music stay open (see §7).
 
 ## 3. Phase rule
 
-`HostMusic` maps a phase to one of three decisions, and nothing else:
+The track is the **round's bed**, not a question cue. It starts with the first question and runs
+unbroken until the game actually ends.
 
-| Phase      | Decision | Why                                                     |
-| ---------- | -------- | ------------------------------------------------------- |
-| `question` | play     | The phase the supplied track was made for.              |
-| `lead`     | pause    | The read-aloud lead-in stays quiet before the question. |
-| `reveal`   | pause    | The answer is being resolved; the track would fight it. |
-| `board`    | pause    | Leaderboard beat, no bed.                               |
-| `end`      | pause    | Show is over.                                           |
-| `lobby`    | pause    | Players are still joining.                              |
-| `null`     | stop     | No game on screen (home / picker).                      |
+| Phase      | Decision             | Why                                                           |
+| ---------- | -------------------- | ------------------------------------------------------------- |
+| `lobby`    | silent               | Players are still joining; the show has not begun.            |
+| `lead`     | silent               | The pre-game countdown. A countdown never _starts_ the track. |
+| `question` | play                 | The first question begins the bed.                            |
+| `reveal`   | continue             | The answer resolves over the same bed — no pause, no restart. |
+| `board`    | continue             | The leaderboard beat runs on the same bed.                    |
+| `lead`     | continue, if running | An inter-round countdown belongs to the running round.        |
+| `end`      | stop and rewind      | The game is over.                                             |
+| `null`     | stop and rewind      | No game on screen (home / picker).                            |
 
-Pausing rather than stopping keeps the stream buffered, so moving from one question to the next
-does not re-download the file.
+### How `lead` is disambiguated without guessing
+
+`lead` is the only ambiguous phase: it runs before the first question _and_ — should the server ever
+introduce one — between rounds. The module never counts questions and never keeps its own game
+history. The decision is made from two server-authoritative facts:
+
+1. **`question`, `reveal` and `board` only exist after a question was opened.** A reveal resolves a
+   question, a board ranks one, so any of them proves the round is under way. A host that reloads
+   straight onto the leaderboard resumes the music at exactly the right moment.
+2. **`lead` never starts the track; it only lets a running track continue.** Before the first
+   question nothing is running, so the pre-game countdown is silent. During a running round the bed
+   is already up, so an inter-round countdown keeps it going.
+
+The module's own `playing` flag is the latch, and it is only ever written from the server phase — so
+no local assumption about the game's progress is involved.
+
+### No re-cueing between phases
+
+`sync` compares the intended state with the current one and returns early when they agree. Moving
+`question → reveal → board → lead → question` therefore issues **no** `play()` and **no** `pause()`
+call at all: one `play()` per round, and a single `pause()` only when the game ends.
+
+> **Note on the current server:** `enterLead()` is called only from `start()`, and `next()` goes
+> `board → question` directly. A `lead` between questions therefore does not exist today. The rule
+> above already handles it correctly should it be introduced — the tests cover it explicitly.
 
 ## 4. Host control
 
@@ -113,15 +142,16 @@ adding an import to `player.ts`: the test failed, as intended.
 | --------------------------- | --------------------------------------------------------------- |
 | `npm run typecheck`         | clean (shared, backend, frontend)                               |
 | `prettier --check .`        | clean                                                           |
-| Frontend tests              | **607 passed** (was 552 before this phase)                      |
+| Frontend tests              | **616 passed** (552 before 6.11; 607 after the first cut)       |
 | Backend tests               | **98 passed**, 19 files skipped (no database in this sandbox)   |
 | Shared tests                | **199 passed**                                                  |
 | `npm run build`             | succeeded; audio file in `dist/audio/music/`, SHA-256 identical |
 | Bundle isolation            | track path only in `host-*.js`; player entry has 0 references   |
 | `docker/Caddyfile.frontend` | unchanged and still valid (see §9)                              |
 
-`hostMusic.test.ts` (39 tests) covers the phase rules, volume clamping and junk input, mute as a
-flag, the storage round-trip and malformed stored data, and the DOM/class contract.
+`hostMusic.test.ts` (47 tests) covers the phase rules, the `lead` disambiguation, a full-round run
+with no extra `play()`/`pause()`, volume clamping and junk input, mute as a flag, the storage
+round-trip and malformed stored data, and the DOM/class contract.
 `hostPage.test.ts` (+6 tests) drives the **real** host page and covers: the bar is absent on the
 picker, present in lobby/lead/question, the slider follows input, mute keeps the level, the level
 survives a phase change, and a mix change sends **no** socket command.
@@ -147,19 +177,21 @@ branch.
 | -------------------------------------------------------------- | ------------------------------------------------------- |
 | `packages/frontend/public/audio/music/question-background.ogg` | new — supplied track, byte-identical                    |
 | `packages/frontend/src/hostMusic.ts`                           | new — phase rules, volume maths, persistence            |
-| `packages/frontend/src/hostMusic.test.ts`                      | new — 39 unit tests                                     |
+| `packages/frontend/src/hostMusic.test.ts`                      | new — 47 unit tests                                     |
 | `packages/frontend/src/pages/host.ts`                          | +137 lines, additive only (instance, bar, sync)         |
 | `packages/frontend/src/styles/tokens.css`                      | +71 lines, additive only (`.music*` on existing tokens) |
 | `packages/frontend/src/hostPage.test.ts`                       | +117 lines (DOM tests for the real page)                |
 | `packages/frontend/src/design-system.test.ts`                  | +34 lines (class coverage + player-isolation guard)     |
 
-`git diff --numstat` for `host.ts`, `tokens.css` and `hostPage.test.ts` shows **0 deletions**.
+`git diff --numstat` for `host.ts` and `tokens.css` shows **0 deletions**. On the continuous-music
+branch the only source changes are inside `hostMusic.ts` and its two test files — `host.ts` and
+`tokens.css` are untouched, because the page already passes the phase to `sync()`.
 
 ## 11. Open points for the owner
 
 1. **Remaining audio assets.** Blocks F and G of the asset briefing are still missing. The supplied
-   track covers the question bed only. Lobby, final and victory music plus the sound effects would
-   complete Phase 6.11.
+   track now covers the whole running round. Lobby, final and victory music plus the sound effects
+   would complete Phase 6.11.
 2. **Volume default.** 50 % is a conservative choice; say the word if a different default is wanted.
-3. **Should the bed also run in the lobby?** Currently not, because no lobby track was supplied and
-   reusing the question track there would weaken the question moment.
+3. **Should the bed also run in the lobby?** Still no — the owner confirmed that no lobby music is
+   wanted, and reusing the round bed there would weaken the question moment.

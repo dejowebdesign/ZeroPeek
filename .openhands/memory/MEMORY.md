@@ -517,7 +517,16 @@ when unsupported).
 - **Open product decision:** no image is mapped to a specific screen (lobby/final/podium). The
   ten files are a round-wide pool; motif→scene mapping is the owner's call.
 
-## Host background music (Phase 6.11, branch `feat/phase-6-11-host-music`)
+## Host background music (Phase 6.11, branches `feat/phase-6-11-host-music` + `-continuous-music`)
+- **The track is the round's bed, not a question cue** (owner decision): it starts with
+  the first question and stops only at real game end. Rule lives in `shouldPlay`:
+  `paused → false`; `question|reveal|board → true`; `lead → running` only. `lead` never
+  starts the track (pre-game countdown silent), so no question counter is needed —
+  `question/reveal/board` are unreachable before question one, which is the proof the
+  round is under way. `sync()` early-returns when intent is unchanged, so phase
+  transitions issue **zero** `play()`/`pause()` — one play per round, one pause at `end`.
+  There is **no `lead` between questions** today (`enterLead()` only from `start()`,
+  `next()` goes `board → question`); the rule handles it anyway.
 - **Caddy 2.8.4 has no `mime` directive.** `caddy validate` fails with
   `unrecognized directive: mime`; do not add a `mime {}` block to
   `docker/Caddyfile.frontend`. `.ogg` is already in Caddy's **built-in** table:
