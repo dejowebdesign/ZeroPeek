@@ -52,15 +52,15 @@ unabhängige Arbeit vorgezogen, nicht die abhängige).
 
 **Kritische Abhängigkeiten:**
 
-| Phase | Braucht zwingend                                                                 | Ohne das blockiert     |
-| ----- | -------------------------------------------------------------------------------- | ---------------------- |
-| 6.3   | Rolle `PLAYER`, Spielerkonto-Modell, E-Mail-Bestätigung                          | 6.6, 6.7, 6.8          |
-| 6.4   | Quiz-Snapshot (verbindlich, §8.7)                                                | Autospeichern, Reports |
-| 6.7   | Charakter-Assets: Ethan/Maya geliefert; Pixel, Biene, Dr. Obscura, O-Bots fehlen | Avatar-Layer, 6.10     |
-| 6.8   | Levelkurve + XP-Ledger; Gastkonto-Übernahme                                      | 6.8, 6.12              |
-| 6.9   | Beamer-Grafiken (kombinierte Host-Ansicht bleibt)                                | 6.10                   |
-| 6.11  | **Audio-Assets des Projektverantwortlichen** (fehlen)                            | 6.11                   |
-| 6.12  | Entscheidungen zu Modi/Redis                                                     | 6.12                   |
+| Phase | Braucht zwingend                                                                                                   | Ohne das blockiert      |
+| ----- | ------------------------------------------------------------------------------------------------------------------ | ----------------------- |
+| 6.3   | Rolle `PLAYER`, Spielerkonto-Modell, E-Mail-Bestätigung                                                            | 6.6, 6.7, 6.8           |
+| 6.4   | Quiz-Snapshot (verbindlich, §8.7)                                                                                  | Autospeichern, Reports  |
+| 6.7   | Charakter-Assets: Ethan/Maya geliefert; Pixel, Biene, Dr. Obscura, O-Bots fehlen                                   | Avatar-Layer, 6.10      |
+| 6.8   | Levelkurve + XP-Ledger; Gastkonto-Übernahme                                                                        | 6.8, 6.12               |
+| 6.9   | Beamer-Grafiken (kombinierte Host-Ansicht bleibt)                                                                  | 6.10                    |
+| 6.11  | **Audio-Assets des Projektverantwortlichen** – ein Stück geliefert (Fragemusik), SFX und übrige Musikstücke fehlen | nur die fehlenden Teile |
+| 6.12  | Entscheidungen zu Modi/Redis                                                                                       | 6.12                    |
 
 ---
 
@@ -763,8 +763,13 @@ Neonflächen, keine gerenderten 3D-Räume (`game-design-concept.md` §10.5).
 
 ## 12. Phase 6.11 – Sound und Musik
 
-**Status: geplant – nicht begonnen.** Kein Code, keine Assets, kein Branch. Voraussetzung sind die
-vom Projektverantwortlichen gelieferten Audio-Dateien und das bestehende Asset-Briefing.
+**Status: Teil 1 umgesetzt, Freigabe offen** (Branch `feat/phase-6-11-host-music`). Der
+Projektverantwortliche hat **ein** Musikstück geliefert (`mastered_vorbis_96.ogg`); es läuft als
+Fragemusik auf der Host-/Beamer-Ansicht, mit Stummschaltung und Lautstärke. Report:
+`docs/reports/phase-6-11-host-music.md`.
+
+**Offen:** die restlichen Musikstücke (`music-lobby`, `music-final`, `music-victory`) und die
+Soundeffekte aus Block F des Asset-Briefings. Sie werden nicht ersetzt, sondern angefordert.
 
 | Punkt                      | Inhalt                                                                                    |
 | -------------------------- | ----------------------------------------------------------------------------------------- |
@@ -784,6 +789,28 @@ vom Projektverantwortlichen gelieferten Audio-Dateien und das bestehende Asset-B
 **Verbindlich (Phase 5c):** Show-Audio läuft **ausschließlich** über die Host-/Beamer-Ansicht.
 Spieler-Telefone spielen **keine** Show-Musik; höchstens lokale UI-Effekte. Ob die Audioübertragung
 im Zoom-Betrieb hörbar ankommt, wird später **praktisch geprüft** (`game-design-concept.md` §11.2).
+
+**Umsetzung Teil 1 (Stand Branch `feat/phase-6-11-host-music`):**
+
+- `packages/frontend/public/audio/music/question-background.ogg` – das gelieferte Stück,
+  byte-identisch übernommen (SHA-256 `228fd35d…f585`), kein Re-Encoding.
+- `hostMusic.ts` – **kein** allgemeiner `audio.ts`-Manager, sondern ein auf die eine Aufgabe
+  begrenztes Modul: Phasenregel, Lautstärke-Mathematik, Persistenz. Ein generischer Bus wäre für ein
+  einziges Stück Spekulation auf künftige Assets; er kommt mit den fehlenden Dateien.
+- Phasenregel: **nur** `question` spielt; `lead`, `reveal`, `board`, `end`, `lobby` pausieren; kein
+  Spiel auf dem Bildschirm stoppt. Pausieren statt Stoppen hält den Stream gepuffert, damit der
+  Wechsel zwischen Fragen die Datei nicht erneut lädt.
+- Host-Steuerung `.music` (Stumm + Lautstärke + Prozentanzeige), **im Fluss** statt als Overlay,
+  damit sie nie eine Frage oder einen Countdown verdeckt; Einstellung in `localStorage`
+  (`zeropeek.host.music`), best-effort mit sicheren Rückfallwerten.
+- Trennung ist **strukturell**, nicht zur Laufzeit: nur `pages/host.ts` importiert das Modul; im
+  Build enthält ausschließlich `dist/assets/host-*.js` den Track-Pfad, der Player-Einstieg **null**
+  Referenzen. Drei Tests in `design-system.test.ts` sichern das ab.
+- `.ogg` wird von Caddy 2.8.4 mit `Content-Type: audio/ogg` ausgeliefert (eingebaute Tabelle,
+  unabhängig von `/etc/mime.types`). Ein `mime`-Block ist in 2.8.4 **kein** gültiges Direktiv
+  (`caddy validate`: `unrecognized directive`), die Caddyfile bleibt daher unverändert.
+- **Keine** Schemaänderung, **keine** Migration, **keine** neue Abhängigkeit, **keine** Änderung an
+  Punktevergabe, Fragen, Antworten, Konten oder Rechten.
 
 ---
 

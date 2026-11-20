@@ -516,3 +516,29 @@ when unsupported).
   readable on any motif.
 - **Open product decision:** no image is mapped to a specific screen (lobby/final/podium). The
   ten files are a round-wide pool; motif→scene mapping is the owner's call.
+
+## Host background music (Phase 6.11, branch `feat/phase-6-11-host-music`)
+- **Caddy 2.8.4 has no `mime` directive.** `caddy validate` fails with
+  `unrecognized directive: mime`; do not add a `mime {}` block to
+  `docker/Caddyfile.frontend`. `.ogg` is already in Caddy's **built-in** table:
+  serving a real `.ogg` returned `Content-Type: audio/ogg` with **no**
+  `/etc/mime.types` present (verified by running the downloaded 2.8.4 binary on a
+  spare port). The Caddyfile needs no change for audio.
+- **Audio asset path is fixed by the briefing**: `public/audio/music/<name>.<ext>`
+  (`ASSET-BRIEFING.md` Block G), so the module constant is
+  `/audio/music/question-background.ogg`. Vite copies `public/` to `dist/`, and
+  `docker/frontend.Dockerfile` copies `dist` — no Dockerfile change needed.
+- **jsdom has no media pipeline**: `HTMLMediaElement.play/pause` are unimplemented
+  and log `Not implemented:` to stderr. Any page test that reaches the `question`
+  phase hits it, so stub both in the file-level `beforeEach` of
+  `hostPage.test.ts` (not per block).
+- Player/host isolation is enforced **structurally** by tests in
+  `design-system.test.ts`: `pages/player.ts`, `playerView.ts` and `index.html`
+  must not contain `hostMusic` or `/audio/`. Verified by temporarily importing the
+  module into `player.ts` (test fails as intended). Re-check bundle isolation with
+  `grep -c "audio/music" dist/assets/index-*.js` → must be 0.
+- `design-system.test.ts` keeps a **class list** that must contain every styled
+  class; a new `.music*` class that is missing there is silently unguarded.
+- CSS breakpoint trap: `auth.test.ts` anchors on
+  `tokens.lastIndexOf('@media (max-width: 480px)')`. A new media query **at 480px**
+  in `tokens.css` breaks it — use another width (560px used here).

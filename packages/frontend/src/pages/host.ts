@@ -55,6 +55,7 @@ import {
   type HostEventHandlers,
 } from '../hostView.js';
 import { ShowController, sceneInputOf, type SceneInput } from '../showScenes.js';
+import { HostMusic } from '../hostMusic.js';
 import {
   brand,
   button,
@@ -163,6 +164,15 @@ let currentAnswers: { answered: number; total: number } | null = null;
 let lastLiveEventAt = 0;
 /** Guards against a slow resync overwriting a newer one. */
 let resyncToken = 0;
+/**
+ * The host's background music (Phase 6.11). One instance for the page, driven by
+ * the authoritative phase through `renderHostState`. It exists only on this
+ * surface — the player page never imports the module — so the track can never
+ * start on a participant device.
+ */
+const music = new HostMusic();
+/** The music control currently on screen, so a mute or volume change repaints it. */
+let musicNode: HTMLElement | null = null;
 
 /** Stop the countdown timer, if running. */
 function stopTimer(): void {
@@ -486,6 +496,19 @@ function descriptorOf(input: HostRender): SceneInput {
 let lastRender: HostRender | null = null;
 
 /**
+ * Whether the game is paused in this render input (Phase 6.11).
+ *
+ * The pause is server-owned: it arrives as `question.paused` on a live event, on
+ * a `paused` broadcast, or inside a `sync` snapshot. The music reads it from the
+ * same place the paused badge does, so the two can never disagree.
+ */
+function isPausedRender(input: HostRender): boolean {
+  if (input.kind === 'question') return input.question.paused;
+  if (input.kind === 'sync') return input.state.question?.paused === true;
+  return false;
+}
+
+/**
  * The single entry point for every host screen, whether it was triggered by a
  * live event or by a reconnect. Nothing here decides the phase from local
  * state: the payload already carries it, so the host always shows what the
@@ -496,6 +519,11 @@ let lastRender: HostRender | null = null;
 function renderHostState(input: HostRender): void {
   lastRender = input;
   show.sync(descriptorOf(input));
+  // The music follows the authoritative phase, never a local flag (Phase 6.11).
+  // `show.currentPhase` is derived from the same descriptor the screen is drawn
+  // from, so music and screen can never disagree. A paused question freezes the
+  // track exactly like the countdown.
+  music.sync(show.currentPhase, isPausedRender(input));
   if (input.kind === 'sync') {
     autoMode = input.state.auto;
     // The authoritative background arrives with every snapshot, so a reload or a
@@ -526,6 +554,106 @@ function renderHostState(input: HostRender): void {
       return showBoard(input.players, input.hasNext);
     default:
       return showPodium(input.players);
+  }
+}
+
+/**
+ * The host's music control (Phase 6.11).
+ *
+ * A compact bar under the game controls: a mute button and a volume slider. It
+ * is drawn on every live game screen so the host can reach it during a question
+ * without leaving the beamer, and it is deliberately small so it never covers
+ * the question.
+ *
+ * It is **display plus local preference only**: it never sends anything to the
+ * server and never decides a phase. Volume and mute are the host's own mix, kept
+ * in `localStorage`, so they survive a repaint, a reconnect and a reload, and
+ * they are never transmitted to a player device.
+ */
+function musicControl(): HTMLElement | null {
+  musicNode = null;
+  // Only inside a game: the quiz picker (`lastRender === null`) is not the show.
+  if (lastRender === null) return null;
+
+  const settings = music.current;
+  const percent = Math.round(settings.volume * 100);
+
+  const muteButton = button(settings.muted ? 'Unmute' : 'Mute', {
+    variant: settings.muted ? 'secondary' : 'ghost',
+    small: true,
+    ariaLabel: settings.muted ? 'Unmute the background music' : 'Mute the background music',
+    onClick: () => {
+      // The click is also the gesture that lifts a browser autoplay block.
+      music.toggleMute();
+      if (!music.current.muted) music.retry();
+      repaintMusic();
+    },
+  });
+  muteButton.setAttribute('data-music-mute', '');
+  muteButton.setAttribute('aria-pressed', String(settings.muted));
+
+  const slider = el('input', {
+    class: 'music__slider',
+    type: 'range',
+    min: '0',
+    max: '100',
+    step: '1',
+    value: String(percent),
+    'aria-label': 'Background music volume',
+  });
+  slider.setAttribute('data-music-volume', '');
+  // `input` (not `change`) so the level follows the handle while dragging.
+  slider.addEventListener('input', () => {
+    music.setVolume(Number(slider.value) / 100);
+    repaintMusic();
+  });
+
+  const value = el('span', { class: 'music__value' }, `${percent}%`);
+  const icon = el(
+    'span',
+    { class: 'music__icon', 'aria-hidden': 'true' },
+    settings.muted ? '🔇' : '🔊',
+  );
+
+  musicNode = el(
+    'div',
+    {
+      class: `music${settings.muted ? ' music--muted' : ''}`,
+      role: 'group',
+      'aria-label': 'Background music',
+    },
+    icon,
+    slider,
+    value,
+    muteButton,
+  );
+  return musicNode;
+}
+
+/** Repaint the music control in place after a volume or mute change. */
+function repaintMusic(): void {
+  const node = musicNode;
+  if (!node) return;
+  const settings = music.current;
+  const percent = Math.round(settings.volume * 100);
+  node.classList.toggle('music--muted', settings.muted);
+  const icon = node.querySelector<HTMLElement>('.music__icon');
+  if (icon) icon.textContent = settings.muted ? '🔇' : '🔊';
+  const value = node.querySelector<HTMLElement>('.music__value');
+  if (value) value.textContent = `${percent}%`;
+  const slider = node.querySelector<HTMLInputElement>('[data-music-volume]');
+  // The handle stays where the host put it; only mute changes the sound, so
+  // muting never rewrites the remembered level.
+  if (slider && Number(slider.value) !== percent) slider.value = String(percent);
+  const mute = node.querySelector<HTMLButtonElement>('[data-music-mute]');
+  if (mute) {
+    mute.textContent = settings.muted ? 'Unmute' : 'Mute';
+    mute.setAttribute('aria-pressed', String(settings.muted));
+    mute.className = `btn btn-${settings.muted ? 'secondary' : 'ghost'} btn-sm`;
+    mute.setAttribute(
+      'aria-label',
+      settings.muted ? 'Unmute the background music' : 'Mute the background music',
+    );
   }
 }
 
@@ -717,6 +845,9 @@ async function showHome(): Promise<void> {
   backgroundId = DEFAULT_BACKGROUND_ID;
   backgroundLabelNode = null;
   clearRoundBackground();
+  // No game under control: the show music stops and rewinds (Phase 6.11).
+  music.sync(null);
+  musicNode = null;
   show.sync(null);
   try {
     const [{ quizzes }, { games }] = await Promise.all([
@@ -1068,6 +1199,7 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
         body,
         backgroundPicker(),
         autoToggle(),
+        musicControl(),
         controlsFor('lobby'),
       ),
     ),
@@ -1155,6 +1287,7 @@ function showLead(lead: LeadState): void {
         el('p', { class: 'show__meta muted' }, 'The first question starts in'),
         timer,
         autoToggle(),
+        musicControl(),
         controlsFor('lead'),
       ),
     ),
@@ -1222,6 +1355,7 @@ function showQuestion(
             )
           : null,
         autoToggle(),
+        musicControl(),
         controlsFor('question', question.paused, question.type),
       ),
     ),
@@ -1276,6 +1410,7 @@ function showReveal(reveal: HostReveal): void {
         heading ? el('h2', { class: 'show__title' }, heading) : null,
         body,
         autoToggle(),
+        musicControl(),
         controlsFor('reveal'),
       ),
     ),
@@ -1308,6 +1443,7 @@ function showBoard(players: PublicPlayer[], hasNext = true): void {
         el('p', { class: 'show__meta' }, chip(`${players.length} player(s)`, 'cyan')),
         el('ol', { class: 'leaderboard leaderboard--show' }, ...players.map(leaderboardRow)),
         autoToggle(),
+        musicControl(),
         controlsFor('board', false, undefined, hasNext),
       ),
     ),
@@ -1352,6 +1488,7 @@ function showPodium(players: PublicPlayer[]): void {
           : null,
         outro ? el('p', { class: 'show__meta muted' }, 'See you at the next round.') : null,
         autoToggle(),
+        musicControl(),
         controlsFor('end'),
       ),
     ),

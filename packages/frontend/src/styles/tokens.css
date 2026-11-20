@@ -3281,3 +3281,74 @@ body::before {
     animation: none;
   }
 }
+
+/**
+ * Host background music control (Phase 6.11).
+ *
+ * A compact bar under the game controls: mute button, volume slider, level. It
+ * is part of the card's flow rather than an overlay, so it can never cover the
+ * question, and it uses the existing glass, spacing and type tokens so it looks
+ * like the rest of the console.
+ *
+ * The bar is host-only markup — the player page never builds it — and it carries
+ * no phase logic; it only reflects the host's local mix.
+ */
+.music {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--glass-card);
+  font-size: var(--type-show-meta);
+  color: var(--muted);
+}
+
+.music__icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* Wide enough to grab on a beamer, small enough to stay out of the way. */
+.music__slider {
+  flex: 0 1 clamp(7rem, 14vw, 12rem);
+  min-width: 6rem;
+  height: 1.1rem;
+  margin: 0;
+  accent-color: var(--accent-2);
+  cursor: pointer;
+}
+
+.music__value {
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Muted state is carried by the icon, the label and the dimmed level. */
+.music--muted {
+  color: var(--warn);
+  border-color: var(--border-strong);
+}
+
+.music--muted .music__slider {
+  opacity: 0.55;
+}
+
+/* 560px, not 480px: the auth surface owns the last 480px block in this file and
+ * the design-system guard reads that one. */
+@media (max-width: 560px) {
+  .music {
+    gap: var(--space-1);
+  }
+
+  .music__slider {
+    flex: 1 1 100%;
+    order: 3;
+  }
+}
