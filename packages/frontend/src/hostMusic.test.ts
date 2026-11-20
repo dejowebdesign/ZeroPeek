@@ -120,17 +120,44 @@ function setup(options: { failPlay?: boolean; store?: Map<string, string> } = {}
 }
 
 describe('phase rules', () => {
-  it('plays in the regular question phase only', () => {
-    expect(isMusicPhase('question')).toBe(true);
-    for (const phase of ['lobby', 'lead', 'reveal', 'board', 'end', null] as const) {
+  it('carries music in every phase of a running round', () => {
+    for (const phase of ['question', 'reveal', 'board', 'lead'] as const) {
+      expect(isMusicPhase(phase)).toBe(true);
+    }
+    for (const phase of ['lobby', 'end', null] as const) {
       expect(isMusicPhase(phase)).toBe(false);
+    }
+  });
+
+  it('treats question, reveal and board as proof that a round is under way', () => {
+    // Each of them starts the bed from cold, with nothing already running.
+    for (const phase of ['question', 'reveal', 'board'] as const) {
+      expect(shouldPlay(phase, false, false)).toBe(true);
+    }
+    // A countdown proves nothing on its own: it also runs before question one.
+    for (const phase of ['lead', 'lobby', 'end', null] as const) {
+      expect(shouldPlay(phase, false, false)).toBe(false);
+    }
+  });
+
+  it('never starts the track from a countdown, but lets a running one continue', () => {
+    // The pre-game lead: nothing is running, so nothing starts.
+    expect(shouldPlay('lead', false, false)).toBe(false);
+    // An inter-round lead: the bed is already up, so it keeps going.
+    expect(shouldPlay('lead', false, true)).toBe(true);
+  });
+
+  it('starts from the phases that only exist after a question opened', () => {
+    for (const phase of ['question', 'reveal', 'board'] as const) {
+      expect(shouldPlay(phase, false, false)).toBe(true);
     }
   });
 
   it('does not play while the question is paused', () => {
     expect(shouldPlay('question', false)).toBe(true);
     expect(shouldPlay('question', true)).toBe(false);
-    expect(shouldPlay('reveal', false)).toBe(false);
+    // A pause in any running phase silences the bed, not just in `question`.
+    expect(shouldPlay('board', true, true)).toBe(false);
   });
 
   it('ends the track in the lobby, at the end and with no game', () => {
@@ -141,6 +168,7 @@ describe('phase rules', () => {
     expect(endsTrack('reveal')).toBe(false);
     expect(endsTrack('board')).toBe(false);
     expect(endsTrack('question')).toBe(false);
+    expect(endsTrack('lead')).toBe(false);
   });
 });
 
@@ -170,7 +198,15 @@ describe('volume maths', () => {
 });
 
 describe('playback follows the phase', () => {
-  it('starts when the question phase begins', () => {
+  it('stays silent through the lobby and the pre-game countdown', () => {
+    const { music, audio } = setup();
+    music.sync('lobby');
+    music.sync('lead');
+    expect(music.isPlaying).toBe(false);
+    expect(audio.plays).toBe(0);
+  });
+
+  it('starts when the first question begins', () => {
     const { music, audio } = setup();
     expect(music.isPlaying).toBe(false);
     music.sync('question');
@@ -187,18 +223,50 @@ describe('playback follows the phase', () => {
     expect(audio.plays).toBe(1);
   });
 
-  it('pauses on leaving the question phase and resumes on the next one', () => {
+  it('runs unbroken from question to reveal to board', () => {
     const { music, audio } = setup();
     music.sync('question');
     audio.currentTime = 12;
     music.sync('reveal');
-    expect(music.isPlaying).toBe(false);
-    expect(audio.pauses).toBe(1);
-    // The position is kept, so the next question carries on rather than restart.
+    expect(music.isPlaying).toBe(true);
+    expect(audio.pauses).toBe(0);
+    music.sync('board');
+    expect(music.isPlaying).toBe(true);
+    expect(audio.pauses).toBe(0);
+    // One play() for the whole run, and the position never jumped.
+    expect(audio.plays).toBe(1);
     expect(audio.currentTime).toBe(12);
+  });
+
+  it('runs through a full round without a single extra play or pause', () => {
+    const { music, audio } = setup();
+    music.sync('lobby');
+    music.sync('lead');
+    expect(audio.plays).toBe(0);
     music.sync('question');
-    expect(audio.plays).toBe(2);
-    expect(audio.currentTime).toBe(12);
+    music.sync('reveal');
+    music.sync('board');
+    // An inter-round countdown, then the next question.
+    music.sync('lead');
+    music.sync('question');
+    music.sync('reveal');
+    music.sync('board');
+    expect(audio.plays).toBe(1);
+    expect(audio.pauses).toBe(0);
+    expect(music.isPlaying).toBe(true);
+  });
+
+  it('keeps running across an inter-round countdown', () => {
+    const { music, audio } = setup();
+    music.sync('question');
+    music.sync('reveal');
+    music.sync('board');
+    const playsBefore = audio.plays;
+    music.sync('lead');
+    expect(music.isPlaying).toBe(true);
+    music.sync('question');
+    expect(audio.plays).toBe(playsBefore);
+    expect(audio.pauses).toBe(0);
   });
 
   it('stops and rewinds at the end of the game', () => {
@@ -207,6 +275,7 @@ describe('playback follows the phase', () => {
     audio.currentTime = 30;
     music.sync('end');
     expect(music.isPlaying).toBe(false);
+    expect(audio.pauses).toBe(1);
     expect(audio.currentTime).toBe(0);
   });
 
@@ -215,7 +284,24 @@ describe('playback follows the phase', () => {
     music.sync('question');
     audio.currentTime = 30;
     music.sync('lobby');
+    expect(music.isPlaying).toBe(false);
     expect(audio.pauses).toBe(1);
+    expect(audio.currentTime).toBe(0);
+  });
+
+  it('starts a new game from the top after the previous one ended', () => {
+    const { music, audio } = setup();
+    music.sync('question');
+    audio.currentTime = 30;
+    music.sync('end');
+    expect(audio.currentTime).toBe(0);
+    // A fresh round: silent countdown, then the bed starts again from zero.
+    music.sync('lobby');
+    music.sync('lead');
+    expect(music.isPlaying).toBe(false);
+    music.sync('question');
+    expect(music.isPlaying).toBe(true);
+    expect(audio.plays).toBe(2);
     expect(audio.currentTime).toBe(0);
   });
 
@@ -231,9 +317,9 @@ describe('playback follows the phase', () => {
     expect(audio.plays).toBe(2);
   });
 
-  it('never plays outside the question phase, even when asked twice', () => {
+  it('never plays outside a running round, even when asked twice', () => {
     const { music, audio } = setup();
-    for (const phase of ['lobby', 'lead', 'reveal', 'board', 'end'] as const) {
+    for (const phase of ['lobby', 'lead', 'end'] as const) {
       music.sync(phase);
       expect(music.isPlaying).toBe(false);
     }
@@ -257,6 +343,22 @@ describe('one instance', () => {
     const { music } = setup();
     music.sync('lobby');
     expect(music.element).toBeNull();
+  });
+
+  it('holds exactly one element across a whole round', () => {
+    const { music } = setup();
+    music.sync('lobby');
+    music.sync('lead');
+    music.sync('question');
+    const first = music.element;
+    expect(first).not.toBeNull();
+    // Every phase of a running round, twice over.
+    for (const phase of ['reveal', 'board', 'lead', 'question', 'reveal', 'board'] as const) {
+      music.sync(phase);
+      expect(music.element).toBe(first);
+    }
+    music.sync('end');
+    expect(music.element).toBe(first);
   });
 });
 
@@ -331,16 +433,22 @@ describe('mute', () => {
     expect(music.current.volume).toBe(0.45);
   });
 
-  it('a restart while muted stays silent', () => {
+  it('stays muted across the phases of a running round', () => {
     const { music, audio } = setup();
     music.sync('question');
     music.setVolume(0.7);
     music.setMuted(true);
-    music.sync('reveal');
-    music.sync('question');
-    expect(audio.plays).toBe(2);
-    expect(audio.volume).toBe(0);
-    expect(music.current.muted).toBe(true);
+    for (const phase of ['reveal', 'board', 'lead', 'question'] as const) {
+      music.sync(phase);
+      expect(audio.volume).toBe(0);
+      expect(music.current.muted).toBe(true);
+    }
+    // The bed never re-cued, so muting held for the whole round.
+    expect(audio.plays).toBe(1);
+    // Unmute brings the level back without a restart.
+    music.setMuted(false);
+    expect(audio.volume).toBe(0.7);
+    expect(audio.plays).toBe(1);
   });
 
   it('keeps playing while muted, so unmute needs no restart', () => {

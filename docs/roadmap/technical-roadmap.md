@@ -763,10 +763,11 @@ Neonflächen, keine gerenderten 3D-Räume (`game-design-concept.md` §10.5).
 
 ## 12. Phase 6.11 – Sound und Musik
 
-**Status: Teil 1 umgesetzt, Freigabe offen** (Branch `feat/phase-6-11-host-music`). Der
-Projektverantwortliche hat **ein** Musikstück geliefert (`mastered_vorbis_96.ogg`); es läuft als
-Fragemusik auf der Host-/Beamer-Ansicht, mit Stummschaltung und Lautstärke. Report:
-`docs/reports/phase-6-11-host-music.md`.
+**Status: Teil 1 umgesetzt, Freigabe offen** (Branches `feat/phase-6-11-host-music`, PR #57, und
+`feat/phase-6-11-continuous-music`). Der Projektverantwortliche hat **ein** Musikstück geliefert
+(`mastered_vorbis_96.ogg`); es läuft als durchgehende Spielmusik auf der Host-/Beamer-Ansicht — vom
+Beginn der ersten Frage über Auflösung, Rangliste und Fragenwechsel bis zum tatsächlichen Spielende —
+mit Stummschaltung und Lautstärke. Report: `docs/reports/phase-6-11-host-music.md`.
 
 **Offen:** die restlichen Musikstücke (`music-lobby`, `music-final`, `music-victory`) und die
 Soundeffekte aus Block F des Asset-Briefings. Sie werden nicht ersetzt, sondern angefordert.

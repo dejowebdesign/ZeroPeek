@@ -219,18 +219,26 @@ async function enterLobby(): Promise<void> {
 
 /**
  * jsdom has no media pipeline: `play()` and `pause()` are unimplemented and log
- * to stderr. The host page now starts its soundtrack on the question phase
- * (Phase 6.11), so every test that reaches that phase would log. The two calls
- * are stubbed for the whole file; nothing else about the player is replaced.
+ * to stderr. The host page runs its soundtrack for the whole round (Phase 6.11),
+ * so every test that reaches the show would log. The two calls are stubbed for
+ * the whole file, and counted, so a test can prove the bed is never re-cued;
+ * nothing else about the player is replaced.
  */
 let realPlay: typeof HTMLMediaElement.prototype.play;
 let realPause: typeof HTMLMediaElement.prototype.pause;
+let mediaCalls: { play: number; pause: number };
 
 beforeEach(() => {
   realPlay = HTMLMediaElement.prototype.play;
   realPause = HTMLMediaElement.prototype.pause;
-  HTMLMediaElement.prototype.play = () => Promise.resolve();
-  HTMLMediaElement.prototype.pause = () => undefined;
+  mediaCalls = { play: 0, pause: 0 };
+  HTMLMediaElement.prototype.play = () => {
+    mediaCalls.play += 1;
+    return Promise.resolve();
+  };
+  HTMLMediaElement.prototype.pause = () => {
+    mediaCalls.pause += 1;
+  };
 
   fake.handlers.clear();
   fake.routes.clear();
@@ -722,5 +730,55 @@ describe('host music control on the live screens (Phase 6.11)', () => {
     clickButton('Mute');
     // The mix is the host's own; it is never a command.
     expect(fake.sent).toEqual([]);
+  });
+
+  it('starts with the first question and never re-cues during the round', async () => {
+    await enterLobby();
+    // Lobby and the pre-game countdown are silent.
+    expect(mediaCalls.play).toBe(0);
+    fake.trigger('host:lead', leadPayload());
+    await vi.waitFor(() => {
+      if (!screen().includes('Get ready!')) throw new Error('lead not shown');
+    });
+    expect(mediaCalls.play).toBe(0);
+
+    // The first question starts the bed, exactly once.
+    fake.trigger('host:question', publicQuestion(0, 'q1'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Question 1 of 3')) throw new Error('question not shown');
+    });
+    expect(mediaCalls.play).toBe(1);
+
+    const board = {
+      players: [{ id: 'p1', nickname: 'Ada', avatar: '', score: 10, connected: true }],
+      ranks: [],
+      hasNext: true,
+    };
+
+    // The rest of the round: reveal, board, next question, reveal, board.
+    fake.trigger('host:reveal', revealPayload('q1'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Revealed prompt')) throw new Error('reveal not shown');
+    });
+    fake.trigger('host:board', board);
+    await vi.waitFor(() => {
+      if (!screen().includes('Leaderboard')) throw new Error('board not shown');
+    });
+    fake.trigger('host:question', publicQuestion(1, 'q2'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Question 2 of 3')) throw new Error('second question not shown');
+    });
+    fake.trigger('host:reveal', revealPayload('q2'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Revealed prompt')) throw new Error('second reveal not shown');
+    });
+    fake.trigger('host:board', board);
+    await vi.waitFor(() => {
+      if (!screen().includes('Leaderboard')) throw new Error('second board not shown');
+    });
+
+    // One play for the whole round, and not a single pause.
+    expect(mediaCalls.play).toBe(1);
+    expect(mediaCalls.pause).toBe(0);
   });
 });

@@ -276,8 +276,9 @@ richtig, falsch, Uhr, Verbindung, Ton an/aus, Pause, Weiter, Beenden, Zufall.
 
 ## Block G – Hintergrundmusik
 
-> **Teilweise geliefert.** `music-question` liegt vor (Phase 6.11, Branch
-> `feat/phase-6-11-host-music`); die übrigen drei Stücke fehlen.
+> **Teilweise geliefert.** `music-question` liegt vor (Phase 6.11, Branches
+> `feat/phase-6-11-host-music` und `feat/phase-6-11-continuous-music`) und läuft als
+> durchgehende Spielmusik der gesamten laufenden Runde; die übrigen drei Stücke fehlen.
 
 | Feld           | Inhalt                                                               |
 | -------------- | -------------------------------------------------------------------- |
@@ -289,12 +290,12 @@ richtig, falsch, Uhr, Verbindung, Ton an/aus, Pause, Weiter, Beenden, Zufall.
 
 **Benötigte Stücke (aus Briefing §33):**
 
-| Name             | Einsatz                       | Status                                                            |
-| ---------------- | ----------------------------- | ----------------------------------------------------------------- |
-| `music-lobby`    | ruhige Musik beim Beitritt    | **fehlt**                                                         |
-| `music-question` | spannungsaufbauende Quizmusik | **geliefert** als `question-background.ogg` (Ogg Vorbis, 96 kbps) |
-| `music-final`    | dynamische Finalmusik         | **fehlt**                                                         |
-| `music-victory`  | Sieger und Abschluss          | **fehlt**                                                         |
+| Name             | Einsatz                           | Status                                                            |
+| ---------------- | --------------------------------- | ----------------------------------------------------------------- |
+| `music-lobby`    | ruhige Musik beim Beitritt        | **fehlt**                                                         |
+| `music-question` | durchgehende Spielmusik der Runde | **geliefert** als `question-background.ogg` (Ogg Vorbis, 96 kbps) |
+| `music-final`    | dynamische Finalmusik             | **fehlt**                                                         |
+| `music-victory`  | Sieger und Abschluss              | **fehlt**                                                         |
 
 ---
 

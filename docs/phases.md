@@ -51,7 +51,7 @@ Nothing is implemented until the project owner approves it.
 | 6.9.4 | Host-control fix: Skip/End confirmation and leaderboard Next button            | Done (merged, PR #51, merge `0d9b8f9`) – `docs/reports/host-next-and-confirmation-fix.md`; roadmap §9.7                                                                                                                                                            |
 | 6.9.5 | Answer-deadline alignment (no hidden grace) and host Next verification         | Done (merged, PR #52, merge `18e271f`) – `docs/reports/phase-6-9-5-answer-deadline-and-host-next.md`; roadmap §9.8                                                                                                                                                 |
 | 6.10  | Background library (ten supplied WebP files, server-authoritative choice)      | Done (merged, PR #54, merge `ad935fa`) – `docs/reports/phase-6-10-background-library.md`; roadmap §11.                                                                                                                                                             |
-| 6.11  | Host background music (one supplied track, question phase only)                | Work complete on `feat/phase-6-11-host-music`, **awaiting owner approval** – `docs/reports/phase-6-11-host-music.md`; roadmap §11.                                                                                                                                 |
+| 6.11  | Host background music (one supplied track, the whole running game)             | Work complete on `feat/phase-6-11-host-music` (PR #57) and `feat/phase-6-11-continuous-music`, **awaiting owner approval** – `docs/reports/phase-6-11-host-music.md`; roadmap §12.                                                                                 |
 
 **Phase 6.9 is complete.** All five sub-phases (6.9.1–6.9.5) are merged into `main`; the state after
 PR #52 is `18e271f`. There is **one** host/beamer view, **no** separate presentation mode, AUTO is
@@ -63,10 +63,11 @@ files are integrated byte-identically, and the round's background is chosen once
 server, so host, beamer and players agree and a reconnect or restart restores it.
 
 **Phase 6.11 (host background music) is implemented, awaiting approval.** The project owner supplied
-one track (`mastered_vorbis_96.ogg`). It plays on the host/beamer page during the `question` phase
-only, with host mute and volume, and is never loaded on a player device. The remaining audio assets
-(Blocks F and G of the asset briefing: lobby/final/victory music and the sound effects) are still
-missing and would complete the phase.
+one track (`mastered_vorbis_96.ogg`). It plays continuously on the host/beamer page for the whole
+running game — from the first question through reveal, leaderboard and inter-round transitions until
+the game ends — with host mute and volume, and is never loaded on a player device. The remaining
+audio assets (Blocks F and G of the asset briefing: lobby/final/victory music and the sound effects)
+are still missing and would complete the phase.
 
 See `docs/concept/README.md` for the reading order.
 

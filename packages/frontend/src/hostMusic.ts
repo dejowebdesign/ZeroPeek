@@ -10,8 +10,12 @@
  *   - **Phase-driven, never UI-driven.** Playback follows the authoritative game
  *     phase passed to `sync`, so a repaint, a reconnect or a local toggle can
  *     never start the music in the wrong phase.
- *   - **One instance.** The element is created lazily, once, and reused. A new
- *     question does not restart it; only leaving the question phase stops it.
+ *   - **One continuous bed per round.** The track starts with the first question
+ *     and runs unbroken through every reveal, leaderboard and inter-round pause
+ *     until the game actually ends. Moving between those phases touches neither
+ *     `play()` nor `pause()`.
+ *   - **One instance.** The element is created lazily, once, and reused. Nothing
+ *     re-cues it mid-round; only the end of the game stops it.
  *   - **Music only.** The volume and mute settings act on this element alone, so
  *     sound effects keep their own level.
  *   - **Never breaks the show.** Every media call is guarded: a missing or
@@ -41,20 +45,44 @@ export interface MusicSettings {
 
 export const DEFAULT_MUSIC_SETTINGS: MusicSettings = { volume: DEFAULT_VOLUME, muted: false };
 
-/** The phases the music belongs to: the regular question phase only. */
+/**
+ * The phases that may carry music once the game has begun.
+ *
+ * The track is the round's bed, not a question cue: it runs from the first
+ * question through every reveal, leaderboard and inter-round pause until the
+ * game actually ends. `lead` is listed because an inter-round countdown belongs
+ * to the running round — see `shouldPlay` for why it cannot *start* the music.
+ */
 export function isMusicPhase(phase: GamePhase | null): boolean {
-  return phase === 'question';
+  return phase === 'question' || phase === 'reveal' || phase === 'board' || phase === 'lead';
 }
 
 /**
  * Whether the track should be audible for a phase.
  *
+ * The phases that prove a question has already been opened — `question`,
+ * `reveal` and `board` — start the bed, because a reveal resolves a question and
+ * a board ranks one, so any of them means the round is under way. A host that
+ * reloads straight onto the leaderboard therefore resumes the music exactly
+ * where the show is. That is the server's own ordering, not a local assumption.
+ *
+ * `lead` is the only ambiguous phase: it runs before the first question and,
+ * should the server ever add one, between rounds. So it never *starts* the
+ * track — `running` is the module's own playback state, and it only lets an
+ * already running track continue. The pre-game countdown stays silent, an
+ * inter-round countdown keeps the bed going, and no question counter or local
+ * game history is involved.
+ *
  * A paused game is still the question phase, but the brief asks the music to
  * follow the existing pause concept — the countdown is frozen, so the music
  * pauses with it and resumes on the same spot.
  */
-export function shouldPlay(phase: GamePhase | null, paused = false): boolean {
-  return isMusicPhase(phase) && !paused;
+export function shouldPlay(phase: GamePhase | null, paused = false, running = false): boolean {
+  if (paused) return false;
+  if (!isMusicPhase(phase)) return false;
+  // `lead` never starts the track; it only lets a running track continue.
+  if (phase === 'lead') return running;
+  return true;
 }
 
 /**
@@ -199,21 +227,30 @@ export class HostMusic {
    *
    * Idempotent: calling it twice with the same phase does nothing the second
    * time, so a repaint or a duplicate event cannot restart the track.
+   *
+   * Once the round is under way the track is continuous — `question`, `reveal`,
+   * `board` and an inter-round `lead` all keep it audible, and moving between
+   * them touches neither `play()` nor `pause()`. Only the end of the game (or a
+   * return to the lobby) stops it, and `this.playing` is the single latch that
+   * remembers the round has begun, so nothing local has to guess.
    */
   sync(phase: GamePhase | null, paused = false): void {
-    if (shouldPlay(phase, paused)) {
-      if (!this.playing) {
-        this.playing = true;
-        this.start();
-      }
+    const play = shouldPlay(phase, paused, this.playing);
+
+    // No change of intent: leave the element completely alone. This is what
+    // keeps the bed unbroken across reveal and board instead of re-cueing it.
+    if (play === this.playing) {
+      if (!play && endsTrack(phase)) this.rewind();
       return;
     }
 
-    if (this.playing) {
-      this.playing = false;
+    this.playing = play;
+    if (play) {
+      this.start();
+    } else {
       this.pause();
+      if (endsTrack(phase)) this.rewind();
     }
-    if (endsTrack(phase)) this.rewind();
   }
 
   /** Set the music volume (0…1). Never affects other audio. */
