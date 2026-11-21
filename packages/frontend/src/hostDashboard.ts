@@ -20,6 +20,7 @@
 import { el } from './dom.js';
 import { playerAvatar } from './avatar.js';
 import { button, chip, emptyState } from './ui.js';
+import { freeLobbySeats, lobbyCapacityState, MAX_PLAYERS_PER_LOBBY } from '@zeropeek/shared';
 
 /** A quiz as the dashboard needs it. Mirrors `QuizSummary` on the host page. */
 export interface DashboardQuiz {
@@ -74,6 +75,43 @@ function statRow(label: string, value: string): HTMLElement {
   );
 }
 
+/**
+ * The lobby capacity card: `seated / MAX`, the free places and a fill bar.
+ *
+ * The limit comes from the shared constant, so the number the host reads is the
+ * number the server enforces. The state (`normal`, `high`, `full`) is decided by
+ * the shared helper rather than by a threshold repeated here.
+ */
+function capacityCard(seated: number): HTMLElement {
+  const state = lobbyCapacityState(seated);
+  const free = freeLobbySeats(seated);
+  const caption = state === 'full' ? 'Lobby full' : `${free} place${free === 1 ? '' : 's'} free`;
+  const percent = Math.min(100, Math.round((seated / MAX_PLAYERS_PER_LOBBY) * 100));
+
+  return el(
+    'div',
+    { class: `dash-stat dash-stat--${state}`, 'data-capacity': state },
+    el('span', { class: 'dash-stat__caption' }, 'Players in lobby'),
+    el('span', { class: 'dash-stat__value' }, `${seated} / ${MAX_PLAYERS_PER_LOBBY}`),
+    el('span', { class: 'dash-stat__hint' }, caption),
+    el(
+      'div',
+      {
+        class: 'dash-meter',
+        role: 'progressbar',
+        'aria-label': 'Lobby capacity',
+        'aria-valuemin': '0',
+        'aria-valuemax': String(MAX_PLAYERS_PER_LOBBY),
+        'aria-valuenow': String(seated),
+      },
+      el('span', {
+        class: 'dash-meter__fill',
+        style: { width: `${percent}%` },
+      }),
+    ),
+  );
+}
+
 /** One status card: a caption, a large figure and an optional hint. */
 function statusCard(caption: string, value: string, hint?: string): HTMLElement {
   return el(
@@ -101,8 +139,12 @@ export function hostDashboard(data: DashboardData, handlers: DashboardHandlers):
   // The player figure belongs to an open game; without one there is nothing to
   // count, so the card says so instead of inventing a capacity or a zero.
   const playerCard = rosterGame
-    ? statusCard('Players in lobby', String(rosterGame.playerCount), `PIN ${rosterGame.pin}`)
-    : statusCard('Players in lobby', '—', openCount ? 'Choose a game' : 'No game open');
+    ? capacityCard(rosterGame.playerCount)
+    : statusCard(
+        'Players in lobby',
+        `— / ${MAX_PLAYERS_PER_LOBBY}`,
+        openCount ? 'Choose a game' : 'No game open',
+      );
 
   const quizCard = selected
     ? statusCard(
@@ -171,7 +213,12 @@ export function hostDashboard(data: DashboardData, handlers: DashboardHandlers):
             { class: 'dash-facts' },
             statRow('Questions', selected ? String(selected.questionCount) : '—'),
             statRow('Category', selected?.category ?? '—'),
-            statRow('Players', rosterGame ? String(rosterGame.playerCount) : '—'),
+            statRow(
+              'Players',
+              rosterGame
+                ? `${rosterGame.playerCount} / ${MAX_PLAYERS_PER_LOBBY}`
+                : `— / ${MAX_PLAYERS_PER_LOBBY}`,
+            ),
             // The round background is a per-game value the server owns and the
             // host picks in the lobby (Phase 6.10). Before a game exists there is
             // nothing to choose, so the card names where it is set instead of
@@ -205,7 +252,7 @@ export function hostDashboard(data: DashboardData, handlers: DashboardHandlers):
       'div',
       { class: 'dash-side__head' },
       el('h2', { class: 'dash-side__title' }, 'Lobby – players'),
-      rosterGame ? chip(`${data.roster.length}`, 'cyan') : null,
+      rosterGame ? chip(`${data.roster.length} / ${MAX_PLAYERS_PER_LOBBY}`, 'cyan') : null,
     ),
     rosterGame
       ? el('p', { class: 'muted dash-side__meta' }, `${rosterGame.quizTitle} · ${rosterGame.pin}`)
@@ -215,6 +262,8 @@ export function hostDashboard(data: DashboardData, handlers: DashboardHandlers):
 
   // Only figures the server actually reports: the phase and the player count of
   // the open game. No "ready"/"waiting" split is invented here.
+  const seated = rosterGame ? rosterGame.playerCount : 0;
+  const capacityState = lobbyCapacityState(seated);
   const statusColumn = el(
     'section',
     { class: 'card dash-side__block', 'aria-label': 'Game status' },
@@ -224,13 +273,18 @@ export function hostDashboard(data: DashboardData, handlers: DashboardHandlers):
           'div',
           { class: 'dash-facts' },
           statRow('Lobby', rosterGame.phase),
-          statRow('Players', String(rosterGame.playerCount)),
+          statRow('Players', `${seated} / ${MAX_PLAYERS_PER_LOBBY}`),
+          statRow('Free places', String(freeLobbySeats(seated))),
           statRow('Open games', String(openCount)),
+          capacityState === 'full'
+            ? el('p', { class: 'dash-full-note', role: 'status' }, 'Lobby full')
+            : null,
         )
       : el(
           'div',
           { class: 'dash-facts' },
           statRow('Lobby', 'Not open'),
+          statRow('Players', `— / ${MAX_PLAYERS_PER_LOBBY}`),
           statRow('Open games', String(openCount)),
         ),
   );

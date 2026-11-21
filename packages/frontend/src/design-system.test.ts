@@ -1059,4 +1059,25 @@ describe('host dashboard layout', () => {
       expect(block).toContain('white-space: nowrap');
     }
   });
+
+  it('animates the capacity bar only when motion is welcome', () => {
+    // A `transition` in the base rule would win the cascade over a later
+    // `prefers-reduced-motion: reduce` override, because the base rule has the
+    // same specificity and comes last in the sheet. Scoping it to
+    // `no-preference` makes the rule position-independent.
+    // Anchored to a line start so the `--high`/`--full` variants and the
+    // guarded rule do not match.
+    const base = tokens.slice(tokens.search(/\n\.dash-meter__fill \{/));
+    expect(base.slice(0, base.indexOf('\n}'))).not.toContain('transition');
+
+    const guarded = tokens.slice(tokens.indexOf('@media (prefers-reduced-motion: no-preference)'));
+    const block = guarded.slice(0, guarded.indexOf('\n}\n'));
+    expect(block).toContain('.dash-meter__fill');
+    expect(block).toContain('transition: width');
+  });
+
+  it('colours the capacity bar by state without a second threshold', () => {
+    expect(tokens).toMatch(/\.dash-stat--high \.dash-meter__fill\s*\{[^}]*var\(--warn\)/s);
+    expect(tokens).toMatch(/\.dash-stat--full \.dash-meter__fill\s*\{[^}]*var\(--bad\)/s);
+  });
 });
