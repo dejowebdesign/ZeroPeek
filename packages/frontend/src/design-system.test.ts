@@ -863,6 +863,34 @@ describe('player game surface (Phase 6.14)', () => {
     expect(phone).toContain("'logo logo'");
   });
 
+  it('shows the settings entry as a quiet placeholder, never as a button', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.player-head__settings {'),
+      tokens.indexOf('.player-head__settings-label'),
+    );
+    // No page exists yet, so it must not read as an active control.
+    expect(block).toContain('cursor: default');
+    expect(block).toContain('color: var(--muted)');
+  });
+
+  it('anchors the game screen to the top so the header stays level 1', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.shell--player .centered.player-game {'),
+      tokens.indexOf('/* The question card and the timer ring'),
+    );
+    expect(block).toContain('place-items: start center');
+    expect(block).toContain('align-content: start');
+  });
+
+  it('caps the ring at the width of its 20–25 % track', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.player-timer .countdown {'),
+      tokens.indexOf('.player-timer__label'),
+    );
+    // Without the cap the ring would overflow its track on a 1024px desktop.
+    expect(block).toContain('max-width: clamp(96px, 17vmin, 168px)');
+  });
+
   it('drives the XP bar from a ratio, never from a hardcoded width', () => {
     const block = tokens.slice(
       tokens.indexOf('.player-head__xp {'),
@@ -876,7 +904,8 @@ describe('player game surface (Phase 6.14)', () => {
       tokens.indexOf('.player-question {'),
       tokens.indexOf('.player-question__card'),
     );
-    expect(block).toContain('grid-template-columns: minmax(0, 1fr) auto');
+    // Wireframe A: the card takes roughly 75–80 %, the ring 20–25 %.
+    expect(block).toContain('grid-template-columns: minmax(0, 4fr) minmax(0, 1fr)');
     // The ring must not be nested inside the card, or it would be squeezed.
     expect(tokens).not.toMatch(/\.player-question__card\s+\.countdown/);
   });
@@ -972,5 +1001,62 @@ describe('player countdown (Phase 6.14)', () => {
   it('takes the header rank and score from the server board', () => {
     expect(player).toContain('currentBoard');
     expect(player).toContain('if (sync.board) currentBoard = sync.board;');
+  });
+});
+
+/**
+ * Host dashboard layout (Phase 6.14, Option B).
+ *
+ * The dashboard is the pre-game surface. These assertions pin the layout
+ * contract the wireframe agreed — two columns on a desktop, one column with the
+ * roster underneath on a tablet and phone — and guard the two properties that
+ * would be easy to lose in a later edit: the roster scrolls instead of pushing
+ * the start button away, and the side column never sits beside the main column
+ * on a narrow screen.
+ */
+describe('host dashboard layout', () => {
+  it('puts the main column and the roster side by side on a desktop', () => {
+    expect(tokens).toMatch(
+      /\.host-dash\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+320px/s,
+    );
+  });
+
+  // Every query below is read from the dashboard section only: the file has
+  // earlier `max-width` blocks for other surfaces, and a bare `indexOf` would
+  // pick those up instead.
+  const dashboard = tokens.slice(tokens.indexOf('.host-dash {'));
+
+  it('stacks the side column under the main column below 1280px', () => {
+    const tablet = dashboard.slice(dashboard.indexOf('@media (max-width: 1279px)'));
+    const rule = tablet.slice(0, tablet.indexOf('\n}\n'));
+    expect(rule).toMatch(/\.host-dash\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s);
+  });
+
+  it('stacks the status cards and the side blocks on a phone', () => {
+    const phone = dashboard.slice(dashboard.indexOf('@media (max-width: 900px)'));
+    const rule = phone.slice(0, phone.indexOf('\n}\n'));
+    expect(rule).toMatch(/\.dash-stats\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s);
+    expect(rule).toMatch(/\.dash-side\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s);
+  });
+
+  it('scrolls the roster instead of stretching the page', () => {
+    expect(tokens).toMatch(/\.dash-roster\s*\{[^}]*max-height:\s*260px/s);
+    expect(tokens).toMatch(/\.dash-roster\s*\{[^}]*overflow-y:\s*auto/s);
+  });
+
+  it('keeps the start button a full-width primary target', () => {
+    expect(tokens).toMatch(/\.dash-start\s*\{[^}]*width:\s*100%/s);
+    expect(tokens).toMatch(/\.dash-start\s*\{[^}]*min-height:\s*var\(--tap\)/s);
+  });
+
+  it('truncates long titles rather than widening a column', () => {
+    // Every single-line value carries the same three rules, so a long quiz title
+    // cannot break the grid.
+    for (const selector of ['.dash-stat__value', '.dash-row__value', '.dash-roster__name']) {
+      const rule = dashboard.slice(dashboard.indexOf(`${selector} {`));
+      const block = rule.slice(0, rule.indexOf('\n}'));
+      expect(block).toContain('text-overflow: ellipsis');
+      expect(block).toContain('white-space: nowrap');
+    }
   });
 });

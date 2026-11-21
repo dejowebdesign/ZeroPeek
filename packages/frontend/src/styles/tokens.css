@@ -3520,13 +3520,45 @@ body::before {
   letter-spacing: 0.06em;
 }
 
+/* The settings entry in the header's right zone. It has no page yet, so it is
+   styled as a quiet, non-clickable placeholder — never as an active control. */
+.player-head__settings {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--glass-card);
+  border: var(--hairline) solid var(--border);
+  color: var(--muted);
+  font-size: var(--type-help);
+  cursor: default;
+  user-select: none;
+}
+
+.player-head__settings-label {
+  white-space: nowrap;
+}
+
 /* ---------- player: question + timer ---------- */
 
-/* The question card and the timer ring sit side by side on desktop; the ring is
-   outside the card on purpose, so it is never squeezed into it. */
+/* Wireframe A, level 1 + 2: the header sits at the top, the question area below
+   it. The screen keeps its natural height, so the backdrop stays visible around
+   the card instead of being covered by a stretched surface. */
+.shell--player .centered.player-game {
+  place-items: start center;
+  align-content: start;
+  gap: var(--space-4);
+  padding-block: var(--space-4);
+}
+
+/* The question card and the timer ring sit side by side on desktop. The wireframe
+   splits them 75–80 / 20–25, so the card takes four shares and the ring one; the
+   ring is outside the card on purpose, so it is never squeezed into it. */
 .player-question {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 1fr);
   align-items: start;
   gap: var(--space-4);
   width: 100%;
@@ -3595,6 +3627,15 @@ body::before {
   display: grid;
   justify-items: center;
   gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The ring keeps its own scale but never exceeds the 20–25 % track it sits in,
+   so a narrow desktop (1024 × 768) cannot push it past the card. */
+.player-timer .countdown {
+  width: 100%;
+  max-width: clamp(96px, 17vmin, 168px);
 }
 
 .player-timer__label {
@@ -3602,6 +3643,7 @@ body::before {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  text-align: center;
 }
 
 /* Low time: the ring and the number go warm. The tone is carried by the ring
@@ -3724,5 +3766,306 @@ body::before {
   .player-stat {
     min-width: 62px;
     padding: var(--space-1) var(--space-2);
+  }
+
+  /* The settings placeholder keeps only its glyph on a phone, so rank, score
+     and the entry still fit on one row without shrinking the tap targets. */
+  .player-head__settings {
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .player-head__settings-label {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   host dashboard (Phase 6.14, Option B)
+   --------------------------------------------------------------------------
+   The pre-game surface: status cards and the preparation card in the main
+   column, the lobby roster and the game status in a side column. It is a
+   content page, not a projection surface — the running game keeps its own
+   single view. Sizes stay compact on purpose; no card is stretched to fill the
+   viewport, so the animated backdrop remains visible around them.
+   ========================================================================== */
+
+.host-dash {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+  padding: var(--space-4) var(--space-5) var(--space-6);
+}
+
+.dash-main {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* --- status cards -------------------------------------------------------- */
+
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.dash-stat {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--glass-card);
+  border: var(--hairline) solid var(--border);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(var(--blur-card));
+  -webkit-backdrop-filter: blur(var(--blur-card));
+}
+
+.dash-stat__caption {
+  font-size: var(--type-help);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.dash-stat__value {
+  font-size: var(--type-section);
+  font-weight: var(--weight-section);
+  /* A long quiz title must not push the card wider than its track. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-stat__hint {
+  font-size: var(--type-help);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- preparation card ---------------------------------------------------- */
+
+.dash-prep {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.dash-prep__title {
+  margin: 0;
+  font-size: var(--type-section);
+  font-weight: var(--weight-section);
+}
+
+.dash-prep__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.dash-field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.dash-field__label {
+  font-size: var(--type-help);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.dash-select {
+  width: 100%;
+}
+
+.dash-facts {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.dash-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: var(--space-1);
+  border-bottom: var(--hairline) solid var(--border);
+}
+
+.dash-row:last-child {
+  border-bottom: none;
+}
+
+.dash-row__label {
+  font-size: var(--type-help);
+  color: var(--muted);
+}
+
+.dash-row__value {
+  font-size: var(--type-body);
+  font-weight: var(--weight-label);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The start button is the primary action: full width, never out of reach. */
+.dash-start {
+  width: 100%;
+  min-height: var(--tap);
+}
+
+/* --- side column --------------------------------------------------------- */
+
+.dash-side {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.dash-side__block {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.dash-side__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.dash-side__title {
+  margin: 0;
+  font-size: var(--type-card);
+  font-weight: var(--weight-section);
+}
+
+.dash-side__meta {
+  margin: 0;
+  font-size: var(--type-help);
+}
+
+/* The roster scrolls instead of stretching the page: a full lobby must not push
+   the start button out of view. */
+.dash-roster {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.dash-roster__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--glass-card);
+}
+
+.dash-roster__name {
+  font-size: var(--type-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-roster__empty {
+  margin: 0;
+  font-size: var(--type-help);
+}
+
+/* --- open games ---------------------------------------------------------- */
+
+.dash-open {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.dash-open__title {
+  margin: 0;
+  font-size: var(--type-card);
+  font-weight: var(--weight-section);
+}
+
+.dash-open__list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-open__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--glass-card);
+}
+
+.dash-open__info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dash-open__name {
+  font-weight: var(--weight-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- responsive ---------------------------------------------------------- */
+
+/* Below 1280px the side column drops under the main column. The preparation
+   card keeps its place above it, so the start button stays near the top. */
+@media (max-width: 1279px) {
+  .host-dash {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .dash-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .host-dash {
+    padding: var(--space-3) var(--space-3) var(--space-5);
+  }
+
+  /* A full-width start button stays the last thing before the fold on a phone. */
+  .dash-open__item {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
