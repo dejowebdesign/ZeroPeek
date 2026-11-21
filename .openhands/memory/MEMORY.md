@@ -640,3 +640,34 @@ when unsupported).
   `player-timer--low` **on the ring element** → CSS must be `.countdown.player-timer--low`.
 - `design-system.test.ts` now has a guard that every `.player-*` class styled in
   `tokens.css` appears in `player.ts` (catches dead CSS after a refactor).
+
+## Phase 6.14 – verbindliche Wireframes (A umgesetzt, B blockiert)
+- **A (Spieleroberfläche) ist umgesetzt.** Drei Ebenen: `playerHeader` (Profil+XP
+  | Logo | Rang/Punkte/Settings) → `.player-question` Grid `4fr / 1fr`
+  (Karte / Ring) → Antwortboard. `.centered.player-game` setzt
+  `place-items: start center`, damit der Kopf Ebene 1 bleibt.
+- **Logo-Dopplung war ein echter Bug** (aus b86eed7): `appShell` zeichnete die
+  Brand im Top-Bar, `playerHeader` ein zweites Mal. Fix: `AppShellOptions.hideBrand`
+  — und der Top-Bar wird **ganz weggelassen**, wenn `hideBrand` gesetzt ist und es
+  weder `badge` noch `actions` gibt (`showTop`). Guards in `navigation.test.ts`.
+- **Ring-Überlauf war ein echter Bug**: `17vmin` (bis 168 px) passt nicht in die
+  1fr-Spalte bei 1024×768 (~119 px). Fix: `.player-timer .countdown { width:100%;
+  max-width: clamp(96px,17vmin,168px) }`. Guard in `design-system.test.ts`.
+- **Kein `settings.html` existiert.** Wireframe A verlangt „Einstellungen" im
+  Kopf → als nicht-klickbarer `span.player-head__settings` mit `aria-disabled`
+  und „coming soon"-Titel gerendert (gleiches Muster wie `nav__item--soon`),
+  auf dem Handy nur das Glyph. **Keine Seite erfunden.**
+- **B ist blockiert — harter Beleg:** `docs/roadmap/technical-roadmap.md:590`
+  und `docs/reports/phase-6-9-3-host-auto-control.md:50` entfernen den
+  Präsentationsmodus **bewusst** („eine Host-/Beamer-Ansicht", „Presentation mode
+  and the scene bar are **removed**"). `hostPage.test.ts` sperrt die Labels per
+  `REMOVED_LABELS` (`Presentation mode`, `Exit presentation`, `Scene 2 of 13`, …)
+  → ein 3-Spalten-Host-Dashboard mit „Vollbild"-Umschalter würde genau das
+  wieder einführen und diese Tests brechen. **Entscheidung chrisB nötig.**
+- Hintergrund-Assets sind geliefert und bereits integriert (Phase 6.10):
+  `ZeroPeek_Background.zip` → 10 × WebP, alle 16:9 (1672×941), 90–153 KB,
+  Dateinamen exakt wie `BACKGROUND_CATALOGUE` in `packages/shared/src/backgrounds.ts`.
+- Neue Audio-Dateien im Root (noch **nicht** integriert, Phase 6.11 offen):
+  `mastered_vorbis_96.ogg` (1,7 MB), `sfxmint-crowd-chant-15.wav` (912 KB),
+  `sfxmint-fireworks-02.wav` (557 KB). WAV sollte vor Einbindung zu OGG/MP3
+  konvertiert werden (Größe/Netzlast).
