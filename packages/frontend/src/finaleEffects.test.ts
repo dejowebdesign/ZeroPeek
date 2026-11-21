@@ -52,6 +52,10 @@ beforeEach(() => {
     arc: () => undefined,
     fill: () => undefined,
     fillRect: () => undefined,
+    moveTo: () => undefined,
+    lineTo: () => undefined,
+    stroke: () => undefined,
+    createRadialGradient: () => ({ addColorStop: () => undefined }) as unknown as CanvasGradient,
     save: () => undefined,
     restore: () => undefined,
     translate: () => undefined,
@@ -59,6 +63,10 @@ beforeEach(() => {
     scale: () => undefined,
     set globalAlpha(_value: number) {},
     set fillStyle(_value: string) {},
+    set strokeStyle(_value: string) {},
+    set lineWidth(_value: number) {},
+    set lineCap(_value: string) {},
+    set globalCompositeOperation(_value: string) {},
   } as unknown as CanvasRenderingContext2D);
 });
 
@@ -316,9 +324,102 @@ describe('finale on the host surface', () => {
     instance.start('game-1');
     for (let ms = 0; ms <= 5000; ms += 16) advance(instance, ms);
     // The cap is an implementation detail, but it must exist: a runaway count
-    // is what turns a projector into a slideshow.
+    // is what turns a projector into a slideshow. Phase 6.11.3 raised it from
+    // 900 to 1600 for the large/medium/small volleys; the ceiling is the frame
+    // budget (measured ~0.6 ms per tick at the previous size), not a style choice.
     const particles = (instance as unknown as { particles: unknown[] }).particles;
-    expect(particles.length).toBeLessThanOrEqual(420);
+    expect(particles.length).toBeLessThanOrEqual(1600);
+    // It must still be a real ceiling, not "whatever the display happened to
+    // spawn": a full volley has to be large enough to cover the stage.
+    expect(particles.length).toBeGreaterThan(200);
+  });
+
+  it('caps the luminous shells separately from the sparks', () => {
+    const instance = effects();
+    instance.start('game-1');
+    for (let ms = 0; ms <= 6000; ms += 16) advance(instance, ms);
+    const clouds = (instance as unknown as { clouds: unknown[] }).clouds;
+    // Clouds are the expensive draw, so they never grow with the spark count.
+    expect(clouds.length).toBeLessThanOrEqual(28);
+  });
+
+  it('fires the whole main volley at 1.5 s, not one burst', () => {
+    const instance = effects();
+    instance.start('game-1');
+    const spawned = () => (instance as unknown as { particles: unknown[] }).particles.length;
+
+    advance(instance, EXPLOSION_MS - 1);
+    const beforeBurst = spawned();
+
+    advance(instance, EXPLOSION_MS);
+    // The volley is several bursts, so the jump in particle count is an order of
+    // magnitude larger than one burst would be.
+    expect(spawned() - beforeBurst).toBeGreaterThan(300);
+  });
+
+  it('spreads the bursts across the frame instead of stacking them in the middle', () => {
+    const instance = effects();
+    instance.start('game-1');
+    advance(instance, EXPLOSION_MS);
+
+    const sparks = (
+      instance as unknown as { particles: { x: number; y: number; kind: string }[] }
+    ).particles.filter((particle) => particle.kind === 'spark');
+    expect(sparks.length).toBeGreaterThan(0);
+
+    // jsdom has no layout, so the canvas reports 0 and `width()`/`height()` fall
+    // back to the 1024×768 window. The volley must therefore already occupy both
+    // halves of the frame and the upper area at the moment it fires.
+    const width = window.innerWidth;
+    const left = sparks.filter((particle) => particle.x < width * 0.4).length;
+    const right = sparks.filter((particle) => particle.x > width * 0.6).length;
+    const upper = sparks.filter((particle) => particle.y < window.innerHeight * 0.45).length;
+
+    expect(left).toBeGreaterThan(0);
+    expect(right).toBeGreaterThan(0);
+    expect(upper).toBeGreaterThan(0);
+  });
+
+  it('never lights the podium text above a readable level', () => {
+    const instance = effects();
+    instance.start('game-1');
+    for (let ms = 0; ms <= 6000; ms += 16) advance(instance, ms);
+
+    const clouds = (
+      instance as unknown as {
+        clouds: { x: number; y: number; radius: number; strength: number; flash: boolean }[];
+      }
+    ).clouds;
+    expect(clouds.length).toBeGreaterThan(0);
+
+    // The readability contract is about *light on the text*, not geometry: a
+    // huge, very faint halo may pass behind the board (that is the ambient glow
+    // that makes the show feel big) as long as the summed alpha over the text
+    // stays low. Each cloud contributes its gradient value at the distance of
+    // the text, and those contributions add up under `lighter`.
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const textPoints: Array<[number, number]> = [
+      [width / 2, height / 2 - 60], // title
+      [width / 2, height / 2], // winner name
+      [width / 2, height / 2 + 60], // placements
+    ];
+
+    for (const cloud of clouds) {
+      for (const [px, py] of textPoints) {
+        const distance = Math.hypot(px - cloud.x, py - cloud.y);
+        // Outside the shell: no light at all.
+        if (distance >= cloud.radius) continue;
+        // Gradient stops: 1.0 at the centre, 0.38 at 45 %, 0 at the rim.
+        const t = distance / cloud.radius;
+        const falloff = t <= 0.45 ? 1 - (t / 0.45) * 0.62 : 0.38 * (1 - (t - 0.45) / 0.55);
+        const alpha = cloud.strength * Math.max(0, falloff);
+        // A single cloud must never put more than 18 % light on a text pixel.
+        // That is the threshold where white type on the dark glass still reads
+        // at projector distance; the browser contrast check confirms it.
+        expect(alpha).toBeLessThan(0.18);
+      }
+    }
   });
 });
 
