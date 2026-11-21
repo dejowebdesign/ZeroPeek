@@ -94,16 +94,21 @@ function rerenderCurrent(): void {
 }
 
 /** Wrap a centred screen in the player shell, marking the active nav entry. */
-function shell(active: string, content: HTMLElement): HTMLElement {
+function shell(
+  active: string,
+  content: HTMLElement,
+  options: { hideBrand?: boolean } = {},
+): HTMLElement {
   // Remember how to redraw this exact screen, so a host-status change can repaint
   // in place (the chip is part of the shell) without losing the current view.
-  repaint = () => render(app, shell(active, content));
+  repaint = () => render(app, shell(active, content, options));
   // The host-status chip is prepended to every screen, so a host dropping out is
   // visible wherever the player is. It renders nothing while the host is fine.
   const host = hostStatusChip(hostStatus);
   return appShell({
     role: 'player',
     active,
+    hideBrand: options.hideBrand,
     children: host ? [host, content] : [content],
   });
 }
@@ -421,7 +426,7 @@ const app: HTMLElement = appElement;
         'questions',
         el(
           'section',
-          { class: 'centered' },
+          { class: 'centered player-game' },
           playerHeader(me?.nickname ?? 'player', me?.avatar, myEntry),
           el(
             'div',
@@ -435,7 +440,10 @@ const app: HTMLElement = appElement;
                 el(
                   'span',
                   { class: 'player-question__topic' },
-                  question.type === 'slide' ? 'Info' : 'Question',
+                  // The wireframe asks for the quiz name here. `PlayerSync` carries
+                  // no quiz title, so the question's own category is shown when the
+                  // author set one; otherwise the type is named. Nothing is invented.
+                  question.category ?? (question.type === 'slide' ? 'Info' : 'Question'),
                 ),
                 el(
                   'span',
@@ -453,6 +461,9 @@ const app: HTMLElement = appElement;
             question.type === 'slide' || question.paused ? null : timerRing(question),
           ),
         ),
+        // The header above carries the logo in its centre column, so the shell
+        // does not draw it a second time.
+        { hideBrand: true },
       ),
     );
   }
@@ -554,6 +565,19 @@ const app: HTMLElement = appElement;
               el('span', { class: 'player-stat__label' }, 'Points'),
             )
           : null,
+        // Wireframe A asks for a settings entry in the right zone. There is no
+        // settings page yet, so it is shown as a non-clickable "soon" control,
+        // exactly like the navigation does — no page is pretended to exist.
+        el(
+          'span',
+          {
+            class: 'player-head__settings',
+            'aria-disabled': 'true',
+            title: 'Settings – coming soon',
+          },
+          el('span', { class: 'nav__icon', 'aria-hidden': 'true' }, '⚙'),
+          el('span', { class: 'player-head__settings-label' }, 'Settings'),
+        ),
       ),
     );
   }
