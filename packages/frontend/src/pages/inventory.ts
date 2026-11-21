@@ -44,6 +44,7 @@ import {
   skeleton,
   toast,
 } from '../ui.js';
+import { startStarfield } from '../starfieldLayer.js';
 
 interface PlayerMeResponse {
   user: { id: string; username: string; role: string } | null;
@@ -412,5 +413,9 @@ async function boot(): Promise<void> {
   if (me.csrfToken) setCsrfToken(me.csrfToken);
   await load();
 }
+
+// The animated field, at the lighter profile: this surface used to get its
+// stars from the `.centered` pseudo-element, and must not lose them.
+startStarfield('player');
 
 void boot();

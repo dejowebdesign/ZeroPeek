@@ -3304,12 +3304,15 @@ body::before {
   z-index: 41;
 }
 
-/* Calmer variant: the show is honoured, but nothing moves. `FinaleEffects`
-   skips the canvas entirely under this preference; the rule keeps any residual
-   effect from animating if one is ever added. */
+/* The calmer variant is a *rendering* choice, not a visibility one (Phase 6.13).
+   The brief is explicit that the finale must never disappear: the canvas is
+   always mounted, and `FinaleEffects` draws a sparser, slower display under this
+   preference instead of skipping the canvas. Nothing here may hide it, so the
+   former `display: none` rule is gone on purpose. */
 @media (prefers-reduced-motion: reduce) {
   .finale {
-    display: none;
+    /* Kept as an anchor for the reduced variant's own tuning; no hiding. */
+    animation: none;
   }
 }
 

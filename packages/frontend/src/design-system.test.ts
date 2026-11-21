@@ -596,6 +596,38 @@ describe('finale effects stay off the player devices (Phase 6.11.2)', () => {
   });
 });
 
+describe('the finale is never hidden (Phase 6.13)', () => {
+  // The "only sound, no fireworks" bug had a second cause besides the JS gate:
+  // `.finale { display: none }` in the reduced-motion block. Even a mounted
+  // canvas would have measured 0×0. The rule is gone and must not come back;
+  // the calm variant is a rendering choice, not a visibility one.
+  it('never sets display: none on the finale canvas', () => {
+    // Only the `.finale` rules matter; slicing to the end of the file would pick
+    // up unrelated `display: none` rules further down.
+    const base = tokens.slice(tokens.indexOf('.finale {'));
+    const baseRule = base.slice(0, base.indexOf('}'));
+    expect(baseRule).toContain('display: block');
+    expect(baseRule).not.toContain('display: none');
+
+    const reduce = tokens.slice(
+      tokens.indexOf('@media (prefers-reduced-motion: reduce)', tokens.indexOf('.finale {')),
+    );
+    const reduceRule = reduce.slice(0, reduce.indexOf('}'));
+    expect(reduceRule).toContain('.finale');
+    expect(reduceRule).not.toContain('display: none');
+  });
+
+  it('draws a calmer canvas instead of skipping it under reduced motion', () => {
+    const module = read('finaleEffects.ts');
+    // The reduced branch must reach `mountCanvas`; a `return` before it would
+    // restore the invisible finale.
+    const start = module.slice(module.indexOf('playFireworks();'));
+    const branch = start.slice(0, start.indexOf('schedule()'));
+    expect(branch).toContain('mountCanvas');
+    expect(branch).not.toContain('queueReducedCues');
+  });
+});
+
 describe('every surface shares the same stylesheets', () => {
   it('finds the seven entry points', () => {
     expect(entries).toEqual([
@@ -630,23 +662,55 @@ describe('the UI layer stays CSP-safe', () => {
 });
 
 describe('auth surface and starfield (Phase 6.3)', () => {
-  it('draws the starfield with gradients, never an image', () => {
-    const block = backdrop.slice(backdrop.indexOf('.starfield {'));
-    expect(block).toContain('radial-gradient');
+  it('draws the meteors with a gradient, never an image', () => {
+    const block = backdrop.slice(backdrop.indexOf('.starfield__meteor {'));
+    expect(block).toContain('linear-gradient');
     expect(block).not.toContain('url(');
   });
 
-  it('keeps the drift slow and bounded', () => {
-    // Two layers at different speeds; the duration is in the tens of seconds so
-    // the motion reads as calm rather than busy.
-    expect(backdrop).toMatch(/animation: star-drift-far 1[0-9]0s linear infinite/);
-    expect(backdrop).toMatch(/animation: star-drift-near 1[0-9]0s linear infinite/);
+  it('leaves the star tiles to the canvas, not to a tiled CSS texture', () => {
+    // Phase 6.13 replaced the tiled `radial-gradient` stars with
+    // `starfieldCanvas.ts`. Keeping the tiles would paint two star fields on top
+    // of each other, and a tiled field repeats the same constellation on a
+    // projector. The canvas is now the only source of stars.
+    expect(backdrop).not.toContain('star-drift');
+    expect(backdrop).not.toContain('.starfield::before');
+    expect(backdrop).not.toContain('.centered::before');
   });
 
-  it('stops the drift and hides the meteors for reduced motion', () => {
+  it('gives the canvas its own transparent layer between the image and the UI', () => {
+    const block = backdrop.slice(backdrop.indexOf('.starfield-canvas {'));
+    expect(block).toContain('position: fixed');
+    expect(block).toContain('pointer-events: none');
+    // -3 is the round background image, -1 the wireframe, 0+ the content: the
+    // stars belong over the motif and under everything interactive.
+    expect(block).toContain('z-index: -2');
+  });
+
+  it('starts the field on every surface that used to have CSS stars', () => {
+    // The tiled `.centered` pseudo-element drew stars on the player, host,
+    // profile and inventory surfaces. Replacing it with a canvas means those
+    // four must start the canvas, or they lose their sky.
+    for (const file of [
+      'pages/host.ts',
+      'pages/player.ts',
+      'pages/profile.ts',
+      'pages/inventory.ts',
+      'pages/auth.ts',
+    ]) {
+      expect(read(file)).toContain("from '../starfieldLayer.js'");
+      expect(read(file)).toContain('startStarfield(');
+    }
+  });
+
+  it('gives the host surface the richer field', () => {
+    // The host drives the projector; a phone gets the lighter budget.
+    expect(read('pages/host.ts')).toContain("startStarfield('host')");
+    expect(read('pages/player.ts')).toContain("startStarfield('player')");
+  });
+
+  it('hides the meteors for reduced motion', () => {
     const reduce = backdrop.slice(backdrop.indexOf('@media (prefers-reduced-motion: reduce)'));
-    expect(reduce).toContain('.starfield::before');
-    expect(reduce).toContain('.starfield::after');
     expect(reduce).toContain('.starfield__meteor');
     expect(reduce).toContain('display: none');
   });
@@ -739,20 +803,30 @@ describe('round background layer (Phase 6.10)', () => {
     expect(base).toContain('z-index: -3');
   });
 
-  it('keeps the quiz surface readable with a dark scrim over the image', () => {
-    // The brief requires a dark, readable quiz surface over the background. The
-    // scrim is a gradient of the existing surface colour, so contrast never
-    // depends on the motif, and the image itself is held well below full opacity.
+  it('keeps the quiz surface readable while letting the motif show through', () => {
+    // The brief asks for the background image to be *visible*, not buried. The
+    // image sits at 0.38 (was 0.5) and the scrim is now a light vignette instead
+    // of a 0.72–0.86 dark wall. Contrast no longer depends on the scrim: every
+    // text surface is a `.card`, whose glass fill plus a 16 px backdrop blur
+    // measures 17.9:1 even on the brightest supplied motif, and the no-blur
+    // fallback is the opaque `--glass-fallback`.
     expect(round).toContain('[data-round-background]::after');
     expect(round).toContain('linear-gradient');
-    expect(round).toMatch(/opacity: 0\.5;/);
+    expect(round).toMatch(/opacity: 0\.38;/);
+    // The scrim must stay gentle: nothing above 0.5 alpha may return.
+    const scrim = round.slice(round.indexOf('[data-round-background]::after'));
+    const alphas = [...scrim.matchAll(/rgba\(6, 8, 20, (0\.\d+)\)/g)].map((match) =>
+      Number(match[1]),
+    );
+    expect(alphas.length).toBeGreaterThan(0);
+    for (const alpha of alphas) expect(alpha).toBeLessThanOrEqual(0.5);
   });
 
   it('dims further on a phone and without transparency support', () => {
     const small = round.slice(round.indexOf('@media (max-width: 767px)'));
-    expect(small).toContain('opacity: 0.4');
+    expect(small).toContain('opacity: 0.32');
     const reduce = round.slice(round.indexOf('@media (prefers-reduced-transparency: reduce)'));
-    expect(reduce).toContain('opacity: 0.28');
+    expect(reduce).toContain('opacity: 0.26');
   });
 
   it('does not restyle any existing quiz surface', () => {

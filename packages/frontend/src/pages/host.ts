@@ -57,6 +57,7 @@ import {
 import { ShowController, sceneInputOf, type SceneInput } from '../showScenes.js';
 import { HostMusic } from '../hostMusic.js';
 import { FinaleEffects } from '../finaleEffects.js';
+import { startStarfield } from '../starfieldLayer.js';
 import {
   brand,
   button,
@@ -1585,6 +1586,11 @@ async function showReport(id: string): Promise<void> {
 }
 
 // Boot: check for an existing session, then either go home or show the login.
+//
+// The animated field starts before the first paint so the login screen is never
+// a flat dark panel. The host drives a projector, so it gets the richer field.
+startStarfield('host');
+
 void (async () => {
   try {
     const result = await get<MeResponse>('/api/auth/me');
