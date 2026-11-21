@@ -81,73 +81,52 @@ body::after {
   }
 }
 
-/* ---------- login / join starfield ---------- */
+/* ---------- animated starfield canvas (Phase 6.13) ---------- */
 
 /**
- * The starfield the concept reserves for the login, registration and join
- * surfaces (concept §8.2, briefing §10). Phase 6.3 completes it.
+ * The animated field that replaced the CSS star texture (Phase 6.13).
  *
- * `.centered::before` is the Phase 6.1 foundation: three tiled star layers of
- * different sizes and colours, two of which drift very slowly. It is kept as-is
- * so the player and host join screens cannot shift.
+ * It sits at `-2`: above the round background image (`-3`) so the stars are
+ * drawn *over* the motif, and below the wireframe and the content (`-1` and up)
+ * so it can never cover anything the user interacts with. It is transparent, so
+ * the image underneath stays exactly as bright as the layer above it allows.
  *
- * `.starfield` is the richer layer the auth surface renders. It is a plain
- * element (not a pseudo-element) so the module can size it to its container and
- * add transient meteors as children. Everything is CSS: no image is downloaded,
- * and the particle count is bounded by the tile size, not by the viewport.
+ * `will-change: transform` is deliberately absent: the canvas is repainted by
+ * JavaScript, not composited by a transform, so promoting it to its own layer
+ * would only cost memory on a phone.
+ */
+.starfield-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  display: block;
+}
+
+/* ---------- login / join starfield (Phase 6.13) ---------- */
+
+/**
+ * The stars are drawn by `starfieldCanvas.ts` now, not by CSS.
+ *
+ * Phase 6.3 tiled `radial-gradient` stars onto the `.centered` pseudo-element and
+ * the two `.starfield` pseudo-elements, drifting them with `background-position`.
+ * That was free to download but it could not twinkle per star, could not vary
+ * speed per star, and — because it tiled — repeated the same constellation across
+ * the screen. On a projector the repetition is visible and reads as a texture,
+ * not a sky, which is exactly what the brief asks to replace.
+ *
+ * The tile layers are therefore gone rather than merely hidden: keeping them
+ * would draw two star fields on top of each other. The canvas at `-2` is the
+ * single source of stars now.
+ *
+ * `.starfield` survives as the auth surface's **meteor** layer. The streaks are
+ * cheap, they only exist on the login card, and the canvas deliberately does not
+ * draw them, so there is no duplication.
  */
 .centered {
   position: relative;
   isolation: isolate;
 }
-
-.centered::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  border-radius: inherit;
-  background-image:
-    radial-gradient(1px 1px at 24px 36px, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1px 1px at 132px 88px, rgba(226, 232, 240, 0.7), transparent),
-    radial-gradient(1.5px 1.5px at 76px 152px, var(--brand-cyan), transparent),
-    radial-gradient(2px 2px at 196px 48px, rgba(222, 78, 241, 0.75), transparent),
-    radial-gradient(1px 1px at 44px 208px, rgba(255, 255, 255, 0.6), transparent),
-    radial-gradient(1.5px 1.5px at 168px 196px, rgba(124, 92, 255, 0.85), transparent);
-  background-size:
-    240px 240px,
-    240px 240px,
-    320px 320px,
-    400px 400px,
-    240px 240px,
-    320px 320px;
-  background-repeat: repeat;
-  animation: star-drift 90s linear infinite;
-}
-
-@keyframes star-drift {
-  from {
-    background-position:
-      0 0,
-      0 0,
-      0 0,
-      0 0,
-      0 0,
-      0 0;
-  }
-  to {
-    background-position:
-      0 -240px,
-      0 -240px,
-      -160px -320px,
-      0 -400px,
-      0 -240px,
-      -160px -320px;
-  }
-}
-
-/* ---------- the auth starfield ---------- */
 
 .starfield {
   position: absolute;
@@ -155,71 +134,6 @@ body::after {
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
-}
-
-/**
- * Two star fields at different tile sizes and speeds. The far field is small,
- * dim and slow; the near field is larger, brighter and drifts a little faster,
- * which reads as depth without a bitmap or a per-star element. `background-repeat`
- * tiles them, so the number of stars is bounded by the tile, not the screen.
- */
-.starfield::before,
-.starfield::after {
-  content: '';
-  position: absolute;
-  inset: -10%;
-  background-repeat: repeat;
-}
-
-.starfield::before {
-  background-image:
-    radial-gradient(1px 1px at 18px 42px, rgba(255, 255, 255, 0.75), transparent),
-    radial-gradient(1px 1px at 96px 132px, rgba(226, 232, 240, 0.5), transparent),
-    radial-gradient(1.5px 1.5px at 54px 178px, rgba(21, 219, 238, 0.55), transparent),
-    radial-gradient(1px 1px at 150px 66px, rgba(124, 58, 237, 0.5), transparent),
-    radial-gradient(1px 1px at 210px 200px, rgba(255, 255, 255, 0.4), transparent);
-  background-size:
-    260px 260px,
-    260px 260px,
-    340px 340px,
-    300px 300px,
-    260px 260px;
-  animation: star-drift-far 150s linear infinite;
-}
-
-.starfield::after {
-  background-image:
-    radial-gradient(2px 2px at 70px 90px, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(2.5px 2.5px at 240px 40px, rgba(222, 78, 241, 0.8), transparent),
-    radial-gradient(2px 2px at 160px 240px, rgba(21, 219, 238, 0.85), transparent),
-    radial-gradient(1.5px 1.5px at 320px 170px, rgba(255, 255, 255, 0.7), transparent);
-  background-size:
-    420px 420px,
-    520px 520px,
-    460px 460px,
-    420px 420px;
-  animation: star-drift-near 110s linear infinite;
-}
-
-@keyframes star-drift-far {
-  to {
-    background-position:
-      -130px 0,
-      -130px 0,
-      -170px 0,
-      -150px 0,
-      -130px 0;
-  }
-}
-
-@keyframes star-drift-near {
-  to {
-    background-position:
-      -210px 0,
-      -260px 0,
-      -230px 0,
-      -210px 0;
-  }
 }
 
 /**
@@ -264,11 +178,6 @@ body::after {
 /* ---------- reduced motion / reduced transparency ---------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .centered::before,
-  .starfield::before,
-  .starfield::after {
-    animation: none;
-  }
   .starfield__meteor {
     display: none;
   }
@@ -276,14 +185,9 @@ body::after {
 
 /**
  * The explicit "calm the effects" switch (a user preference, not a media query).
- * It stops the drift and removes the meteors while keeping the stars themselves,
- * so the surface still reads as a night sky.
+ * It removes the meteors; the canvas keeps drawing a calmer field, so the
+ * surface still reads as a night sky instead of going flat.
  */
-.starfield--calm::before,
-.starfield--calm::after {
-  animation: none;
-}
-
 .starfield--calm .starfield__meteor {
   display: none;
 }
@@ -310,11 +214,23 @@ body::after {
  * without re-creating the DOM. The element is fixed and inert: it paints behind
  * every surface and never receives a pointer event.
  *
- * The image is deliberately dim. It is a *background* layer, not content: at this
- * opacity the existing dark surface and glass cards keep their contrast, so
- * question text and answer buttons stay readable over any motif. `cover` plus
- * `center` fills the viewport without distorting the supplied file, and no file
- * is ever resized, cropped on disk or re-encoded.
+ * The image must stay *recognisable*: the host picks a motif and expects to see
+ * it, and the brief asks for it to show through the dark surface rather than to
+ * be hidden behind it. `cover` plus `center` fills the viewport without
+ * distorting the supplied file, and no file is ever resized, cropped on disk or
+ * re-encoded.
+ *
+ * Two layers were suppressing the image and only one of them was the opacity:
+ *
+ *   - the 0.5 opacity, and
+ *   - the `::after` scrim, which at 0.72–0.86 alpha darkened the photo more than
+ *     the opacity did.
+ *
+ * Every piece of show text sits inside a `.card`, whose glass fill plus a 16 px
+ * `backdrop-filter` already guarantee contrast (measured 17.9:1 on the brightest
+ * supplied motif, and the no-blur fallback is opaque `--glass-fallback`). The
+ * scrim therefore protects nothing the card does not, so it is now a light
+ * vignette instead of a dark wall.
  *
  * Nothing here changes an existing quiz style; the layer is additive and can be
  * removed without touching any other rule.
@@ -328,35 +244,37 @@ body::after {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  /* The supplied motifs are bright; the scrim below brings them down to a level
-     the dark UI was designed for, and the fade keeps the first paint calm. */
-  opacity: 0.5;
+  /* 0.38 was the balance point: 0.42 started to compete with the board, 0.30
+     lost the mid-tones of the darker motifs. The fade keeps the first paint calm. */
+  opacity: 0.38;
   filter: saturate(0.9);
   transition: opacity 400ms ease;
 }
 
-/* A dark scrim between the image and the UI, so text contrast never depends on
-   the motif. It is a gradient of the existing surface colour, not a new colour. */
+/* A light scrim, kept only to settle the top edge and the floor so the image
+   meets the aurora and the wireframe grid without a seam. It is a gradient of the
+   existing surface colour, not a new colour, and it is deliberately gentle: it
+   must not read as an overlay. */
 [data-round-background]::after {
   content: '';
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(120% 80% at 50% 0%, rgba(6, 8, 20, 0.55), transparent 70%),
-    linear-gradient(to bottom, rgba(6, 8, 20, 0.72), rgba(6, 8, 20, 0.86));
+    radial-gradient(120% 80% at 50% 0%, rgba(6, 8, 20, 0.32), transparent 70%),
+    linear-gradient(to bottom, rgba(6, 8, 20, 0.32), rgba(6, 8, 20, 0.46));
 }
 
-/* A phone has less room for text and a smaller GPU budget: dim further and drop
-   the transition so scrolling stays smooth. */
+/* A phone has less room for text and a smaller GPU budget: dim a little further
+   and drop the transition so scrolling stays smooth. */
 @media (max-width: 767px) {
   [data-round-background] {
-    opacity: 0.4;
+    opacity: 0.32;
     transition: none;
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   [data-round-background] {
-    opacity: 0.28;
+    opacity: 0.26;
   }
 }

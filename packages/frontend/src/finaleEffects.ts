@@ -418,6 +418,11 @@ export class FinaleEffects {
     return this.canvas;
   }
 
+  /** How many particles are alive. Used by the calm-variant density test. */
+  get particleCount(): number {
+    return this.particles.length;
+  }
+
   /**
    * Start the sequence for a game.
    *
@@ -444,13 +449,10 @@ export class FinaleEffects {
     // canvas that a low-end device may struggle with.
     this.playFireworks();
 
-    if (this.reduced) {
-      // Reduced motion: the audio still marks the win, but nothing moves and no
-      // canvas is created. The applause still follows on its cue.
-      this.queueReducedCues();
-      return true;
-    }
-
+    // Phase 6.13: the finale is never skipped. Under `prefers-reduced-motion`
+    // the canvas is still mounted and still draws; `calm` only makes the display
+    // sparser and slower (see `density` and `pace`). A win that is audible but
+    // invisible is not an accessible win — it is a missing one.
     if (!this.mountCanvas()) return true;
     this.schedule();
     return true;
@@ -508,8 +510,9 @@ export class FinaleEffects {
     // Every burst that is due fires now, in script order. A frame that arrives
     // late (a background tab, a slow beamer) catches up instead of skipping, so
     // the display can never lose a burst because of a dropped frame.
-    while (this.burstsFired < SCRIPT.length && elapsed >= SCRIPT[this.burstsFired]!.at) {
-      const burst = SCRIPT[this.burstsFired]!;
+    const schedule = this.burstPlan;
+    while (this.burstsFired < schedule.length && elapsed >= schedule[this.burstsFired]!.at) {
+      const burst = schedule[this.burstsFired]!;
       this.burstsFired += 1;
       this.explosionFired = true;
       this.burst(burst, width, height);
@@ -530,6 +533,47 @@ export class FinaleEffects {
 
   private get reduced(): boolean {
     return this.options.reducedMotion ?? prefersReducedMotion();
+  }
+
+  /**
+   * Whether the calm variant is in force.
+   *
+   * Phase 6.13 splits "calm" from "hidden": the calm variant is the reduced
+   * motion display, and it still shows the win. It is a property of the run, not
+   * of the preference, so the rest of the class can read one boolean.
+   */
+  private get calm(): boolean {
+    return this.reduced;
+  }
+
+  /**
+   * How much of the full display the calm variant keeps.
+   *
+   * The brief asks for "fewer simultaneous particles" and "slower, calmer
+   * motion" while keeping the explosion clearly visible, so the two levers are
+   * separate: `density` thins the show, `pace` slows it. 0.45 keeps roughly one
+   * burst in two and about half the sparks — still unmistakably fireworks, at a
+   * fraction of the movement.
+   */
+  private get density(): number {
+    return this.calm ? 0.45 : 1;
+  }
+
+  /** How much the motion is slowed. Calm runs at 45 % of the normal pace. */
+  private get pace(): number {
+    return this.calm ? 0.45 : 1;
+  }
+
+  /**
+   * The burst schedule in force, after thinning for the calm variant.
+   *
+   * Thinning is deterministic (every other entry) rather than random, so the
+   * calm display is the same show every time and the timeline stays testable.
+   * The first burst always survives, so the 1.5 s beat still lands.
+   */
+  private get burstPlan(): readonly BurstScript[] {
+    if (!this.calm) return SCRIPT;
+    return SCRIPT.filter((_, index) => index % 2 === 0);
   }
 
   private random(): number {
@@ -559,18 +603,6 @@ export class FinaleEffects {
       return;
     }
     window.cancelAnimationFrame(handle);
-  }
-
-  /** In the reduced path there is no frame loop, so the cue is a timer. */
-  private queueReducedCues(): void {
-    const remaining = CROWD_MS - (this.clock() - this.startedAt);
-    const fire = (): void => {
-      if (this.key === null || this.crowdFired) return;
-      this.crowdFired = true;
-      this.playCrowd();
-    };
-    if (typeof window.setTimeout !== 'function') return;
-    window.setTimeout(fire, Math.max(0, remaining));
   }
 
   private width(): number {
@@ -690,7 +722,9 @@ export class FinaleEffects {
     const cy = placed.y;
     const reach = Math.min(width, height) * script.reach;
     const palette = BURST_PALETTES[script.palette % BURST_PALETTES.length]!;
-    const count = Math.min(BURST_SPARK_CAP, script.count);
+    // The calm variant throws fewer sparks, not smaller ones: the shell must
+    // still read as a full explosion, just a sparser one.
+    const count = Math.max(8, Math.round(Math.min(BURST_SPARK_CAP, script.count) * this.density));
     // Large bursts get more light, medium less: this is what makes the three
     // classes read as different sizes even when their shells overlap.
     const weight = script.size === 'large' ? 1 : script.size === 'medium' ? 0.62 : 0.38;
@@ -839,8 +873,8 @@ export class FinaleEffects {
 
   private spawnConfetti(elapsed: number, width: number, height: number): void {
     const wanted = Math.min(
-      CONFETTI_COUNT,
-      Math.floor(((elapsed - CROWD_MS) / 1800) * CONFETTI_COUNT),
+      Math.round(CONFETTI_COUNT * this.density),
+      Math.floor(((elapsed - CROWD_MS) / 1800) * CONFETTI_COUNT * this.density),
     );
     while (this.confettiSpawned < wanted) {
       this.confettiSpawned += 1;
@@ -881,7 +915,10 @@ export class FinaleEffects {
    * it out of order.
    */
   private step(): void {
-    const dt = 1 / 60;
+    // The calm variant integrates at a slower effective step, so every spark
+    // drifts and falls at 45 % of the normal speed. The step is still fixed (not
+    // measured), so the motion stays identical on a 30 or 60 Hz beamer.
+    const dt = (1 / 60) * this.pace;
     const width = this.width();
     const height = this.height();
     const alive: Particle[] = [];

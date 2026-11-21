@@ -36,6 +36,7 @@ import {
 } from '../playerView.js';
 import { button, chip, countdown, errorText, field, notice, setBusy, spinner } from '../ui.js';
 import { saveClaim } from '../claim.js';
+import { startStarfield } from '../starfieldLayer.js';
 
 const STORAGE_KEY = 'zeropeek.player';
 
@@ -721,6 +722,11 @@ const app: HTMLElement = appElement;
     if (hasConnected) rejoinStored();
     hasConnected = true;
   });
+
+  // The animated field, at the lighter profile: a player phone has a smaller
+  // GPU budget than the host's projector, and the join screen is the only
+  // surface here that shows it.
+  startStarfield('player');
 
   // Resolve the signed-in player account once, then boot. The lookup is
   // best-effort: any failure (offline, a stale cookie, a 401) simply means

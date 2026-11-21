@@ -21,6 +21,7 @@ import {
 import { ApiError, get, post, setCsrfToken } from '../api.js';
 import { el, render } from '../dom.js';
 import { isCalm, setCalm, starfield } from '../starfield.js';
+import { startStarfield } from '../starfieldLayer.js';
 import { brand, button, errorText, field, notice, setBusy } from '../ui.js';
 
 const appElement = document.getElementById('app');
@@ -51,6 +52,9 @@ function calmToggle(): HTMLElement {
     // already typed into the form is preserved.
     const current = document.querySelector('.starfield');
     if (current) current.replaceWith(starfield());
+    // The canvas reads the same preference: restart it so the new pace applies
+    // immediately instead of on the next page load.
+    startStarfield('player');
   });
   return el(
     'label',
@@ -451,5 +455,9 @@ async function boot(): Promise<void> {
   if (wantsRegister) showRegister();
   else showSignIn();
 }
+
+// The animated field for the login, registration and verify screens. The auth
+// page is a single card, so it takes the lighter profile.
+startStarfield('player');
 
 void boot();

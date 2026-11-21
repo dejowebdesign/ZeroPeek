@@ -423,39 +423,57 @@ describe('finale on the host surface', () => {
   });
 });
 
-describe('reduced motion', () => {
-  it('marks the win with sound but never creates a canvas', () => {
+describe('reduced motion (calm variant, Phase 6.13)', () => {
+  it('still mounts the canvas: the win must never be invisible', () => {
     const instance = effects({ reducedMotion: true });
     expect(instance.start('game-1')).toBe(true);
-    expect(document.querySelectorAll('canvas.finale')).toHaveLength(0);
-    // The fireworks still play: the moment is marked audibly.
+    // Phase 6.13 replaced "skip the canvas" with "draw a calmer canvas". A win
+    // that is audible but invisible is a missing win, so the canvas is required.
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
     expect(audios[0]!.play).toBe(1);
   });
 
-  it('still queues the applause on its own cue', () => {
-    vi.useFakeTimers();
-    try {
-      const instance = effects({ reducedMotion: true });
-      instance.start('game-1');
-      expect(audios).toHaveLength(1);
-      vi.advanceTimersByTime(CROWD_MS);
-      expect(audios).toHaveLength(2);
-      expect(audios[1]!.src).toBe('/audio/sfx/finale-crowd.ogg');
-    } finally {
-      vi.useRealTimers();
-    }
+  it('keeps the fireworks, the applause and the confetti on their cues', () => {
+    const instance = effects({ reducedMotion: true });
+    instance.start('game-1');
+    expect(audios).toHaveLength(1);
+    advance(instance, CROWD_MS);
+    expect(audios).toHaveLength(2);
+    expect(audios[1]!.src).toBe('/audio/sfx/finale-crowd.ogg');
   });
 
-  it('drops a queued applause when the show is left first', () => {
-    vi.useFakeTimers();
-    try {
-      const instance = effects({ reducedMotion: true });
-      instance.start('game-1');
-      instance.stop();
-      vi.advanceTimersByTime(CROWD_MS);
-      expect(audios).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
+  it('leaves no canvas behind when the calm sequence ends', () => {
+    const instance = effects({ reducedMotion: true });
+    instance.start('game-1');
+    advance(instance, FINALE_END_MS);
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(0);
+  });
+
+  it('drops the canvas when the show is left first', () => {
+    const instance = effects({ reducedMotion: true });
+    instance.start('game-1');
+    instance.stop();
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(0);
+    expect(audios).toHaveLength(1);
+  });
+
+  it('throws fewer sparks than the full display', () => {
+    // Driven with `tick()` directly: the shared `frames` queue in `advance()`
+    // would hand the second instance the first one's pending frame.
+    clock = 1000;
+    const full = effects({ reducedMotion: false });
+    full.start('game-1');
+    clock = 1000 + EXPLOSION_MS;
+    full.tick();
+    const fullParticles = full.particleCount;
+
+    clock = 1000;
+    const calm = effects({ reducedMotion: true });
+    calm.start('game-1');
+    clock = 1000 + EXPLOSION_MS;
+    calm.tick();
+
+    expect(calm.particleCount).toBeGreaterThan(0);
+    expect(calm.particleCount).toBeLessThan(fullParticles);
   });
 });
