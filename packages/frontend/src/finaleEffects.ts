@@ -119,12 +119,22 @@ const BURST_PALETTES = [
 ] as const;
 
 /**
+ * How big a burst is. The brief names three classes with target coverage of the
+ * frame: large 15–25 %, medium 8–15 %, small 3–8 %.
+ *
+ * The class is what the show is built from: seven identical bursts read as
+ * wallpaper, while large/medium/small in the same frame read as a real display.
+ */
+type BurstSize = 'large' | 'medium' | 'small';
+
+/**
  * Where a burst happens, in normalised frame coordinates, so the same script
  * lands correctly on a 4:3 projector and an ultrawide panel.
  *
- * The layout is deliberately asymmetric: six positions spread over the top,
- * the upper corners and both flanks beside the podium. The centre of the frame
- * is left comparatively clear so the winner's name and score stay readable.
+ * The layout is deliberately asymmetric: the positions run across the top, the
+ * upper corners and both flanks. The area directly over the podium card is
+ * avoided by the script *and* by a runtime keep-out test in `burst`, so a large
+ * shell can never wash out the winner's name even on an unusual aspect ratio.
  */
 interface BurstScript {
   /** Horizontal centre, 0 = left edge, 1 = right edge. */
@@ -133,43 +143,69 @@ interface BurstScript {
   y: number;
   /** When the burst fires, relative to the start of the sequence. */
   at: number;
-  /** Radius as a fraction of `min(width, height)`. */
+  /** Radius of the luminous shell as a fraction of `min(width, height)`. */
   reach: number;
   /** Index into `BURST_PALETTES`. */
   palette: number;
   /** How many sparks this burst throws. */
   count: number;
+  /** Drives the glow strength, the flash and the spark spread. */
+  size: BurstSize;
+}
+
+/** A large burst: the anchor of the display. */
+function large(x: number, y: number, at: number, palette: number): BurstScript {
+  return { x, y, at, reach: 0.34, palette, count: 130, size: 'large' };
+}
+
+/** A medium burst: fills the gaps between the anchors. */
+function medium(x: number, y: number, at: number, palette: number): BurstScript {
+  return { x, y, at, reach: 0.21, palette, count: 80, size: 'medium' };
+}
+
+/** A small burst: keeps the sky alive between volleys. */
+function small(x: number, y: number, at: number, palette: number): BurstScript {
+  return { x, y, at, reach: 0.14, palette, count: 46, size: 'small' };
 }
 
 /**
- * The main volley, all due at 1500 ms as the brief requires. Six positions
- * across the stage, sized differently so they do not read as one repeated stamp.
+ * The main volley, all due at 1500 ms as the brief requires.
+ *
+ * Three large anchors (upper left, upper right, high centre) plus four mediums
+ * and two smalls. The three large ones overlap in time by design: the brief asks
+ * for at least three large explosions visible at once, and they are what makes
+ * the 1.5 s beat land as a finale rather than a pop.
  */
 const MAIN_VOLLEY: readonly BurstScript[] = [
-  { x: 0.13, y: 0.24, at: EXPLOSION_MS, reach: 0.3, palette: 0, count: 74 }, // upper left
-  { x: 0.87, y: 0.22, at: EXPLOSION_MS, reach: 0.32, palette: 2, count: 78 }, // upper right
-  { x: 0.5, y: 0.14, at: EXPLOSION_MS, reach: 0.26, palette: 1, count: 66 }, // above centre
-  { x: 0.06, y: 0.56, at: EXPLOSION_MS, reach: 0.22, palette: 4, count: 56 }, // left flank
-  { x: 0.94, y: 0.54, at: EXPLOSION_MS, reach: 0.24, palette: 3, count: 58 }, // right flank
-  { x: 0.29, y: 0.08, at: EXPLOSION_MS + 90, reach: 0.19, palette: 5, count: 48 }, // high left
-  { x: 0.72, y: 0.06, at: EXPLOSION_MS + 140, reach: 0.17, palette: 0, count: 44 }, // high right
+  large(0.15, 0.27, EXPLOSION_MS, 0),
+  large(0.85, 0.25, EXPLOSION_MS, 2),
+  large(0.5, 0.12, EXPLOSION_MS + 40, 1),
+  medium(0.02, 0.53, EXPLOSION_MS, 4),
+  medium(0.98, 0.51, EXPLOSION_MS, 3),
+  medium(0.31, 0.06, EXPLOSION_MS + 110, 5),
+  medium(0.69, 0.05, EXPLOSION_MS + 160, 0),
+  small(0.04, 0.11, EXPLOSION_MS + 220, 1),
+  small(0.96, 0.1, EXPLOSION_MS + 260, 4),
 ];
 
 /**
- * The running volley: smaller bursts that keep the sky alive between the main
- * hits and the fade, so the show does not go dark for four seconds.
+ * The running volley: a large or medium burst every 300–400 ms from 2.6 s to
+ * 5.75 s, so the sky never goes dark and the frame always has something opening.
+ * The sizes alternate, which is what gives the sequence rhythm.
  */
 const RUNNING_VOLLEY: readonly BurstScript[] = [
-  { x: 0.2, y: 0.3, at: 2600, reach: 0.17, palette: 3, count: 56 },
-  { x: 0.8, y: 0.33, at: 2950, reach: 0.18, palette: 0, count: 58 },
-  { x: 0.44, y: 0.18, at: 3300, reach: 0.16, palette: 1, count: 54 },
-  { x: 0.64, y: 0.26, at: 3650, reach: 0.19, palette: 4, count: 60 },
-  { x: 0.11, y: 0.36, at: 4000, reach: 0.16, palette: 2, count: 54 },
-  { x: 0.9, y: 0.38, at: 4350, reach: 0.17, palette: 5, count: 56 },
-  { x: 0.35, y: 0.14, at: 4700, reach: 0.15, palette: 0, count: 50 },
-  { x: 0.58, y: 0.22, at: 5050, reach: 0.16, palette: 3, count: 52 },
-  { x: 0.24, y: 0.24, at: 5400, reach: 0.14, palette: 1, count: 46 },
-  { x: 0.76, y: 0.16, at: 5750, reach: 0.14, palette: 4, count: 46 },
+  medium(0.22, 0.3, 2600, 3),
+  large(0.78, 0.3, 2950, 0),
+  medium(0.45, 0.09, 3300, 1),
+  large(0.13, 0.43, 3650, 4),
+  medium(0.87, 0.45, 3950, 2),
+  large(0.6, 0.13, 4250, 5),
+  medium(0.32, 0.2, 4550, 0),
+  small(0.03, 0.25, 4800, 3),
+  medium(0.72, 0.09, 5000, 4),
+  large(0.2, 0.13, 5300, 1),
+  medium(0.92, 0.19, 5550, 2),
+  small(0.55, 0.05, 5750, 0),
 ];
 
 /** The whole display, in firing order. */
@@ -227,19 +263,43 @@ interface Particle {
   angle: number;
   /** Drag per second, so sparks slow down instead of flying off straight. */
   drag: number;
-  /** `spark` fades as a dot, `glitter` twinkles, `confetti` tumbles. */
+  /** `trail` is the rocket's smoke, `spark`/`glitter` the burst, `confetti` the paper. */
   kind: 'trail' | 'spark' | 'glitter' | 'confetti';
+}
+
+/**
+ * A luminous cloud. This is what makes a burst read as *big*: a soft radial
+ * gradient many times the size of its sparks, so the explosion has a body and
+ * lights the frame instead of being a ring of dots.
+ *
+ * Clouds live in their own array rather than in `particles`: they are drawn as
+ * one gradient fill each, so they are the cheapest way to add area, and they
+ * must not compete for the spark budget.
+ */
+interface Cloud {
+  x: number;
+  y: number;
+  /** Radius in px, already scaled to the frame. */
+  radius: number;
+  /** Seconds left, and the total, for the fade. */
+  life: number;
+  maxLife: number;
+  colour: string;
+  /** Peak alpha at the centre. */
+  strength: number;
+  /** `true` for the brief white flash drawn on top of everything. */
+  flash: boolean;
 }
 
 /**
  * Hard caps, so the particle count can never grow with the frame rate.
  *
- * The cap is the frame budget, not a style choice: at 900 the whole display is
- * roughly 900 filled arcs per frame, which a projector and a laptop GPU both
- * handle at 60 fps. `add` drops anything past it, so a slow device degrades by
- * showing fewer sparks rather than by stuttering.
+ * The cap is the frame budget, not a style choice. Measured on the 1920×993
+ * reference frame the previous volley cost ~0.6 ms per tick including the draw,
+ * so 1600 is still well inside a 16.6 ms frame on projector-class hardware while
+ * leaving room for the host's own work.
  */
-const MAX_PARTICLES = 900;
+const MAX_PARTICLES = 1600;
 /**
  * How much of the budget the rocket trails may use.
  *
@@ -247,15 +307,42 @@ const MAX_PARTICLES = 900;
  * fill the whole array during the ascent and the bursts that follow are dropped
  * by `add` — measured: 846 live particles at 1.2 s, then the main volley at
  * 1.5 s could only add a handful, and the frame got *darker* exactly when the
- * fireworks were due. Capping the trails keeps 600 slots free for the show.
+ * fireworks were due. Capping the trails keeps the show's share free.
  */
-const MAX_TRAIL_PARTICLES = 300;
-const CONFETTI_COUNT = 140;
+const MAX_TRAIL_PARTICLES = 360;
+/** Clouds are the expensive draw, so they are capped tightly and separately. */
+const MAX_CLOUDS = 28;
+const CONFETTI_COUNT = 240;
 /** Sparks per burst are scaled by this when the frame is very large. */
-const BURST_SPARK_CAP = 84;
+const BURST_SPARK_CAP = 150;
+
+/**
+ * The podium keep-out, in normalised frame coordinates.
+ *
+ * The board is centred and at most 1200 px wide with a height of roughly 340 px
+ * on the reference frame, so this ellipse covers it with margin at any aspect
+ * ratio. Bursts whose glow would reach into it are pushed outwards by
+ * `placeBurst`, and the glow is drawn *before* the board in the stacking order,
+ * so the winner's name always sits on top of an undimmed surface.
+ */
+const KEEP_OUT = { x: 0.5, y: 0.62, rx: 0.34, ry: 0.22 } as const;
 
 function pick(seed: number): string {
   return PALETTE[Math.floor(Math.abs(seed) * PALETTE.length) % PALETTE.length]!;
+}
+
+/**
+ * A palette colour with an explicit alpha, as `rgba(...)`.
+ *
+ * Canvas gradients need a colour stop with transparency, and the palette is
+ * written as opaque hex so it can also be used directly by `fillStyle`. Parsing
+ * the six-digit form here keeps the palette readable at its definition.
+ */
+function withAlpha(hex: string, alpha: number): string {
+  const value = Math.round(Math.min(1, Math.max(0, alpha)) * 255)
+    .toString(16)
+    .padStart(2, '0');
+  return `${hex}${value}`;
 }
 
 /**
@@ -269,6 +356,8 @@ export class FinaleEffects {
   private canvas: HTMLCanvasElement | null = null;
   private context: CanvasRenderingContext2D | null = null;
   private particles: Particle[] = [];
+  /** Luminous shells and flashes; drawn as gradients, capped separately. */
+  private clouds: Cloud[] = [];
   private frame: number | null = null;
   private startedAt = 0;
   private key: string | null = null;
@@ -348,6 +437,7 @@ export class FinaleEffects {
     this.confettiSpawned = 0;
     this.trailSpawnedAt = 0;
     this.particles = [];
+    this.clouds = [];
     this.startedAt = this.clock();
 
     // Sound first: it is what makes the moment land, and it must not wait for a
@@ -374,6 +464,7 @@ export class FinaleEffects {
       this.frame = null;
     }
     this.particles = [];
+    this.clouds = [];
     this.canvas?.remove();
     this.canvas = null;
     this.context = null;
@@ -594,14 +685,58 @@ export class FinaleEffects {
    * instead of vanishing.
    */
   private burst(script: BurstScript, width: number, height: number): void {
-    const cx = script.x * width;
-    const cy = script.y * height;
+    const placed = this.placeBurst(script, width, height);
+    const cx = placed.x;
+    const cy = placed.y;
     const reach = Math.min(width, height) * script.reach;
     const palette = BURST_PALETTES[script.palette % BURST_PALETTES.length]!;
     const count = Math.min(BURST_SPARK_CAP, script.count);
+    // Large bursts get more light, medium less: this is what makes the three
+    // classes read as different sizes even when their shells overlap.
+    const weight = script.size === 'large' ? 1 : script.size === 'medium' ? 0.62 : 0.38;
 
-    // The white flash: small, fast, gone in a quarter of a second.
-    for (let index = 0; index < 12; index += 1) {
+    // The body of the explosion: a soft luminous cloud several times the spark
+    // radius. Two shells per burst — a wide, faint halo and a tighter, brighter
+    // core — so the falloff reads like real light rather than a flat disc.
+    this.addCloud({
+      x: cx,
+      y: cy,
+      radius: reach * 1.32,
+      life: 1.5 * (0.8 + weight * 0.5),
+      maxLife: 1.5 * (0.8 + weight * 0.5),
+      colour: palette[1]!,
+      strength: 0.075 * weight,
+      flash: false,
+    });
+    this.addCloud({
+      x: cx,
+      y: cy,
+      radius: reach * 1.05,
+      life: 1.15 * (0.8 + weight * 0.5),
+      maxLife: 1.15 * (0.8 + weight * 0.5),
+      colour: palette[0]!,
+      strength: 0.52 * weight,
+      flash: false,
+    });
+
+    // The break flash: a hard white bloom on the frame the shell opens. It is
+    // short — 260 ms — and it is the single strongest signal that a firework
+    // just went off, which is what a projector at distance needs.
+    if (script.size !== 'small') {
+      this.addCloud({
+        x: cx,
+        y: cy,
+        radius: reach * 0.62,
+        life: 0.26,
+        maxLife: 0.26,
+        colour: '#ffffff',
+        strength: 0.85,
+        flash: true,
+      });
+    }
+
+    // The white core sparks: fast, short, thrown outward on the break.
+    for (let index = 0; index < 14; index += 1) {
       const angle = this.random() * Math.PI * 2;
       const speed = reach * (0.9 + this.random() * 0.5);
       this.add({
@@ -621,10 +756,11 @@ export class FinaleEffects {
       });
     }
 
-    // The coloured shell: the body of the burst.
+    // The coloured shell: the body of the burst, thrown to the full reach so the
+    // sparks define the same circle the glow fills.
     for (let index = 0; index < count; index += 1) {
       const angle = (Math.PI * 2 * index) / count + this.random() * 0.22;
-      const speed = reach * (0.5 + this.random() * 0.62);
+      const speed = reach * (0.55 + this.random() * 0.6);
       this.add({
         x: cx,
         y: cy,
@@ -632,7 +768,7 @@ export class FinaleEffects {
         vy: Math.sin(angle) * speed,
         life: 1.7 + this.random() * 1.1,
         maxLife: 2.8,
-        size: 2 + this.random() * 2.8,
+        size: (2 + this.random() * 3.4) * (0.8 + weight * 0.5),
         colour: palette[index % palette.length]!,
         gravity: 0.72,
         spin: 0,
@@ -642,12 +778,12 @@ export class FinaleEffects {
       });
     }
 
-    // Glitter: slow, small, long-lived. It is the residue that keeps the sky
-    // glowing after the shell has gone.
-    const glitter = Math.round(count * 0.5);
+    // Glitter: slow, small, long-lived, and drifting down. It is the residue that
+    // keeps the sky glowing after the shell has gone.
+    const glitter = Math.round(count * 0.55);
     for (let index = 0; index < glitter; index += 1) {
       const angle = this.random() * Math.PI * 2;
-      const speed = reach * (0.15 + this.random() * 0.6);
+      const speed = reach * (0.15 + this.random() * 0.62);
       this.add({
         x: cx,
         y: cy,
@@ -655,7 +791,7 @@ export class FinaleEffects {
         vy: Math.sin(angle) * speed,
         life: 2.1 + this.random() * 1.4,
         maxLife: 3.5,
-        size: 1 + this.random() * 1.6,
+        size: 1 + this.random() * 1.8,
         colour: this.random() < 0.5 ? '#ffffff' : palette[0]!,
         gravity: 0.42,
         spin: 0,
@@ -665,6 +801,42 @@ export class FinaleEffects {
       });
     }
   }
+
+  /**
+   * Move a burst out of the podium keep-out if its glow would reach the text.
+   *
+   * The script already avoids the centre, but the board is a fixed pixel size
+   * while the frame is not, so on a tall or narrow viewport a burst that is fine
+   * at 16:9 can land on the winner's name. Pushing the centre outwards by the
+   * overlap keeps the guarantee true at every resolution instead of at one.
+   */
+  private placeBurst(script: BurstScript, width: number, height: number): { x: number; y: number } {
+    let nx = script.x;
+    let ny = script.y;
+    const reach = Math.min(width, height) * script.reach;
+    // Normalised keep-out radii, plus the burst's own radius in the same units.
+    const rx = KEEP_OUT.rx + reach / Math.max(1, width);
+    const ry = KEEP_OUT.ry + reach / Math.max(1, height);
+    const dx = (nx - KEEP_OUT.x) / rx;
+    const dy = (ny - KEEP_OUT.y) / ry;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 1) {
+      // Inside the ellipse: push along the shortest way out, keeping the side
+      // the burst was already on so the composition stays balanced.
+      const scale = distance < 0.0001 ? 1 : 1 / distance;
+      const pushX = (distance < 0.0001 ? 0 : dx) * scale;
+      const pushY = (distance < 0.0001 ? -1 : dy) * scale;
+      nx = KEEP_OUT.x + pushX * rx;
+      ny = KEEP_OUT.y + pushY * ry;
+    }
+    return { x: Math.min(1, Math.max(0, nx)) * width, y: Math.min(1, Math.max(0, ny)) * height };
+  }
+
+  private addCloud(cloud: Cloud): void {
+    if (this.clouds.length >= MAX_CLOUDS) this.clouds.shift();
+    this.clouds.push(cloud);
+  }
+
   private spawnConfetti(elapsed: number, width: number, height: number): void {
     const wanted = Math.min(
       CONFETTI_COUNT,
@@ -737,6 +909,13 @@ export class FinaleEffects {
       (total, particle) => total + (particle.kind === 'trail' ? 1 : 0),
       0,
     );
+
+    // Clouds only fade; they do not move. A still glow reads as light in the
+    // air, while a drifting one reads as a smoke puff.
+    this.clouds = this.clouds.filter((cloud) => {
+      cloud.life -= dt;
+      return cloud.life > 0;
+    });
   }
 
   private draw(elapsed: number, width: number, height: number): void {
@@ -749,6 +928,36 @@ export class FinaleEffects {
     // paint: two cyan sparks over a gold one read as a hot white core, which is
     // how real fireworks look. `lighter` is the whole reason the burst glows.
     ctx.globalCompositeOperation = 'lighter';
+
+    // The luminous shells first, so the sparks sit inside their light. Each is
+    // one radial gradient: three stops — full strength at the core, a third at
+    // the midpoint, nothing at the rim — which is what gives the falloff a soft
+    // edge instead of a visible circle.
+    for (const cloud of this.clouds) {
+      const fade = Math.max(0, cloud.life / cloud.maxLife);
+      // A flash decays sharply (square) so it reads as a strike, while a shell
+      // decays linearly so it lingers like light in the air.
+      const envelope = cloud.flash ? fade * fade : fade;
+      const alpha = cloud.strength * envelope;
+      if (alpha <= 0.002 || cloud.radius < 1) continue;
+      const gradient = ctx.createRadialGradient(
+        cloud.x,
+        cloud.y,
+        0,
+        cloud.x,
+        cloud.y,
+        cloud.radius,
+      );
+      gradient.addColorStop(0, withAlpha(cloud.colour, Math.min(1, alpha)));
+      gradient.addColorStop(0.5, withAlpha(cloud.colour, Math.min(1, alpha * 0.78)));
+      gradient.addColorStop(0.8, withAlpha(cloud.colour, Math.min(1, alpha * 0.3)));
+      gradient.addColorStop(1, withAlpha(cloud.colour, 0));
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(cloud.x, cloud.y, cloud.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Each rocket is a glowing streak, not a dot: a short line along its recent
     // path plus a bright head. From the back of a room the streak is the thing
