@@ -14,6 +14,7 @@ import {
   findCharacterAssets,
   generatePin,
   isValidPin,
+  MAX_PLAYERS_PER_LOBBY,
   normalizePin,
   normalizeText,
   NICKNAME_MAX,
@@ -155,16 +156,39 @@ export async function joinGame(
     throw conflict('That nickname is already taken in this game.', 'nickname_taken');
   }
 
-  const player = await prisma.gamePlayer.create({
-    data: {
-      gameId: game.id,
-      nickname: trimmed,
-      avatar,
-      token: newPlayerToken(),
-      ...(userId ? { userId } : {}),
-    },
-    select: { id: true, gameId: true, nickname: true, avatar: true, token: true, joinedAt: true },
+  const player = await prisma.$transaction(async (tx) => {
+    // The lobby's seats are locked before the count is read, so two joins that
+    // arrive together cannot both see 49 and both insert (Phase 6.14). The lock
+    // is taken on the game row rather than on a counter: every seat insert
+    // touches this row's player set, and a row lock is what serialises them in
+    // PostgreSQL. Without it the limit would be advisory — the `existing` read
+    // above happens outside any transaction and is already stale by here.
+    //
+    // `FOR UPDATE` on the game row is taken first so concurrent joins queue on
+    // it; the seat count is then read inside the same transaction and the insert
+    // either fits or the whole transaction is rolled back.
+    await tx.$queryRaw`SELECT id FROM games WHERE id = ${game.id} FOR UPDATE`;
+
+    const seated = await tx.gamePlayer.count({ where: { gameId: game.id } });
+    if (seated >= MAX_PLAYERS_PER_LOBBY) {
+      throw conflict(
+        `This lobby is already full. At most ${MAX_PLAYERS_PER_LOBBY} players can take part.`,
+        'lobby_full',
+      );
+    }
+
+    return tx.gamePlayer.create({
+      data: {
+        gameId: game.id,
+        nickname: trimmed,
+        avatar,
+        token: newPlayerToken(),
+        ...(userId ? { userId } : {}),
+      },
+      select: { id: true, gameId: true, nickname: true, avatar: true, token: true, joinedAt: true },
+    });
   });
+
   return { game, player };
 }
 

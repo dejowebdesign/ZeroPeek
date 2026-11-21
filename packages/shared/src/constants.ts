@@ -112,3 +112,39 @@ export type ParticipantIdMode = keyof typeof PARTICIPANT_ID_MODES;
 /** Game session phases, in order. The server is authoritative over transitions. */
 export const GAME_PHASES = ['lobby', 'lead', 'question', 'reveal', 'board', 'end'] as const;
 export type GamePhase = (typeof GAME_PHASES)[number];
+
+/**
+ * How many players one lobby may hold (product decision, Phase 6.14).
+ *
+ * This is the **single** source of that limit: the backend enforces it when a
+ * seat is created and the host dashboard renders it. Neither side may carry its
+ * own copy, so the number the host reads can never drift from the number the
+ * server applies.
+ *
+ * The limit counts *seats*, not connections: a player who reloads or reconnects
+ * reclaims their existing seat (Phase 6.8.3) and therefore never consumes a
+ * second place.
+ */
+export const MAX_PLAYERS_PER_LOBBY = 50;
+
+/**
+ * How full a lobby is, as a stable classification the UI can style.
+ *
+ * `full` is reached at exactly {@link MAX_PLAYERS_PER_LOBBY}; `high` starts at
+ * 80 % of it, which is where the dashboard switches to the warning colour. The
+ * thresholds live here rather than in the stylesheet so the wording, the colour
+ * and the server's decision all describe the same state.
+ */
+export type LobbyCapacityState = 'normal' | 'high' | 'full';
+
+/** The capacity state for a given number of seated players. */
+export function lobbyCapacityState(players: number): LobbyCapacityState {
+  if (players >= MAX_PLAYERS_PER_LOBBY) return 'full';
+  if (players >= Math.ceil(MAX_PLAYERS_PER_LOBBY * 0.8)) return 'high';
+  return 'normal';
+}
+
+/** How many places are still free in a lobby with `players` seated. */
+export function freeLobbySeats(players: number): number {
+  return Math.max(0, MAX_PLAYERS_PER_LOBBY - players);
+}

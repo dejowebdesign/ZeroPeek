@@ -671,3 +671,28 @@ when unsupported).
   `mastered_vorbis_96.ogg` (1,7 MB), `sfxmint-crowd-chant-15.wav` (912 KB),
   `sfxmint-fireworks-02.wav` (557 KB). WAV sollte vor Einbindung zu OGG/MP3
   konvertiert werden (Größe/Netzlast).
+
+## Lobby capacity (Phase 6.14)
+- `MAX_PLAYERS_PER_LOBBY = 50` lives in `packages/shared/src/constants.ts` with
+  `freeLobbySeats()` / `lobbyCapacityState()` (`normal` <80 %, `high` ≥80 %,
+  `full` at 50). Backend and dashboard both import it — never duplicate the number.
+- `joinGame()` enforces it inside `prisma.$transaction` after
+  `SELECT id FROM games WHERE id = ${game.id} FOR UPDATE` (row lock), then
+  `gamePlayer.count` + insert. Verified: 49→50 allowed, 50→51 rejected with
+  `conflict(..., 'lobby_full')` over the real socket ACK.
+- Lock proof: removing `FOR UPDATE` makes the "concurrent joins" and "burst fills
+  empty lobby" integration tests fail. Only one `gamePlayer.create` exists in the
+  backend, so the limit cannot be bypassed.
+- **CSS cascade trap:** a `transition` in a base rule placed *after* a
+  `@media (prefers-reduced-motion: reduce)` block wins the cascade (same
+  specificity, later in sheet) and animates anyway. Fix = scope the transition to
+  `@media (prefers-reduced-motion: no-preference)` instead of overriding it under
+  `reduce`. Guarded by a test in `design-system.test.ts`.
+- PIN alphabet excludes `0/O 1/I/L 5/S 8/B` (`PIN_ALPHABET` in shared/pin.ts), so
+  a hand-written seed PIN like `ABC234` is invalid → "No game with that PIN."
+- Seeding a lobby for visual checks: `games` columns are snake_case
+  (`quiz_id`, `host_id`, `created_at`), `game_players` uses `game_id`/`joined_at`.
+- Local visual check recipe: `npm run build`, start `node packages/backend/dist/server.js`
+  (entry is `dist/server.js`, NOT `dist/index.js`) on :3000, then
+  `npx vite --port 12000 --host 0.0.0.0` in `packages/frontend` (proxy → :3000).
+  Registration needs `email_verified_at`; set it plus `role='ADMIN'` via psql.
