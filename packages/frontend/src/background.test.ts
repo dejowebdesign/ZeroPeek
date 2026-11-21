@@ -59,7 +59,7 @@ describe('applyRoundBackground', () => {
   });
 
   it('returns the display name the picker shows', () => {
-    expect(applyRoundBackground('synthwave_skyline')).toBe('Synthwave – Skyline');
+    expect(applyRoundBackground('synthwave_skyline')).toBe('Skyline');
   });
 
   it('puts the layer behind the content as the first child of body', () => {

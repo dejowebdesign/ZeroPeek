@@ -170,6 +170,7 @@ function lobbyState(): HostState {
     ranks: null,
     hasNext: false,
     background: 'synthwave_skyline',
+    backgroundChoice: 'synthwave_skyline',
   };
 }
 
@@ -586,20 +587,41 @@ describe('host page – destructive controls and the leaderboard advance', () =>
   });
 });
 
-describe('host page – background picker (Phase 6.10)', () => {
-  /** The picker currently on screen, or null when it is not offered. */
+describe('host page – background carousel (Phase 6.14)', () => {
+  /** The carousel currently on screen, or null when it is not offered. */
   const picker = (): HTMLElement | null => app().querySelector<HTMLElement>('.show__background');
   const pickerLabel = (): string =>
     picker()?.querySelector('.show__background-label')?.textContent?.trim() ?? '';
+  /** The carousel's position line, e.g. "Skyline" plus "7 / 11". */
+  const positionName = (): string =>
+    picker()?.querySelector('.show__background-name')?.textContent?.trim() ?? '';
+  const positionIndex = (): string =>
+    picker()?.querySelector('.show__background-index')?.textContent?.trim() ?? '';
+  /** The two arrows, found by their accessible name so a test reads as a user. */
+  const arrow = (direction: 'Previous' | 'Next'): HTMLButtonElement | null =>
+    picker()?.querySelector<HTMLButtonElement>(`[aria-label^="${direction} background"]`) ?? null;
   /** The layer the background module paints, or null before it is created. */
   const layer = (): HTMLElement | null =>
     document.querySelector<HTMLElement>('[data-round-background]');
   const layerImage = (): string => layer()?.style.getPropertyValue('--round-background') ?? '';
 
+  it('shows the join QR beside the PIN, so a phone can scan into this lobby', async () => {
+    await enterLobby();
+    const qr = document.querySelector<HTMLElement>('.lobby__qr');
+    expect(qr).not.toBeNull();
+    // The symbol is generated in the page, not fetched: an <img> would need a
+    // network round trip and would break under the strict image CSP.
+    expect(qr?.querySelector('svg[data-join-qr]')).not.toBeNull();
+    // The encoded address must be this lobby's, on the origin the host uses.
+    expect(qr?.getAttribute('data-join-url')).toContain('pin=1234');
+  });
+
   it('is offered in the lobby and names the server background', async () => {
     await enterLobby();
     expect(picker()).not.toBeNull();
-    expect(pickerLabel()).toBe('Background: Synthwave – Skyline');
+    expect(pickerLabel()).toBe('Background: Skyline');
+    expect(positionName()).toBe('Skyline');
+    expect(positionIndex()).toBe('8 / 11');
   });
 
   it('paints the supplied file, not a placeholder', async () => {
@@ -611,48 +633,75 @@ describe('host page – background picker (Phase 6.10)', () => {
     await enterLobby();
     // The server would answer with a different background than the one asked for
     // in a broken implementation; here it echoes the request, as the engine does.
-    fake.routes.set('host:background', (payload) => ({
-      background: (payload as { background: string }).background,
-    }));
+    fake.routes.set('host:background', (payload) => {
+      const background = (payload as { background: string }).background;
+      return { background, choice: background };
+    });
 
-    clickButton('Synthwave – Wüste');
+    arrow('Next')!.click();
 
     await vi.waitFor(() => {
       if (!fake.sent.includes('host:background')) throw new Error('no command sent');
     });
     await vi.waitFor(() => {
-      if (!layerImage().includes('zeropeek_synthwave_wueste.webp')) {
+      if (!layerImage().includes('zeropeek_synthwave_unterwasser_v3.webp')) {
         throw new Error('layer not repainted from the ACK');
       }
     });
-    expect(pickerLabel()).toBe('Background: Synthwave – Wüste');
+    expect(pickerLabel()).toBe('Background: Underwater');
   });
 
   it('repaints from the broadcast, so a second host stays in step', async () => {
     await enterLobby();
-    fake.trigger('host:background', { background: 'synthwave_weltraum' });
+    fake.trigger('host:background', {
+      background: 'synthwave_weltraum',
+      choice: 'synthwave_weltraum',
+    });
     await vi.waitFor(() => {
       if (!layerImage().includes('zeropeek_synthwave_weltraum.webp')) {
         throw new Error('broadcast not applied');
       }
     });
-    expect(pickerLabel()).toBe('Background: Synthwave – Weltraum');
+    expect(pickerLabel()).toBe('Background: Space');
   });
 
-  it('offers a Random control that sends the sentinel, not a client-side roll', async () => {
+  it('reaches Random by stepping left from the first catalogue entry', async () => {
     await enterLobby();
     let sent: unknown = null;
     fake.routes.set('host:background', (payload) => {
       sent = (payload as { background: string }).background;
-      return { background: 'synthwave_skyline' };
+      return { background: 'synthwave_skyline', choice: 'random' };
     });
 
-    clickButton('Random');
+    arrow('Previous')!.click();
     await vi.waitFor(() => {
       if (sent === null) throw new Error('no command sent');
     });
-    // The client must ask the server to choose; it must not pick an id itself.
-    expect(sent).toBe('random');
+    // Skyline is the 7th catalogue entry, so one step left is the 6th — never a
+    // client-side roll: the id sent is the neighbour, resolved server-side.
+    expect(sent).toBe('synthwave_raumstation_ohne_boden');
+  });
+
+  it('sends the sentinel when the carousel is on Random', async () => {
+    fake.routes.set('host:create', () => ({ ...lobbyState(), backgroundChoice: 'random' }));
+    await boot();
+    clickButton('Start');
+    await vi.waitFor(() => {
+      if (!screen().includes('1234')) throw new Error('lobby not rendered');
+    });
+    expect(pickerLabel()).toBe('Background: Random');
+
+    let sent: unknown = null;
+    fake.routes.set('host:background', (payload) => {
+      sent = (payload as { background: string }).background;
+      return { background: 'synthwave_skyline', choice: 'random' };
+    });
+
+    arrow('Next')!.click();
+    await vi.waitFor(() => {
+      if (sent === null) throw new Error('no command sent');
+    });
+    expect(sent).toBe('palmen_tron_background');
   });
 
   it('is hidden once the game leaves the lobby', async () => {
@@ -681,6 +730,7 @@ describe('host page – background picker (Phase 6.10)', () => {
     fake.routes.set('host:join', () => ({
       ...lobbyState(),
       background: 'synthwave_unterwasser_v3',
+      backgroundChoice: 'synthwave_unterwasser_v3',
     }));
     // The page treats the first `connect` as the initial connection and only
     // resyncs from the second one on, so the test has to open the socket first.
@@ -693,7 +743,7 @@ describe('host page – background picker (Phase 6.10)', () => {
       }
     });
     expect(picker()).not.toBeNull();
-    expect(pickerLabel()).toBe('Background: Synthwave – Unterwasser');
+    expect(pickerLabel()).toBe('Background: Underwater');
   });
 });
 

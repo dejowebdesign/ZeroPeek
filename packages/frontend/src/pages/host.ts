@@ -9,10 +9,9 @@
  */
 
 import {
-  BACKGROUND_CATALOGUE,
-  DEFAULT_BACKGROUND_ID,
   RANDOM_BACKGROUND,
   backgroundPath,
+  stepBackground,
   type GamePhase,
   type HostConnectionStatus,
   type HostReveal,
@@ -31,6 +30,7 @@ import { connectHost, request, type HostSocket } from '../socket.js';
 import { ClockSync } from '../clockSync.js';
 import { playerAvatar } from '../avatar.js';
 import { applyRoundBackground, clearRoundBackground } from '../background.js';
+import { renderJoinQr } from '../joinQr.js';
 import {
   leaderboardRow,
   participantCard,
@@ -41,9 +41,10 @@ import {
   attachHostHandlers,
   autoHint,
   autoLabel,
-  backgroundChoices,
   backgroundHint,
   backgroundLabel,
+  backgroundNeighbour,
+  backgroundSelection,
   canAct,
   connectionStatus,
   forgetGame,
@@ -153,13 +154,20 @@ let autoMode = false;
 /** The AUTO toggle currently on screen, so its label can be repainted in place. */
 let autoNode: HTMLButtonElement | null = null;
 /**
- * The round's background id (Phase 6.10), mirrored from the server. The server
- * owns the value; this mirror exists only so a repaint can redraw the picker's
- * active row without another round trip. It is never used to decide the image.
+ * The carousel position in force (Phase 6.14), mirrored from the server: a
+ * catalogue id, or `random` when the round is on a random pick. The server owns
+ * it; this mirror exists so a repaint can redraw the label and the arrows without
+ * another round trip. The painted image is always the concrete `background` id,
+ * never this value.
  */
-let backgroundId = DEFAULT_BACKGROUND_ID;
-/** The picker's label node, so a background change can repaint it in place. */
+let backgroundChoice: string = RANDOM_BACKGROUND;
+/** The carousel's label node, so a change can repaint it in place. */
 let backgroundLabelNode: HTMLElement | null = null;
+/** The carousel's position line, repainted without rebuilding the arrows. */
+let backgroundPositionNode: HTMLElement | null = null;
+/** The carousel's arrows, so their destination labels follow the position. */
+let backgroundPrevNode: HTMLButtonElement | null = null;
+let backgroundNextNode: HTMLButtonElement | null = null;
 /** The host's own connection state, shown in the control bar. */
 let connection: HostConnectionStatus = 'connected';
 /** Whether the socket has connected at least once (so a `connect` is a reconnect). */
@@ -414,7 +422,7 @@ function ensureSocket(): HostSocket {
       // this only repaints the layer and the picker — it never moves the game.
       background: (payload) => {
         lastLiveEventAt = Date.now();
-        setBackground(payload.background);
+        setBackground(payload.background, payload.choice);
       },
     } satisfies HostEventHandlers);
 
@@ -550,9 +558,10 @@ function renderHostState(input: HostRender): void {
   if (input.kind === 'sync') {
     autoMode = input.state.auto;
     // The authoritative background arrives with every snapshot, so a reload or a
-    // reconnect restores exactly the image the round is using (Phase 6.10).
-    backgroundId = input.state.background;
-    applyRoundBackground(backgroundId);
+    // reconnect restores exactly the image the round is using (Phase 6.10) and the
+    // carousel position it was picked from (Phase 6.14).
+    backgroundChoice = input.state.backgroundChoice;
+    applyRoundBackground(input.state.background);
     activeGame = { id: input.state.gameId, pin: input.state.pin };
     const screen = hostScreen(input.state);
     if (screen === 'lobby') return showLobby(input.state.pin, input.state.players ?? []);
@@ -715,23 +724,27 @@ function autoToggle(): HTMLElement | null {
 }
 
 /**
- * The background picker (Phase 6.10).
+ * The background carousel (Phase 6.14).
  *
- * Shown on the lobby screen, which is where the host prepares the round. It lists
- * the whole supplied catalogue by display name **and** filename — the brief asks
- * for a preview based on those two labels, and neither requires looking at the
- * image. The active row is marked from the server's value.
+ * A one-line selector: a left arrow, the position in force, a right arrow. It
+ * replaces the former list of every background, which grew to eleven buttons and
+ * pushed the lobby controls off a projector screen.
  *
- * The picker never decides anything locally: a click sends the id to the server
- * and the `host:background` broadcast repaints. That is what keeps the host, the
- * beamer and the players on the same image.
+ * Two rules keep it honest:
+ *   - The server owns the position. An arrow only *sends* the neighbouring id;
+ *     the `host:background` broadcast repaints the label, exactly as before.
+ *   - The arrows carry the destination in their accessible name ("Next:
+ *     Skyline"), so a host on a projector knows what a click selects.
  */
 function backgroundPicker(): HTMLElement | null {
   backgroundLabelNode = null;
+  backgroundPositionNode = null;
+  backgroundPrevNode = null;
+  backgroundNextNode = null;
   if (lastRender === null) return null;
   // Only in the lobby: the image must not be swapped mid-question by accident.
   // A reconnect arrives as a `sync` snapshot, so that path is matched through the
-  // derived screen — otherwise the picker would vanish on a reload.
+  // derived screen — otherwise the carousel would vanish on a reload.
   const inLobby =
     lastRender.kind === 'lobby' ||
     (lastRender.kind === 'sync' && hostScreen(lastRender.state) === 'lobby');
@@ -740,24 +753,27 @@ function backgroundPicker(): HTMLElement | null {
   backgroundLabelNode = el(
     'span',
     { class: 'show__background-label' },
-    backgroundLabel(backgroundId),
+    backgroundLabel(backgroundChoice),
   );
 
-  const rows = backgroundChoices(backgroundId).map((choice) =>
-    button(choice.name, {
-      variant: choice.active ? 'secondary' : 'ghost',
-      small: true,
-      ariaLabel: `${choice.name} (${choice.file})`,
-      onClick: () => void chooseBackground(choice.id),
-    }),
-  );
-
-  const random = button('Random', {
+  const prev = button('‹', {
     variant: 'ghost',
     small: true,
-    ariaLabel: 'Pick a random background for this round',
-    onClick: () => void chooseBackground(RANDOM_BACKGROUND),
+    ariaLabel: `Previous background: ${backgroundNeighbour(backgroundChoice, -1).name}`,
+    onClick: () => void chooseBackground(stepBackground(backgroundChoice, -1)),
   });
+  const next = button('›', {
+    variant: 'ghost',
+    small: true,
+    ariaLabel: `Next background: ${backgroundNeighbour(backgroundChoice, 1).name}`,
+    onClick: () => void chooseBackground(stepBackground(backgroundChoice, 1)),
+  });
+
+  const position = el('span', { class: 'show__background-position' });
+  backgroundPositionNode = position;
+  backgroundPrevNode = prev;
+  backgroundNextNode = next;
+  paintCarousel();
 
   return el(
     'div',
@@ -768,8 +784,44 @@ function backgroundPicker(): HTMLElement | null {
       backgroundLabelNode,
       el('span', { class: 'muted show__background-hint' }, backgroundHint()),
     ),
-    el('div', { class: 'show__background-options' }, random, ...rows),
+    el(
+      'div',
+      { class: 'show__background-carousel', role: 'group', 'aria-label': 'Background' },
+      prev,
+      position,
+      next,
+    ),
   );
+}
+
+/**
+ * Repaint the carousel's position line and arrow labels from `backgroundChoice`.
+ *
+ * Called on every paint path (first build, broadcast, ACK, snapshot), so the
+ * arrows always describe the stop they would move to next. Kept separate from
+ * `backgroundPicker` so a live change does not rebuild the buttons and steal
+ * focus from the host's keyboard.
+ */
+function paintCarousel(): void {
+  const selection = backgroundSelection(backgroundChoice);
+  if (backgroundPositionNode) {
+    backgroundPositionNode.replaceChildren(
+      el('span', { class: 'show__background-name' }, selection.name),
+      el('span', { class: 'show__background-index' }, `${selection.position} / ${selection.total}`),
+    );
+  }
+  if (backgroundPrevNode) {
+    backgroundPrevNode.setAttribute(
+      'aria-label',
+      `Previous background: ${backgroundNeighbour(backgroundChoice, -1).name}`,
+    );
+  }
+  if (backgroundNextNode) {
+    backgroundNextNode.setAttribute(
+      'aria-label',
+      `Next background: ${backgroundNeighbour(backgroundChoice, 1).name}`,
+    );
+  }
 }
 
 /** Ask the server to change the round's background; the broadcast repaints. */
@@ -781,28 +833,33 @@ async function chooseBackground(choice: string): Promise<void> {
   const gameId = currentGameId();
   if (!gameId) return;
   try {
-    const { background } = await request<{ background: string }>(
+    // The ACK carries the stored position as well as the resolved image, so the
+    // carousel labels the round with what the server chose — picking Random
+    // leaves the label on Random even though the image is a concrete id.
+    const ack = await request<{ background: string; choice: string }>(
       ensureSocket(),
       'host:background',
       { gameId, background: choice },
     );
-    setBackground(background);
+    setBackground(ack.background, ack.choice);
   } catch (error) {
     toast(errorText(error), 'error');
   }
 }
 
 /**
- * Apply the server's background value to the layer and the picker label.
+ * Apply the server's background values to the layer and the carousel.
  *
- * Called from the `host:background` broadcast, from a snapshot and from the ACK,
- * so all three paths end in the same paint and a repaint can never disagree with
- * the server.
+ * `background` is the concrete image every screen paints; `choice` is the
+ * carousel position behind it (a catalogue id or `random`). Called from the
+ * `host:background` broadcast and from the ACK, so both paths end in the same
+ * paint and a repaint can never disagree with the server.
  */
-function setBackground(background: string): void {
-  backgroundId = background;
+function setBackground(background: string, choice: string): void {
+  backgroundChoice = choice;
   applyRoundBackground(background);
-  if (backgroundLabelNode) backgroundLabelNode.textContent = backgroundLabel(background);
+  if (backgroundLabelNode) backgroundLabelNode.textContent = backgroundLabel(choice);
+  paintCarousel();
 }
 
 /** Ask the server to flip the AUTO mode; the `host:auto` broadcast repaints. */
@@ -896,8 +953,11 @@ async function showHome(): Promise<void> {
   autoNode = null;
   // Leaving the show drops the round background too, so an image from a previous
   // game cannot linger behind the quiz picker (Phase 6.10).
-  backgroundId = DEFAULT_BACKGROUND_ID;
+  backgroundChoice = RANDOM_BACKGROUND;
   backgroundLabelNode = null;
+  backgroundPositionNode = null;
+  backgroundPrevNode = null;
+  backgroundNextNode = null;
   clearRoundBackground();
   // No game under control: the show music stops and rewinds (Phase 6.11).
   music.sync(null);
@@ -1218,12 +1278,19 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
         : el('p', { class: 'muted' }, 'No players have joined yet.'),
     );
   } else {
+    // The join view (Phase 6.14): the QR code sits in the same block as the PIN
+    // and the address, so a phone can be pointed at the screen and the PIN read
+    // off the same card. `renderJoinQr` composes the URL from the current origin
+    // and this game's PIN, so the code always opens *this* lobby.
+    const qrHost = el('div', { class: 'lobby__qr' });
+    renderJoinQr(qrHost, pin);
     body = el(
       'div',
       { class: 'lobby__join' },
       el('p', { class: 'muted' }, 'Join at this address with the PIN'),
       el('p', { class: 'lobby__pin' }, pin),
       el('p', { class: 'lobby__actions' }, chip(location.origin + '/', 'cyan')),
+      qrHost,
       players,
     );
   }

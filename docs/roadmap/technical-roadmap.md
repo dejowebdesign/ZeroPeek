@@ -686,6 +686,52 @@ Report: `docs/reports/phase-6-9-5-answer-deadline-and-host-next.md`.
 
 **Status: umgesetzt und gemergt (PR #52, Merge `18e271f`).**
 
+### 9.9 Host-Lobby: Beitritts-QR, Hintergrund-Karussell, `?pin=`-Vorbelegung (Phase 6.14)
+
+Drei kleine Änderungen an der bestehenden Host-Lobby-Karte, rein additiv auf dem vorhandenen
+Vertrag. **Keine** Schemaänderung, **keine** Migration, **kein** Punktwert, **keine** Änderung an
+den gelieferten Hintergrunddateien.
+
+- **QR wieder sichtbar:** `joinQr.ts` existierte vollständig (`joinUrl()`, `qrSvg()`,
+  `renderJoinQr()`), wurde aber von keiner Seite importiert — deshalb war der Code unsichtbar. Die
+  Join-Szene der Lobby hängt ihn jetzt unter PIN und Adresse in einen `.lobby__qr`-Block. Der
+  helligende Hintergrund im SVG ist Absicht: ein dunkles Symbol auf dunklem Glas ist der Grund, warum
+  Scans auf dem Beamer scheitern. Scannbarkeit wurde mit einem **fremden** Decoder (`jsqr`)
+  gegengeprüft, nicht mit dem Encoder selbst.
+- **Karussell statt Liste:** Die elf Chip-Zeilen (`.show__background-options`) wurden zu einer Zeile
+  `‹ Name 3 / 11 ›`. Reihenfolge `Random` + zehn Bilder, Umlauf an beiden Enden. Die Pfeile nennen
+  ihr Ziel im `aria-label`, damit der Host vor dem Klick weiß, was er wählt. `paintCarousel()`
+  aktualisiert Position und Labels **ohne** Neuaufbau, damit ein Live-Wechsel den Fokus nicht
+  stiehlt. Der Server bleibt autoritativ: die Pfeile senden `host:background` und warten auf ACK.
+- **Anzeigenamen gekürzt:** `Skyline`, `Underwater`, `Megacity` … Nur das Label ändert sich; **IDs,
+  Dateinamen und Pfade bleiben unverändert**, damit gespeicherte Spiele und alle Clients dasselbe
+  Bild auflösen.
+- **Position wird persistiert:** Der Engine-Log speichert die Karussell-Position (nicht nur das
+  aufgelöste Bild) und validiert sie beim Neustart; unbekannt oder Pre-6.14 → `Random`.
+  `backgroundChoice` reist in `sync` und in beiden Broadcasts mit.
+- **Random ist kein toter Klick:** `pickRandomBackground(random, exclude)` meidet das gerade
+  sichtbare Bild.
+- **`?pin=`-Vorbelegung:** `pinFromQuery()` liest den Parameter und validiert ihn mit `isValidPin` /
+  `normalizePin`, bevor das Formular gebaut wird. Bewusst streng: ein Link mit ungültigem Zeichen
+  wird abgelehnt statt still bereinigt — ein „reparierter" PIN führte in eine andere Lobby.
+
+| Punkt                      | Inhalt                                                                                                                                                                                               |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**                   | Beamer-taugliche Lobby: scannbarer Beitritt, kompakte Hintergrundwahl                                                                                                                                |
+| **Betroffene Komponenten** | Host-Lobby (Join-Szene), Hintergrundwahl, Spieler-Join-Formular                                                                                                                                      |
+| **Betroffene Dateien**     | `joinQr.ts`, `pages/host.ts`, `hostView.ts`, `playerView.ts`, `pages/player.ts`, `styles/tokens.css`, `shared/backgrounds.ts`, `shared/events.ts`, `backend/services/engine.ts`, `backend/socket.ts` |
+| **Datenmodelle**           | keine (Position liegt im bestehenden Engine-Event-Log)                                                                                                                                               |
+| **API-Änderungen**         | nur additive Felder: `choice` im ACK/Broadcast, `backgroundChoice` im `sync`                                                                                                                         |
+| **Abhängigkeiten**         | 6.10 (Hintergrundbibliothek)                                                                                                                                                                         |
+| **Risiken**                | QR kodiert den Host-Origin (bei mehreren Namen: der benutzte); kurze Labels sind eine Produktentscheidung                                                                                            |
+| **Teststrategie**          | Unit (URL, Karussell-Helfer, `pinFromQuery`), Page-Tests (QR im DOM, Pfeile, ACK-Repaint), Integration (Restart-Restore), lokaler Lauf über den echten Socket                                        |
+| **Abnahmekriterien**       | QR sichtbar und dekodierbar; Pfeile wechseln und überleben Reload; Server bleibt autoritativ; 1421 Tests grün                                                                                        |
+| **Aufwand**                | klein                                                                                                                                                                                                |
+
+Report: `docs/reports/phase-6-14-host-lobby-qr-carousel.md`.
+
+**Status: umgesetzt auf `feat/phase-6-14-host-lobby-qr-background-selector`, Freigabe offen.**
+
 ---
 
 ## 10. Phase 6.9 – Game-Show-Modus (in der bestehenden Host-Ansicht)

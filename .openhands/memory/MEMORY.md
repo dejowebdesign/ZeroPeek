@@ -696,3 +696,22 @@ when unsupported).
   (entry is `dist/server.js`, NOT `dist/index.js`) on :3000, then
   `npx vite --port 12000 --host 0.0.0.0` in `packages/frontend` (proxy → :3000).
   Registration needs `email_verified_at`; set it plus `role='ADMIN'` via psql.
+
+## Host-Lobby (Phase 6.14: QR, Hintergrund-Karussell)
+- **`joinQr.ts` war fertig, aber nirgends importiert** — „QR fehlt" heißt hier *fehlende
+  Verdrahtung*, nicht fehlendes Modul. Join-Szene in `pages/host.ts` rendert ihn in
+  `.lobby__qr`. SVG (kein `<img>`) wegen strikter CSP; weißer Grund ist Pflicht für Beamer.
+- **Karussell-Vertrag:** `BACKGROUND_CHOICES` = `random` + 10 IDs; `stepBackground()` läuft um;
+  `paintCarousel()` aktualisiert **nur** Position/Labels (Buttons bleiben → Fokus bleibt).
+  Server bleibt autoritativ: Pfeile senden `host:background`, warten auf ACK.
+- **Anzeigenamen sind kurz** (`Skyline`, `Underwater`), **IDs/Dateinamen/Pfade unverändert**.
+  Wer Namen ändert, darf nie `file`/`path` anfassen — sonst brechen gespeicherte Spiele.
+- **`pickRandomBackground(random, exclude)`**: Random erneut drücken darf nicht dasselbe Bild
+  liefern. Engine speichert die **Position** (nicht nur das Bild) im Event-Log; Restore
+  validiert, unbekannt → Random. `backgroundChoice` reist in `sync` + Broadcasts.
+- **`?pin=`-Vorbelegung** via `pinFromQuery()` (streng: ungültiges Zeichen wird abgelehnt,
+  nicht still bereinigt — sonst landet der Spieler in einer anderen Lobby).
+- **Lokaler Lauf:** `npx tsx src/server.ts` (kein `tsx watch` — stirbt mit `EBADF`), Port über
+  **`BACKEND_PORT`**; curl-Login braucht `x-csrf-token` aus `GET /api/auth/me`.
+- **QR-Scannbarkeit belastbar prüfen:** Modulmatrix 8× rendern und mit `jsqr` (fremder
+  Decoder) zurücklesen. Das eigene `qrcode-generator` zurückzulesen ist ein Zirkelschluss.
