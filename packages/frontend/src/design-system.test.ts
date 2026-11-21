@@ -845,3 +845,132 @@ describe('round background layer (Phase 6.10)', () => {
     }
   });
 });
+
+describe('player game surface (Phase 6.14)', () => {
+  it('lays the header out as profile, centred logo and status', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.player-head {'),
+      tokens.indexOf('.player-head__profile'),
+    );
+    expect(block).toContain('grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)');
+    // The logo is the middle track, so it stays optically centred.
+    expect(block).toContain('align-items: center');
+  });
+
+  it('stacks the header on a phone and moves the logo to its own row', () => {
+    const phone = tokens.slice(tokens.indexOf('@media (max-width: 640px)'));
+    expect(phone).toContain("'profile status'");
+    expect(phone).toContain("'logo logo'");
+  });
+
+  it('drives the XP bar from a ratio, never from a hardcoded width', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.player-head__xp {'),
+      tokens.indexOf('.player-head__logo'),
+    );
+    expect(block).toContain('width: calc(var(--ratio, 0) * 100%)');
+  });
+
+  it('puts the question card and the ring side by side, ring outside the card', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.player-question {'),
+      tokens.indexOf('.player-question__card'),
+    );
+    expect(block).toContain('grid-template-columns: minmax(0, 1fr) auto');
+    // The ring must not be nested inside the card, or it would be squeezed.
+    expect(tokens).not.toMatch(/\.player-question__card\s+\.countdown/);
+  });
+
+  it('moves the ring above the card below 900px', () => {
+    const narrow = tokens.slice(tokens.indexOf('@media (max-width: 900px)'));
+    expect(narrow).toContain('.player-timer {');
+    expect(narrow).toContain('order: 1');
+  });
+
+  it('draws the low-time tone from the warn token, not a new colour', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.countdown.player-timer--low::before'),
+      tokens.indexOf('.countdown.player-timer--low .countdown__value'),
+    );
+    expect(block).toContain('var(--warn)');
+  });
+
+  it('keeps the player answer board at two columns and stacks it on a phone', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.player-question .question__input:has(> .option)'),
+      tokens.indexOf('.player-question .option {'),
+    );
+    expect(block).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    const phone = tokens.slice(tokens.indexOf('@media (max-width: 640px)'));
+    expect(phone).toContain('.player-question .question__input:has(> .option) {');
+  });
+
+  it('gives the answer cards a real target height, not a fixed pixel value', () => {
+    const block = tokens.slice(
+      tokens.indexOf('.player-question .option {'),
+      tokens.indexOf('.player-question .option__key'),
+    );
+    expect(block).toContain('min-height: clamp(64px, 6.2vh, 104px)');
+  });
+
+  it('only styles player classes the renderer actually emits', () => {
+    const player = read('pages/player.ts');
+    const block = tokens.slice(tokens.indexOf('Phase 6.14'));
+    const classes = new Set(block.match(/\.player-[a-z0-9_-]+/g) ?? []);
+    const missing = [...classes].filter((name) => !player.includes(name.slice(1)));
+    expect(missing).toEqual([]);
+  });
+
+  it('leaves the beamer answer board alone', () => {
+    // The new board is scoped under `.player-question`; the show board keeps
+    // its own two-column rule.
+    expect(tokens).toContain('.show__options {');
+    expect(tokens).not.toMatch(/\.show\s+\.player-question/);
+  });
+});
+
+describe('answer lettering (Phase 6.14)', () => {
+  it('letters the option keys A, B, C instead of 1, 2, 3', () => {
+    const source = read('questionView.ts');
+    expect(source).toContain('export function optionLetter');
+    expect(source).toContain('String.fromCharCode(65 + index)');
+    expect(source).not.toContain("class: 'option__key' }, String(index + 1)");
+  });
+
+  it('letters the host board with the same helper', () => {
+    const host = read('pages/host.ts');
+    expect(host).toContain('optionLetter');
+  });
+});
+
+describe('player countdown (Phase 6.14)', () => {
+  const player = read('pages/player.ts');
+
+  it('drives the ring from the server deadline, not a local timer', () => {
+    expect(player).toContain('function startRing');
+    expect(player).toContain('openedAt + limitMs - clock.serverNow()');
+  });
+
+  it('stops the ring before it starts a new one', () => {
+    // showQuestion opens with stopQuestionTimer(), so two questions in a row can
+    // never leave two intervals painting the same element.
+    const block = player.slice(
+      player.indexOf('function showQuestion'),
+      player.indexOf('function timerRing'),
+    );
+    expect(block).toContain('stopQuestionTimer()');
+  });
+
+  it('clears the ring interval with the deadline timer', () => {
+    const block = player.slice(
+      player.indexOf('function stopQuestionTimer'),
+      player.indexOf('function startRing'),
+    );
+    expect(block).toContain('clearInterval(ringTimer)');
+  });
+
+  it('takes the header rank and score from the server board', () => {
+    expect(player).toContain('currentBoard');
+    expect(player).toContain('if (sync.board) currentBoard = sync.board;');
+  });
+});

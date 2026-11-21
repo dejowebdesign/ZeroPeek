@@ -17,15 +17,16 @@ import type {
   PublicPlayer,
   PublicQuestion,
 } from '@zeropeek/shared';
+import { levelProgress } from '@zeropeek/shared';
 
 import { get } from '../api.js';
-import { playerAvatar, playerBadge } from '../avatar.js';
+import { playerAvatar } from '../avatar.js';
 import { applyRoundBackground, clearRoundBackground } from '../background.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
 import { connectPlayer, request, type PlayerSocket } from '../socket.js';
 import { ClockSync } from '../clockSync.js';
-import { questionInput, questionPrompt } from '../questionView.js';
+import { questionInput } from '../questionView.js';
 import {
   answerDeadlineRemainingMs,
   endProgressActions,
@@ -34,7 +35,17 @@ import {
   lobbyRoster,
   screenForSync,
 } from '../playerView.js';
-import { button, chip, countdown, errorText, field, notice, setBusy, spinner } from '../ui.js';
+import {
+  brand,
+  button,
+  chip,
+  countdown,
+  errorText,
+  field,
+  notice,
+  setBusy,
+  spinner,
+} from '../ui.js';
 import { saveClaim } from '../claim.js';
 import { startStarfield } from '../starfieldLayer.js';
 
@@ -51,6 +62,13 @@ let hostStatus: HostPresence | null = null;
 /** The open question and this player's prior answer, so pause/resume re-renders in place. */
 let currentQuestion: PublicQuestion | null = null;
 let currentPrior: PlayerAnswerState | null = null;
+
+/**
+ * The last public board the server sent (Phase 6.14). Only used to show the
+ * player their own rank and score in the header; it is never written to, never
+ * sorted on the client and never used to compute a score.
+ */
+let currentBoard: PublicPlayer[] = [];
 /** A closure that repaints the current screen, so a host-status change re-renders it. */
 let repaint: (() => void) | null = null;
 /**
@@ -146,11 +164,47 @@ const app: HTMLElement = appElement;
    */
   let questionTimer: number | null = null;
 
+  /**
+   * The visible countdown (Phase 6.14). `questionTimer` only closes the answer
+   * control at the deadline; this interval redraws the ring and the number while
+   * the question is open. Both are cleared together, so a screen change can
+   * never leave a ring ticking over a question that is no longer on screen.
+   */
+  let ringTimer: number | null = null;
+
   function stopQuestionTimer(): void {
     if (questionTimer !== null) {
       clearTimeout(questionTimer);
       questionTimer = null;
     }
+    if (ringTimer !== null) {
+      clearInterval(ringTimer);
+      ringTimer = null;
+    }
+  }
+
+  /**
+   * Drive the ring from the server's own `openedAt` through the clock sync, the
+   * same source the deadline uses. Nothing is stored locally, so a reconnect
+   * continues the countdown instead of restarting it.
+   */
+  function startRing(
+    ring: HTMLElement,
+    value: HTMLElement | null,
+    openedAt: number,
+    limitMs: number,
+  ): void {
+    const paint = (): void => {
+      const remaining = Math.max(0, openedAt + limitMs - clock.serverNow());
+      const ratio = limitMs > 0 ? remaining / limitMs : 0;
+      ring.style.setProperty('--progress', String(ratio));
+      if (value) value.textContent = String(Math.ceil(remaining / 1000));
+      // Below a fifth of the limit the ring turns warm. The colour is a
+      // reinforcement only — the number still states the time in text.
+      ring.classList.toggle('player-timer--low', ratio <= 0.2);
+    };
+    paint();
+    ringTimer = window.setInterval(paint, 250);
   }
 
   /** Show the join form. A signed-in player is asked for the PIN only. */
@@ -360,6 +414,7 @@ const app: HTMLElement = appElement;
     }
 
     const me = loadSession();
+    const myEntry = myBoardEntry();
     render(
       app,
       shell(
@@ -367,30 +422,138 @@ const app: HTMLElement = appElement;
         el(
           'section',
           { class: 'centered' },
+          playerHeader(me?.nickname ?? 'player', me?.avatar, myEntry),
           el(
             'div',
-            { class: 'card question' },
+            { class: 'player-question' },
             el(
               'div',
-              { class: 'question__who' },
-              playerBadge(
-                me?.nickname ?? 'player',
-                me?.avatar,
-                myProgress ? { level: myProgress.level, xp: myProgress.xp } : null,
-                { size: 'sm' },
+              { class: 'player-question__card' },
+              el(
+                'div',
+                { class: 'player-question__head' },
+                el(
+                  'span',
+                  { class: 'player-question__topic' },
+                  question.type === 'slide' ? 'Info' : 'Question',
+                ),
+                el(
+                  'span',
+                  { class: 'player-question__counter' },
+                  `Question ${question.index + 1} of ${question.total}`,
+                ),
               ),
+              el('h2', { class: 'player-question__prompt' }, question.text),
+              el('div', { class: 'player-question__rule' }),
+              question.paused ? notice('The host paused the game.', 'info') : null,
+              input,
+              feedback,
             ),
-            el(
-              'div',
-              { class: 'question__meta muted' },
-              `Question ${question.index + 1} of ${question.total}`,
-            ),
-            questionPrompt(question),
-            question.paused ? notice('The host paused the game.', 'info') : null,
-            input,
-            feedback,
+            // A slide carries no answer and no clock, so the ring is not drawn.
+            question.type === 'slide' || question.paused ? null : timerRing(question),
           ),
         ),
+      ),
+    );
+  }
+
+  /**
+   * The question ring. It is built here rather than inside the card so the two
+   * can sit side by side; `startRing` then drives it from the server's deadline.
+   */
+  function timerRing(question: PublicQuestion): HTMLElement | null {
+    const openedAt = question.openedAt;
+    const limitMs = Math.max(0, question.timeLimit) * 1000;
+    if (openedAt === null || limitMs <= 0) return null;
+    const ring = countdown(Math.ceil(limitMs / 1000), 1);
+    const value = ring.querySelector<HTMLElement>('.countdown__value');
+    const wrap = el(
+      'div',
+      { class: 'player-timer' },
+      ring,
+      el('span', { class: 'player-timer__label' }, 'Seconds left'),
+    );
+    startRing(wrap, value, openedAt, limitMs);
+    return wrap;
+  }
+
+  /**
+   * The player's own row from the current board, or null. Rank and score come
+   * from the server's leaderboard — nothing is counted on the client.
+   */
+  function myBoardEntry(): PublicPlayer | null {
+    const id = loadSession()?.playerId;
+    if (!id) return null;
+    return currentBoard.find((entry) => entry.id === id) ?? null;
+  }
+
+  /**
+   * The three-zone header: the player's profile on the left, the logo in the
+   * centre, rank and score on the right. A signed-in player also gets the real
+   * level and XP figures, from `levelProgress` over the server's XP total.
+   */
+  function playerHeader(
+    nickname: string,
+    avatar: string | null | undefined,
+    mine: PublicPlayer | null,
+  ): HTMLElement {
+    const bar = myProgress ? levelProgress(myProgress.xp) : null;
+    const rank = mine ? currentBoard.indexOf(mine) + 1 : null;
+    return el(
+      'header',
+      { class: 'player-head' },
+      el(
+        'div',
+        { class: 'player-head__profile' },
+        playerAvatar(nickname, avatar, { size: 'sm' }),
+        el(
+          'div',
+          { class: 'player-head__body' },
+          el('span', { class: 'player-head__name' }, nickname),
+          bar
+            ? el('span', { class: 'player-head__level' }, `Level ${bar.level}`)
+            : el('span', { class: 'player-head__level' }, 'Guest'),
+          bar
+            ? el('span', {
+                class: 'player-head__xp',
+                style: { '--ratio': String(bar.ratio) },
+                role: 'progressbar',
+                'aria-label': `Progress to level ${bar.nextLevel}`,
+                'aria-valuemin': '0',
+                'aria-valuemax': String(bar.xpForThisLevel),
+                'aria-valuenow': String(bar.xpIntoLevel),
+                'aria-valuetext': `${bar.xpIntoLevel} of ${bar.xpForThisLevel} XP`,
+              })
+            : null,
+          bar
+            ? el(
+                'span',
+                { class: 'player-head__xp-label' },
+                `${bar.xpToNextLevel} XP to next level`,
+              )
+            : null,
+        ),
+      ),
+      el('div', { class: 'player-head__logo' }, brand()),
+      el(
+        'div',
+        { class: 'player-head__status' },
+        rank === null
+          ? null
+          : el(
+              'div',
+              { class: 'player-stat' },
+              el('span', { class: 'player-stat__value' }, `#${rank}`),
+              el('span', { class: 'player-stat__label' }, 'Rank'),
+            ),
+        mine
+          ? el(
+              'div',
+              { class: 'player-stat' },
+              el('span', { class: 'player-stat__value' }, String(mine.score)),
+              el('span', { class: 'player-stat__label' }, 'Points'),
+            )
+          : null,
       ),
     );
   }
@@ -581,6 +744,8 @@ const app: HTMLElement = appElement;
     // The background comes from the server with every snapshot, so a reconnect
     // restores exactly the image the round is using (Phase 6.10).
     applyRoundBackground(sync.background);
+    // Keep the last board for the header's own rank and score (Phase 6.14).
+    if (sync.board) currentBoard = sync.board;
     switch (screenForSync(sync)) {
       case 'lead':
         if (sync.lead) showLead(sync.lead);

@@ -25,6 +25,16 @@ export function questionPrompt(question: PublicQuestion): HTMLElement {
 }
 
 /**
+ * The letter shown in an option's key field: A, B, C, … so the answer board
+ * reads like a game-show board and a host can point at "B" on the beamer. Past
+ * 26 options the index is used, which keeps the field from growing a second
+ * character.
+ */
+export function optionLetter(index: number): string {
+  return index < 26 ? String.fromCharCode(65 + index) : String(index + 1);
+}
+
+/**
  * The answer control. `onAnswer` is called exactly once with the payload the
  * server expects for this type. For `slide` there is no control at all.
  */
@@ -53,7 +63,7 @@ export function questionInput(
               type: 'button',
               onclick: () => answer(index),
             },
-            el('span', { class: 'option__key' }, String(index + 1)),
+            el('span', { class: 'option__key' }, optionLetter(index)),
             el('span', { class: 'option__label' }, label),
           ),
         );
@@ -93,7 +103,7 @@ export function questionInput(
               boxes[index]!.classList.toggle('option--chosen', chosen.has(index));
             },
           },
-          el('span', { class: 'option__key' }, String(index + 1)),
+          el('span', { class: 'option__key' }, optionLetter(index)),
           el('span', { class: 'option__label' }, label),
         );
         boxes.push(box);

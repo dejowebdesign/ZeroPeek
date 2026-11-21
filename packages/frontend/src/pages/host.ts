@@ -58,6 +58,7 @@ import { ShowController, sceneInputOf, type SceneInput } from '../showScenes.js'
 import { HostMusic } from '../hostMusic.js';
 import { FinaleEffects } from '../finaleEffects.js';
 import { startStarfield } from '../starfieldLayer.js';
+import { optionLetter } from '../questionView.js';
 import {
   brand,
   button,
@@ -1363,7 +1364,7 @@ function showQuestion(
                 el(
                   'div',
                   { class: 'show__option' },
-                  el('span', { class: 'option__key' }, String(index + 1)),
+                  el('span', { class: 'option__key' }, optionLetter(index)),
                   el('span', { class: 'show__option-label' }, label),
                 ),
               ),
