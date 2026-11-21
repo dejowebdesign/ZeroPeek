@@ -203,7 +203,7 @@ async function boot(): Promise<void> {
   document.body.innerHTML = '<div id="app"></div>';
   await import('./pages/host.js');
   await vi.waitFor(() => {
-    if (!screen().includes('Start a game')) throw new Error('home not rendered');
+    if (!screen().includes('Game preparation')) throw new Error('home not rendered');
   });
 }
 
@@ -211,7 +211,7 @@ async function boot(): Promise<void> {
 async function enterLobby(): Promise<void> {
   fake.routes.set('host:create', () => lobbyState());
   await boot();
-  clickButton('Start');
+  clickButton('Start game');
   await vi.waitFor(() => {
     if (!screen().includes('1234')) throw new Error('lobby not rendered');
   });

@@ -26,6 +26,7 @@ import {
 import { get, post, setCsrfToken, ApiError } from '../api.js';
 import { el, render } from '../dom.js';
 import { appShell } from '../navigation.js';
+import { hostDashboard, type DashboardPlayer } from '../hostDashboard.js';
 import { connectHost, request, type HostSocket } from '../socket.js';
 import { ClockSync } from '../clockSync.js';
 import { playerAvatar } from '../avatar.js';
@@ -58,6 +59,7 @@ import { ShowController, sceneInputOf, type SceneInput } from '../showScenes.js'
 import { HostMusic } from '../hostMusic.js';
 import { FinaleEffects } from '../finaleEffects.js';
 import { startStarfield } from '../starfieldLayer.js';
+import { optionLetter } from '../questionView.js';
 import {
   brand,
   button,
@@ -81,7 +83,15 @@ interface QuizSummary {
   id: string;
   title: string;
   questionCount: number;
+  category?: string | null;
 }
+
+/**
+ * The quiz the dashboard's start button would launch. Kept at module scope so a
+ * repaint (a change of selection) and a return from a finished round both land on
+ * the host's last choice rather than silently resetting to the newest quiz.
+ */
+let dashboardQuizId: string | null = null;
 
 /** A game the host has created or resumed. */
 interface HostGame {
@@ -89,6 +99,7 @@ interface HostGame {
   pin: string;
 }
 
+/** A finished or open game row from `/api/reports/games`. */
 interface GameRow {
   id: string;
   pin: string;
@@ -841,6 +852,34 @@ async function resumeGame(gameId: string): Promise<void> {
   }
 }
 
+/**
+ * Read the roster of one open game from its report.
+ *
+ * The dashboard shows the lobby players before a game is under host control, so
+ * it cannot use the socket snapshot (that needs `host:join`, which would put the
+ * host *into* the game and leave the dashboard). The report endpoint carries the
+ * same seat data and is already staff-guarded, so it is the honest source: it
+ * returns the real players or an empty list, never a sample.
+ */
+async function loadRoster(gameId: string): Promise<DashboardPlayer[]> {
+  try {
+    const report = await get<{ players: { playerId: string; nickname: string }[] }>(
+      `/api/reports/games/${gameId}`,
+    );
+    return (report.players ?? []).map((player) => ({
+      id: player.playerId,
+      nickname: player.nickname,
+      // The report carries no avatar, so the seat is drawn from its initial. The
+      // dashboard must not guess a character the server did not send.
+      avatar: '',
+    }));
+  } catch {
+    // A roster is an optional extra on the dashboard: a failed read must not take
+    // the whole start surface down, so the column simply stays empty.
+    return [];
+  }
+}
+
 /** The home screen: choose a quiz, resume a game, or read the reports. */
 async function showHome(): Promise<void> {
   stopTimer();
@@ -903,6 +942,18 @@ async function showHome(): Promise<void> {
     const open = games.filter((game) => game.phase !== 'end');
     const finished = games.filter((game) => game.phase === 'end');
 
+    // The dashboard keeps the host's quiz choice across repaints and reloads of
+    // this screen. It falls back to the newest quiz, so the start button is
+    // usable without a first click, but nothing is started implicitly.
+    if (!quizzes.some((quiz) => quiz.id === dashboardQuizId)) {
+      dashboardQuizId = quizzes[0]?.id ?? null;
+    }
+
+    // The roster belongs to an open game. Only the newest one is read, so the
+    // dashboard costs one extra request and never fans out over every game.
+    const rosterGame = open[0] ?? null;
+    const roster: DashboardPlayer[] = rosterGame ? await loadRoster(rosterGame.id) : [];
+
     render(
       app,
       appShell({
@@ -931,106 +982,81 @@ async function showHome(): Promise<void> {
           }),
         ],
         children: [
-          el(
-            'section',
-            { class: 'wrap' },
-            open.length
-              ? el(
-                  'div',
-                  null,
-                  el('h2', { class: 'section-title' }, 'Open games'),
+          hostDashboard(
+            {
+              quizzes: quizzes.map((quiz) => ({
+                id: quiz.id,
+                title: quiz.title,
+                questionCount: quiz.questionCount,
+                category: quiz.category ?? null,
+              })),
+              selectedQuizId: dashboardQuizId,
+              openGames: open.map((game) => ({
+                id: game.id,
+                pin: game.pin,
+                quizTitle: game.quiz?.title ?? 'Deleted quiz',
+                playerCount: game._count.players,
+                phase: game.phase,
+              })),
+              roster,
+              rosterGame: rosterGame
+                ? {
+                    id: rosterGame.id,
+                    pin: rosterGame.pin,
+                    quizTitle: rosterGame.quiz?.title ?? 'Deleted quiz',
+                    playerCount: rosterGame._count.players,
+                    phase: rosterGame.phase,
+                  }
+                : null,
+            },
+            {
+              onSelectQuiz: (quizId) => {
+                dashboardQuizId = quizId;
+                void showHome();
+              },
+              onStart: () => {
+                if (dashboardQuizId) void start(dashboardQuizId);
+              },
+              onResume: (gameId) => void resumeGame(gameId),
+            },
+          ),
+          // Finished games stay reachable from the dashboard; the reports are the
+          // only place a host can read a past round, so they are not dropped.
+          ...(finished.length
+            ? [
+                el(
+                  'section',
+                  { class: 'wrap' },
+                  el('h2', { class: 'section-title' }, 'Finished games'),
                   el(
                     'ul',
-                    { class: 'quiz-list' },
-                    ...open.map((game) =>
+                    { class: 'report-list' },
+                    ...finished.map((game) =>
                       el(
                         'li',
-                        { class: 'quiz-list__item card' },
+                        { class: 'report-list__item card' },
+                        el('h3', null, game.quiz?.title ?? 'Deleted quiz'),
                         el(
-                          'div',
-                          null,
-                          el(
-                            'h2',
-                            { class: 'quiz-list__title' },
-                            `${game.quiz?.title ?? 'Deleted quiz'} · ${game.pin}`,
-                          ),
-                          el(
-                            'p',
-                            { class: 'muted' },
-                            `${game._count.players} player(s) · ${game.phase}`,
-                          ),
+                          'p',
+                          { class: 'muted' },
+                          `${game._count.players} player(s) · ${new Date(game.createdAt).toLocaleString()}`,
                         ),
                         el(
                           'div',
                           { class: 'quiz-list__actions' },
-                          button('Resume', {
-                            variant: 'primary',
-                            onClick: () => void resumeGame(game.id),
+                          button('View report', { onClick: () => void showReport(game.id) }),
+                          button('Ranking CSV', {
+                            onClick: () => {
+                              location.href = `/api/reports/games/${game.id}/ranking.csv`;
+                            },
                           }),
                         ),
                       ),
                     ),
                   ),
-                )
-              : null,
-            el('h2', { class: 'section-title' }, 'Start a game'),
-            quizzes.length === 0
-              ? emptyState(
-                  'No quizzes yet',
-                  'Create your first quiz in the editor.',
-                  button('Open editor', { onClick: () => (location.href = './editor.html') }),
-                )
-              : el(
-                  'ul',
-                  { class: 'quiz-list' },
-                  ...quizzes.map((quiz) =>
-                    el(
-                      'li',
-                      { class: 'quiz-list__item card' },
-                      el(
-                        'div',
-                        null,
-                        el('h2', { class: 'quiz-list__title' }, quiz.title),
-                        el('p', { class: 'muted' }, `${quiz.questionCount} question(s)`),
-                      ),
-                      el(
-                        'div',
-                        { class: 'quiz-list__actions' },
-                        button('Start', { variant: 'primary', onClick: () => void start(quiz.id) }),
-                      ),
-                    ),
-                  ),
                 ),
-            el('h2', { class: 'section-title' }, 'Finished games'),
-            finished.length === 0
-              ? emptyState('No finished games yet', 'Finished games and their reports appear here.')
-              : el(
-                  'ul',
-                  { class: 'report-list' },
-                  ...finished.map((game) =>
-                    el(
-                      'li',
-                      { class: 'report-list__item card' },
-                      el('h3', null, game.quiz?.title ?? 'Deleted quiz'),
-                      el(
-                        'p',
-                        { class: 'muted' },
-                        `${game._count.players} player(s) · ${new Date(game.createdAt).toLocaleString()}`,
-                      ),
-                      el(
-                        'div',
-                        { class: 'quiz-list__actions' },
-                        button('View report', { onClick: () => void showReport(game.id) }),
-                        button('Ranking CSV', {
-                          onClick: () => {
-                            location.href = `/api/reports/games/${game.id}/ranking.csv`;
-                          },
-                        }),
-                      ),
-                    ),
-                  ),
-                ),
-          ),
+              ]
+            : []),
         ],
       }),
     );
@@ -1363,7 +1389,7 @@ function showQuestion(
                 el(
                   'div',
                   { class: 'show__option' },
-                  el('span', { class: 'option__key' }, String(index + 1)),
+                  el('span', { class: 'option__key' }, optionLetter(index)),
                   el('span', { class: 'show__option-label' }, label),
                 ),
               ),

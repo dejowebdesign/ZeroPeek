@@ -162,3 +162,26 @@ describe('solutionText', () => {
     }
   });
 });
+
+describe('answer lettering (Phase 6.14)', () => {
+  it('letters the option keys A, B, C, D', () => {
+    const view = questionInput(asPublic(sample('single')), () => undefined);
+    const keys = [...view.querySelectorAll('.option__key')].map((node) => node.textContent);
+    expect(keys).toEqual(['A', 'B']);
+  });
+
+  it('keeps the option buttons clickable with their payload index', () => {
+    let answer: unknown;
+    const view = questionInput(asPublic(sample('single')), (value) => (answer = value));
+    const buttons = view.querySelectorAll<HTMLButtonElement>('button.option');
+    expect(buttons).toHaveLength(2);
+    buttons[1]!.click();
+    expect(answer).toBe(1);
+  });
+
+  it('does not draw a letter field on true/false, which has no options', () => {
+    const view = questionInput(asPublic(sample('trueFalse')), () => undefined);
+    expect(view.querySelectorAll('.option')).toHaveLength(2);
+    expect(view.querySelectorAll('.option__key')).toHaveLength(0);
+  });
+});

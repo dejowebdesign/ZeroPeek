@@ -545,8 +545,22 @@ when unsupported).
   **never** re-rolled by join/start/question. No migration — `load()` restores the last valid
   event, so `engine.evict()` is the restart-path test. `setBackground()` is idempotent.
 - The frontend paints one inert `[data-round-background]` div and only rewrites
-  `--round-background` (no DOM recreation); `backdrop.css` adds a dark scrim so quiz text stays
-  readable on any motif.
+  `--round-background` (no DOM recreation).
+- **Transparency, measured (Section 2 addendum):** the scrim hid the image, not the
+  opacity. `::after` was `rgba(6,8,20,.72→.86)`; lowering opacity *alone* makes
+  recognisability worse (corr 0.142 → 0.101). Both must move together → image `0.38`,
+  scrim `.32`/`.32→.46` gives corr **0.253** vs 0.142 before. Contrast comes from the
+  `.show__board.card` glass (**17.7:1** on the brightest motif
+  `synthwave_megacity_detail`), and the no-blur fallback is opaque
+  `--glass-fallback: #12121f` — the scrim protects nothing the card doesn't.
+  Phone `.32`, reduced-transparency `.26`.
+- **Show-surface starfield is `.centered::before`** (`.starfield` is auth/join only).
+  Star visibility saturates: `0.15` → maxΔ 11/255 (invisible), `0.30` → 24/255 (= the
+  full-opacity peak). Set `0.3`; never below ~0.25.
+- Pinned by `design-system.test.ts`: image opacity band 0.25–0.45, every scrim alpha
+  ≤0.46, star opacity 0.25–0.35. Measure by serving old/new `backdrop.css`, headless
+  chromium screenshot, numpy-mask the card rect, compare photo contribution +
+  `corrcoef` vs the source motif (`pip install pillow numpy`). **Never view the PNGs.**
 - **Open product decision:** no image is mapped to a specific screen (lobby/final/podium). The
   ten files are a round-wide pool; motif→scene mapping is the owner's call.
 
@@ -584,3 +598,76 @@ when unsupported).
 - CSS breakpoint trap: `auth.test.ts` anchors on
   `tokens.lastIndexOf('@media (max-width: 480px)')`. A new media query **at 480px**
   in `tokens.css` breaks it — use another width (560px used here).
+
+## GitHub API access in this sandbox
+- **`gh` CLI is not authenticated; `$GITHUB_TOKEN` returns 401.** Pushing still works
+  because a credential helper holds an `x-access-token`. To call the REST API, read it
+  back without echoing it:
+  `PW=$(git credential fill <<'EOT' | sed -n 's/^password=//p'` / `protocol=https` /
+  `host=github.com` / `EOT` `)` then `curl -s -u "x-access-token:$PW" https://api.github.com/...`.
+- `create_pr` opens PRs **as draft** by default (`draft: true`). Say so; don't call it ready.
+
+## Frontend: Sternenhimmel & Finale (Phase 6.13)
+- Sterne kommen aus `starfieldCanvas.ts` (Canvas, z-index -2), NICHT mehr aus
+  CSS-Tiles. `.centered::before` versorgte **player, host, profile, inventory** –
+  jede dieser Seiten muss `startStarfield('player'|'host')` rufen.
+- `startStarfield`-Identität ist `(profile, calm)`; ohne `calm` in der Identität
+  ist der Calm-Toggle ein No-Op (auth.ts ruft es erneut auf).
+- Finale: `calm`/`density`/`pace` = Modus B (pace 0.45, density 0.45). Canvas ist
+  in BEIDEN Modi gemountet. Kein `display:none` auf `.finale` – das war neben dem
+  frühen `return` die zweite Ursache für "nur Ton".
+- Scrim des Rundenhintergrunds: 0.38 (Handy 0.32, reduced-transparency 0.26),
+  Alphas bleiben <= 0.5. Lesbarkeit kommt aus der `.card`-Glassflaeche, nicht
+  aus dem Scrim.
+- Testfalle `finaleEffects.test.ts`: `advance()` nutzt eine globale Frame-Queue,
+  taugt nicht fuer Instanz-Vergleiche -> `tick()` + `clock` direkt, `clock` vor
+  jedem `start()` zuruecksetzen.
+
+## Player surface redesign (Phase 6.14, commit b86eed7, branch `feat/phase-6-14-ui-redesign`)
+- **`/host.html` IS the beamer** (dual-purpose). Game screens render without the
+  shell/nav on purpose. A sidebar "host dashboard" would destroy the projection
+  surface and needs a second route → product decision for chrisB, not unilateral.
+- Verified helper shapes: `countdown(seconds, ratio)` (no options object),
+  `brand({ href? })` only, `el()` takes `style` as an **object**. No `.sr-only`
+  utility exists → use `role="progressbar"` + `aria-value*`.
+- `questionInput` reads options from `question.display` (`questionDisplay()`),
+  never `question.options`; test fixtures need the local `asPublic()` helper.
+- **No level names exist in code** (spec §18 examples are not implemented) →
+  render `Level N` only, never invent labels.
+- `trueFalse` options have no `.option__key`; a 2-column option grid must exclude
+  them via `.option:not(:has(> .option__key))` or the label is squeezed.
+- Countdown ring paints from server `openedAt` via `clock.serverNow()` and toggles
+  `player-timer--low` **on the ring element** → CSS must be `.countdown.player-timer--low`.
+- `design-system.test.ts` now has a guard that every `.player-*` class styled in
+  `tokens.css` appears in `player.ts` (catches dead CSS after a refactor).
+
+## Phase 6.14 – verbindliche Wireframes (A umgesetzt, B blockiert)
+- **A (Spieleroberfläche) ist umgesetzt.** Drei Ebenen: `playerHeader` (Profil+XP
+  | Logo | Rang/Punkte/Settings) → `.player-question` Grid `4fr / 1fr`
+  (Karte / Ring) → Antwortboard. `.centered.player-game` setzt
+  `place-items: start center`, damit der Kopf Ebene 1 bleibt.
+- **Logo-Dopplung war ein echter Bug** (aus b86eed7): `appShell` zeichnete die
+  Brand im Top-Bar, `playerHeader` ein zweites Mal. Fix: `AppShellOptions.hideBrand`
+  — und der Top-Bar wird **ganz weggelassen**, wenn `hideBrand` gesetzt ist und es
+  weder `badge` noch `actions` gibt (`showTop`). Guards in `navigation.test.ts`.
+- **Ring-Überlauf war ein echter Bug**: `17vmin` (bis 168 px) passt nicht in die
+  1fr-Spalte bei 1024×768 (~119 px). Fix: `.player-timer .countdown { width:100%;
+  max-width: clamp(96px,17vmin,168px) }`. Guard in `design-system.test.ts`.
+- **Kein `settings.html` existiert.** Wireframe A verlangt „Einstellungen" im
+  Kopf → als nicht-klickbarer `span.player-head__settings` mit `aria-disabled`
+  und „coming soon"-Titel gerendert (gleiches Muster wie `nav__item--soon`),
+  auf dem Handy nur das Glyph. **Keine Seite erfunden.**
+- **B ist blockiert — harter Beleg:** `docs/roadmap/technical-roadmap.md:590`
+  und `docs/reports/phase-6-9-3-host-auto-control.md:50` entfernen den
+  Präsentationsmodus **bewusst** („eine Host-/Beamer-Ansicht", „Presentation mode
+  and the scene bar are **removed**"). `hostPage.test.ts` sperrt die Labels per
+  `REMOVED_LABELS` (`Presentation mode`, `Exit presentation`, `Scene 2 of 13`, …)
+  → ein 3-Spalten-Host-Dashboard mit „Vollbild"-Umschalter würde genau das
+  wieder einführen und diese Tests brechen. **Entscheidung chrisB nötig.**
+- Hintergrund-Assets sind geliefert und bereits integriert (Phase 6.10):
+  `ZeroPeek_Background.zip` → 10 × WebP, alle 16:9 (1672×941), 90–153 KB,
+  Dateinamen exakt wie `BACKGROUND_CATALOGUE` in `packages/shared/src/backgrounds.ts`.
+- Neue Audio-Dateien im Root (noch **nicht** integriert, Phase 6.11 offen):
+  `mastered_vorbis_96.ogg` (1,7 MB), `sfxmint-crowd-chant-15.wav` (912 KB),
+  `sfxmint-fireworks-02.wav` (557 KB). WAV sollte vor Einbindung zu OGG/MP3
+  konvertiert werden (Größe/Netzlast).

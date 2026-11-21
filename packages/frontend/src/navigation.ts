@@ -58,13 +58,21 @@ export const PLAYER_NAV: readonly NavItem[] = [
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ];
 
-/** The host navigation. Later phases fill in control, backgrounds, avatars and reports. */
+/**
+ * The host navigation (Phase 6.14, Option B).
+ *
+ * The entries follow the agreed host wireframe. Only destinations that exist are
+ * linked: the dashboard itself and the quiz editor; the admin page is appended
+ * separately for an administrator. The rest stay "soon" placeholders — the same
+ * contract the player navigation uses — so the planned structure is visible
+ * without pretending a page exists. There is deliberately no separate "prepare"
+ * entry: the dashboard *is* the preparation surface.
+ */
 export const HOST_NAV: readonly NavItem[] = [
   { id: 'overview', label: 'Overview', href: './host.html', icon: '⌂' },
-  { id: 'control', label: 'Game control', icon: '▶' },
-  { id: 'quizzes', label: 'Quizzes', href: './editor.html', icon: '✎' },
+  { id: 'quizzes', label: 'Quizzes & questions', href: './editor.html', icon: '✎' },
   { id: 'backgrounds', label: 'Backgrounds', icon: '▤' },
-  { id: 'players', label: 'Players', icon: '☰' },
+  { id: 'lobby', label: 'Players & lobby', icon: '☰' },
   { id: 'avatars', label: 'Inventory & avatars', icon: '▦' },
   { id: 'reports', label: 'Reports', icon: '▥' },
 ];
@@ -149,6 +157,11 @@ export interface AppShellOptions {
   brandHref?: string;
   /** Append the admin entry (host role only). */
   isAdmin?: boolean;
+  /**
+   * Suppress the brand in the top bar. A page whose own header carries the logo
+   * in its centre column sets this, so the brand still appears exactly once.
+   */
+  hideBrand?: boolean;
   /** Right-hand actions in the top bar, e.g. Sign out. */
   actions?: Node[];
   /** The page content, placed in the shell's main region. */
@@ -164,20 +177,36 @@ export interface AppShellOptions {
  * brand is never rendered twice.
  */
 export function appShell(options: AppShellOptions): HTMLElement {
-  const { role, active, title, badge, brandHref, isAdmin, actions = [], children } = options;
+  const {
+    role,
+    active,
+    title,
+    badge,
+    brandHref,
+    isAdmin,
+    hideBrand,
+    actions = [],
+    children,
+  } = options;
   const nav: NavOptions = { isAdmin };
 
-  const topBar = el(
-    'header',
-    { class: 'shell__top' },
-    el(
-      'div',
-      { class: 'shell__brand' },
-      brand(brandHref ? { href: brandHref } : {}),
-      badge ? el('span', { class: 'shell__badge' }, badge) : null,
-    ),
-    actions.length ? el('div', { class: 'shell__actions' }, ...actions) : null,
-  );
+  // A page that carries the brand in its own header has nothing left for the top
+  // bar, so it is omitted entirely rather than left as an empty strip.
+  const showTop = !hideBrand || Boolean(badge) || actions.length > 0;
+
+  const topBar = showTop
+    ? el(
+        'header',
+        { class: 'shell__top' },
+        el(
+          'div',
+          { class: 'shell__brand' },
+          hideBrand ? null : brand(brandHref ? { href: brandHref } : {}),
+          badge ? el('span', { class: 'shell__badge' }, badge) : null,
+        ),
+        actions.length ? el('div', { class: 'shell__actions' }, ...actions) : null,
+      )
+    : null;
 
   const sideNav = el(
     'nav',

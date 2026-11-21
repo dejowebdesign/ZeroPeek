@@ -107,6 +107,26 @@ describe('appShell', () => {
     expect(shell.querySelector('.shell__top .brand')).not.toBeNull();
   });
 
+  it('drops the top bar entirely when a page carries the brand itself', () => {
+    // A page whose own header centres the logo sets `hideBrand`; the shell must
+    // then leave no empty strip behind, and must not draw the brand a second time.
+    const shell = appShell({ role: 'player', active: 'questions', hideBrand: true, children: [] });
+    expect(shell.querySelectorAll('.brand__logo')).toHaveLength(0);
+    expect(shell.querySelector('.shell__top')).toBeNull();
+  });
+
+  it('keeps the top bar when a hidden-brand page still needs actions', () => {
+    const shell = appShell({
+      role: 'player',
+      active: 'questions',
+      hideBrand: true,
+      actions: [document.createElement('button')],
+      children: [],
+    });
+    expect(shell.querySelector('.shell__top')).not.toBeNull();
+    expect(shell.querySelectorAll('.brand__logo')).toHaveLength(0);
+  });
+
   it('renders the page title as the single h1', () => {
     const shell = appShell({ role: 'host', active: 'overview', title: 'Welcome', children: [] });
     expect(shell.querySelectorAll('h1')).toHaveLength(1);
