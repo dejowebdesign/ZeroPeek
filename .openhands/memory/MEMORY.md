@@ -480,6 +480,25 @@ when unsupported).
   …/schema.prisma`, `ls …/prisma/migrations/`, `ls …/src/{routes,services}`, and the
   `*.integration.test.ts` names.
 
+## Finale-Feuerwerk (Podium) — Phase 6.11.2 / 6.11.3
+- `packages/frontend/src/finaleEffects.ts` ist **host-only**. Isolations-Test verlangt:
+  kein `finaleEffects`/`finale-fireworks`/`finale-crowd` in `pages/` außer `host.ts`.
+- Timeline-Vertrag (nicht ändern): `ROCKET_MS=0`, `EXPLOSION_MS=1500`, `CROWD_MS=2100`,
+  `FINALE_END_MS=7000`; Audio-Reihenfolge Feuerwerk→Applaus, idempotent pro `gameId`.
+- **"Animation unsichtbar" = Fläche messen, nicht Code lesen.** 6.11.2 malte nur 0.19–0.25 %
+  der Fläche (1 Rakete mittig, 1 Burst) → auf dem Beamer nicht zu sehen. 6.11.3-Rewrite
+  (Script aus 10 Raketen + 7 Bursts + 10 Nachzüglern, additive Blending) erreicht
+  **0.74 % im Aufstieg / 4.07 % Peak / 1.2–2.1 % bis 6.9 s**.
+- **Per-Frame-Emitter brauchen ein Sub-Budget.** Trails füllten `MAX_PARTICLES` und
+  `add()` verwarf danach die Bursts lautlos → Bild wurde zum Feuerwerks-Zeitpunkt
+  *dunkler*. Jetzt `MAX_TRAIL_PARTICLES=300` in `MAX_PARTICLES=900`, `kind:'trail'`,
+  Zähler in `step()` per `reduce` neu berechnet.
+- Podium bleibt lesbar: Canvas `z-index:40` < Board `41`, `pointer-events:none`
+  (load-bearing). Karte nur 0.18 % verändert vs. No-Animation-Baseline.
+- Mess-Harness (scratch, `/tmp/vis/`): Fake-Clock + manuelle `frames`-Queue, dann
+  `getImageData()` → Pixelzahl/BBox/Drittel; Ausgabe via `<pre>` + `chromium --dump-dom`
+  (keine Screenshots nötig).
+
 ## NoPeek reference project
 
 - Reference app **NoPeek** lives at `https://nopeek.projekt-chrisb.de`. No ZIP/source archive is
