@@ -497,7 +497,21 @@ when unsupported).
   (load-bearing). Karte nur 0.18 % verändert vs. No-Animation-Baseline.
 - Mess-Harness (scratch, `/tmp/vis/`): Fake-Clock + manuelle `frames`-Queue, dann
   `getImageData()` → Pixelzahl/BBox/Drittel; Ausgabe via `<pre>` + `chromium --dump-dom`
-  (keine Screenshots nötig).
+  (keine Screenshots nötig). `--dump-dom` und `--screenshot` **nie im selben Lauf**
+  (Screenshot-Modus liefert kein DOM) → zwei Pässe; `--window-size=1920,993
+  --force-device-scale-factor=1` für die Referenzauflösung.
+- **Fläche kommt von Wolken, nicht von Partikeln.** `Cloud`-Layer (weiche
+  Radialgradienten, eigenes Array, `MAX_CLOUDS=28`) bringt 4 % → 15–34 %; mit Punkten
+  allein ist bei ~5 % Schluss. Gradient braucht ein **Plateau** (4 Stops:
+  1.0 / 0.78@50 % / 0.3@80 % / 0), sonst wird es ein Schleier statt eines Feuerwerks.
+- **„Deckung“ mit Alpha>0 ist wertlos** — immer Alpha-Histogramm messen
+  (>8 wash / >64 body / >128 hot / >200 core). Zielkorridor 6.11.3: body>64 ≈ 22 %
+  bei wash>8 ≈ 32 %. `MAX_PARTICLES=1600`, `MAX_TRAIL_PARTICLES=360`.
+- **Lesbarkeit ≠ geometrisches Keep-out.** Halo kann größer als der Frame sein. Die
+  gültige Invariante ist die **Alpha auf dem Text** (Test: Gradientwert an 3 Textpunkten
+  < 0.18; Browser: Canvas-Alpha unter dem Siegertext 0–3.6/255, Textkontrast 9.57
+  identisch mit/ohne Animation). `placeBurst()` ist aktiv und verschiebt Bursts aus
+  der Keep-Out-Ellipse.
 
 ## NoPeek reference project
 
