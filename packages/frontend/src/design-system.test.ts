@@ -545,6 +545,57 @@ describe('host music stays off the player devices (Phase 6.11)', () => {
   });
 });
 
+describe('finale effects stay off the player devices (Phase 6.11.2)', () => {
+  // The fireworks, the applause and the confetti are a show feature. The guard is
+  // structural, like the music guard above: a player entry that never imports the
+  // module cannot download the two effects or run the canvas, whatever a runtime
+  // flag says.
+  const playerSurfaces = [
+    'pages/player.ts',
+    'playerView.ts',
+    'index.html',
+    'showView.ts',
+    'showScenes.ts',
+  ];
+
+  for (const file of playerSurfaces) {
+    it(`${file} does not reference the finale module or its effects`, () => {
+      const source = read(file);
+      expect(source).not.toContain('finaleEffects');
+      expect(source).not.toContain('finale-fireworks');
+      expect(source).not.toContain('finale-crowd');
+    });
+  }
+
+  it('the host surface is the only place that starts the finale', () => {
+    expect(read('pages/host.ts')).toContain("from '../finaleEffects.js'");
+    expect(read('pages/host.ts')).toContain('finale.start(');
+  });
+
+  it('the two supplied effects live under the documented audio folder', () => {
+    const module = read('finaleEffects.ts');
+    expect(module).toContain("'/audio/sfx/finale-fireworks.ogg'");
+    expect(module).toContain("'/audio/sfx/finale-crowd.ogg'");
+    expect(existsSync(join(here, '../public/audio/sfx/finale-fireworks.ogg'))).toBe(true);
+    expect(existsSync(join(here, '../public/audio/sfx/finale-crowd.ogg'))).toBe(true);
+  });
+
+  it('keeps the two effects out of the player entry bundle', () => {
+    // A player must not even download the files. Vite emits one bundle per entry
+    // in a production build, so the check runs against `dist` when it exists and
+    // is skipped otherwise (the CI build step covers it).
+    const dist = join(here, '../dist/assets');
+    if (!existsSync(dist)) return;
+    const playerChunks = readdirSync(dist).filter((name) => /^player-.*\.js$/.test(name));
+    for (const name of playerChunks) {
+      const source = readFileSync(join(dist, name), 'utf8');
+      expect(source).not.toContain('finale-fireworks');
+      expect(source).not.toContain('finale-crowd');
+      expect(source).not.toContain('FinaleEffects');
+    }
+  });
+});
+
 describe('every surface shares the same stylesheets', () => {
   it('finds the seven entry points', () => {
     expect(entries).toEqual([

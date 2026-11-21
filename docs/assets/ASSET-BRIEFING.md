@@ -255,7 +255,8 @@ richtig, falsch, Uhr, Verbindung, Ton an/aus, Pause, Weiter, Beenden, Zufall.
 
 ## Block F – Soundeffekte
 
-> **Diese Dateien fehlen vollständig.** Benötigt für Phase 6.11.
+> **Teilweise geliefert (Phase 6.11.2).** Zwei Show-Effekte liegen vor und sind eingebaut:
+> `finale-fireworks` und `finale-crowd`. Die übrigen Effekte fehlen weiterhin.
 
 | Feld           | Inhalt                                            |
 | -------------- | ------------------------------------------------- |
@@ -271,6 +272,17 @@ richtig, falsch, Uhr, Verbindung, Ton an/aus, Pause, Weiter, Beenden, Zufall.
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | UI    | `ui-click`, `ui-select`, `ui-confirm`, `ui-error`, `ui-menu-open`, `ui-menu-close`                                                      |
 | Spiel | `game-start`, `countdown-tick`, `countdown-go`, `answer-correct`, `answer-wrong`, `points-gain`, `rank-change`, `final-round`, `winner` |
+
+**Geliefert und eingebaut (Phase 6.11.2, `feat/phase-6-11-2-finale-effects`):**
+
+| Datei                  | Quelle (Owner-Drop)          | Länge  | Einsatz                              |
+| ---------------------- | ---------------------------- | ------ | ------------------------------------ |
+| `finale-fireworks.ogg` | `sfxmint-fireworks-02.wav`   | 3,16 s | Rakete + Explosion beim Siegerpodium |
+| `finale-crowd.ogg`     | `sfxmint-crowd-chant-15.wav` | 5,17 s | Applaus/Jubel ab 2,1 s               |
+
+Beide wurden nur umkodiert (Ogg Vorbis, 44,1 kHz, stereo, unveränderte Länge), nicht geschnitten,
+normalisiert oder anderweitig bearbeitet. Der Ton wird **ausschließlich** auf der Host-/Beamer-Ansicht
+abgespielt; der Player-Einstieg enthält keine der beiden Dateien.
 
 ---
 

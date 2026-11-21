@@ -8,7 +8,7 @@
  * and sends `host:auto` rather than changing anything locally.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import type { HostState, PublicQuestion } from '@zeropeek/shared';
 
@@ -219,26 +219,88 @@ async function enterLobby(): Promise<void> {
 
 /**
  * jsdom has no media pipeline: `play()` and `pause()` are unimplemented and log
- * to stderr. The host page runs its soundtrack for the whole round (Phase 6.11),
- * so every test that reaches the show would log. The two calls are stubbed for
- * the whole file, and counted, so a test can prove the bed is never re-cued;
- * nothing else about the player is replaced.
+ * to stderr. The host page runs its soundtrack for the whole round (Phase 6.11)
+ * and the finale adds two more sounds (Phase 6.11.2), so every test that reaches
+ * the show would log. The two calls are stubbed for the whole file and recorded,
+ * so a test can prove *which* sound played and in what order — not just how many
+ * times something played. Nothing else about the player is replaced.
+ *
+ * The recording is essential: a bare counter turns every assertion into a race
+ * against the wall clock, because the applause fires on a 2100 ms timer and a
+ * slow CI runner can reach it before the assertion runs.
  */
 let realPlay: typeof HTMLMediaElement.prototype.play;
 let realPause: typeof HTMLMediaElement.prototype.pause;
+let realRequestFrame: typeof window.requestAnimationFrame;
+let realCancelFrame: typeof window.cancelAnimationFrame;
 let mediaCalls: { play: number; pause: number };
+/** The `src` of every `play()`, in call order, so the audio direction is testable. */
+let playedSources: string[];
+/** The `src` of every `pause()`, in call order. */
+let pausedSources: string[];
+let canvasContext: MockInstance | undefined;
+
+/** The trailing file name of a media `src`, e.g. `finale-crowd.ogg`. */
+function sourceName(src: string): string {
+  return src.split('/').pop() ?? src;
+}
+
+/** The `src` names that were played, in order. */
+function playedNames(): string[] {
+  return playedSources.map(sourceName);
+}
+
+/** The smallest object that satisfies the calls `FinaleEffects` makes. */
+function noopContext(): CanvasRenderingContext2D {
+  return {
+    clearRect: () => undefined,
+    beginPath: () => undefined,
+    arc: () => undefined,
+    fill: () => undefined,
+    fillRect: () => undefined,
+    save: () => undefined,
+    restore: () => undefined,
+    translate: () => undefined,
+    rotate: () => undefined,
+    scale: () => undefined,
+    set globalAlpha(_value: number) {},
+    set fillStyle(_value: string) {},
+  } as unknown as CanvasRenderingContext2D;
+}
 
 beforeEach(() => {
   realPlay = HTMLMediaElement.prototype.play;
   realPause = HTMLMediaElement.prototype.pause;
+  realRequestFrame = window.requestAnimationFrame;
+  realCancelFrame = window.cancelAnimationFrame;
   mediaCalls = { play: 0, pause: 0 };
-  HTMLMediaElement.prototype.play = () => {
+  playedSources = [];
+  pausedSources = [];
+  // `function` (not arrow) so `this` is the media element whose src we record.
+  HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
     mediaCalls.play += 1;
+    playedSources.push(this.src ?? '');
     return Promise.resolve();
   };
-  HTMLMediaElement.prototype.pause = () => {
+  HTMLMediaElement.prototype.pause = function (this: HTMLMediaElement) {
     mediaCalls.pause += 1;
+    pausedSources.push(this.src ?? '');
   };
+  // The finale is a page-level singleton that draws on `requestAnimationFrame`
+  // and never stops itself until 7 s have passed. Left real, that loop outlives
+  // the test that started it: the module graph is reset between tests, but the
+  // rAF callback chain is not, so a previous test's applause cue fires into the
+  // next test's recorder. The frame callback is therefore inert here — the
+  // canvas is mounted synchronously in `start()`, which is all these tests
+  // assert, and no animation ever ticks, so nothing can leak across tests.
+  window.requestAnimationFrame = () => 0;
+  window.cancelAnimationFrame = () => undefined;
+  // jsdom has no 2D context either. The finale (Phase 6.11.2) asks for one as soon
+  // as the podium appears; a no-op recorder keeps the console clean without
+  // pretending to draw anything.
+  canvasContext = vi
+    .spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue(noopContext());
 
   fake.handlers.clear();
   fake.routes.clear();
@@ -247,8 +309,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  canvasContext?.mockRestore();
   HTMLMediaElement.prototype.play = realPlay;
   HTMLMediaElement.prototype.pause = realPause;
+  window.requestAnimationFrame = realRequestFrame;
+  window.cancelAnimationFrame = realCancelFrame;
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
@@ -780,5 +845,106 @@ describe('host music control on the live screens (Phase 6.11)', () => {
     // One play for the whole round, and not a single pause.
     expect(mediaCalls.play).toBe(1);
     expect(mediaCalls.pause).toBe(0);
+  });
+});
+
+describe('host page – the finale on the winner podium (Phase 6.11.2)', () => {
+  const podiumPlayers = [
+    { id: 'p1', nickname: 'Ada', avatar: '', score: 30, connected: true },
+    { id: 'p2', nickname: 'Grace', avatar: '', score: 20, connected: true },
+    { id: 'p3', nickname: 'Linus', avatar: '', score: 10, connected: true },
+  ];
+
+  /** Reach the podium through the real host path, with one question played. */
+  async function reachPodium(): Promise<void> {
+    fake.routes.set('host:start', () => ({ phase: 'lead' }));
+    await enterLobby();
+    clickButton('Start game');
+    fake.trigger('host:lead', leadPayload());
+    await vi.waitFor(() => {
+      if (!screen().includes('countdown')) throw new Error('lead not shown');
+    });
+    // One question, so the round has really started — the music bed begins here
+    // and must survive into the finale.
+    fake.trigger('host:question', publicQuestion(0, 'q1'));
+    await vi.waitFor(() => {
+      if (!screen().includes('Question 1 of 3')) throw new Error('question not shown');
+    });
+    fake.trigger('host:ended', { players: podiumPlayers });
+    await vi.waitFor(() => {
+      if (!screen().includes('Final results')) throw new Error('podium not shown');
+    });
+  }
+
+  it('starts the finale when the podium appears and plays the fireworks first', async () => {
+    await reachPodium();
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
+    // The module creates its elements through `new Audio()`, not markup, so the
+    // proof is the recorded source. The order is exact and deterministic: the
+    // music bed opens the round, the fireworks mark the podium. The applause is
+    // on a 2100 ms cue and cannot appear here, because rAF is inert in this file
+    // (see the stub in `beforeEach`), so no finale ever advances a frame.
+    expect(playedNames()).toEqual(['question-background.ogg', 'finale-fireworks.ogg']);
+  });
+
+  it('keeps the winner names and placements readable above the canvas', async () => {
+    await reachPodium();
+    const text = screen();
+    expect(text).toContain('Ada');
+    expect(text).toContain('Grace');
+    expect(text).toContain('Linus');
+    // The canvas is decoration only: it is hidden from assistive tech and cannot
+    // swallow a click on the host's own controls.
+    const canvas = document.querySelector('canvas.finale');
+    expect(canvas?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('does not replay the finale when the podium is repainted', async () => {
+    await reachPodium();
+    const fireworksAfterFirst = playedNames().filter((name) => name === 'finale-fireworks.ogg');
+
+    // The same authoritative snapshot arrives again, as after a reconnect.
+    fake.trigger('host:ended', { players: podiumPlayers });
+    await vi.waitFor(() => {
+      if (!screen().includes('Final results')) throw new Error('podium not repainted');
+    });
+
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
+    // A repaint must not re-cue the fireworks. Counting all plays would be racy
+    // here too, so the assertion is on the specific sound.
+    expect(playedNames().filter((name) => name === 'finale-fireworks.ogg')).toEqual(
+      fireworksAfterFirst,
+    );
+  });
+
+  it('removes the canvas and silences the effects when the show is left', async () => {
+    await reachPodium();
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(1);
+
+    clickButton('Back to home');
+    await vi.waitFor(() => {
+      if (document.querySelectorAll('canvas.finale').length !== 0) {
+        throw new Error('finale canvas still mounted');
+      }
+    });
+    expect(document.querySelectorAll('canvas.finale')).toHaveLength(0);
+  });
+
+  it('stops the music at the end and never restarts it during the finale', async () => {
+    await reachPodium();
+    // The music bed runs for the round and stops when the game ends, exactly as
+    // Phase 6.11 defines it. The finale must not change that: it adds its own
+    // two sounds and never re-cues or restarts the bed.
+    expect(playedNames()[0]).toBe('question-background.ogg');
+    // The bed was started exactly once for the whole round — the finale did not
+    // re-cue it when the podium appeared.
+    expect(playedNames().filter((name) => name === 'question-background.ogg')).toHaveLength(1);
+    // The bed was paused at the end phase...
+    expect(pausedSources.map(sourceName)).toContain('question-background.ogg');
+    // ...and the finale sounds are separate elements, played after it.
+    expect(playedNames()).toContain('finale-fireworks.ogg');
+    expect(playedNames().indexOf('finale-fireworks.ogg')).toBeGreaterThan(
+      playedNames().indexOf('question-background.ogg'),
+    );
   });
 });

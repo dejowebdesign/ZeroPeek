@@ -3276,6 +3276,43 @@ body::before {
   }
 }
 
+/**
+ * Finale effects (Phase 6.11.2).
+ *
+ * A full-viewport canvas above the podium card but below dialogs and toasts, so
+ * fireworks and confetti play over the show without ever intercepting a click or
+ * covering the host's own controls. It is created only by `FinaleEffects`, only
+ * on the host surface, and removed as soon as the end phase is left.
+ *
+ * `pointer-events: none` is load-bearing: the host must be able to press End or
+ * Home while the confetti is still falling.
+ */
+.finale {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  /* The canvas is drawn at the capped device pixel ratio, so it is never
+     stretched by the compositor. */
+  display: block;
+}
+
+/* The podium must stay legible while the effects run: it sits above the canvas
+   in the stacking order and keeps an opaque-enough glass fill. */
+.show__board {
+  position: relative;
+  z-index: 41;
+}
+
+/* Calmer variant: the show is honoured, but nothing moves. `FinaleEffects`
+   skips the canvas entirely under this preference; the rule keeps any residual
+   effect from animating if one is ever added. */
+@media (prefers-reduced-motion: reduce) {
+  .finale {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .show__board {
     animation: none;

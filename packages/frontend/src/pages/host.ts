@@ -56,6 +56,7 @@ import {
 } from '../hostView.js';
 import { ShowController, sceneInputOf, type SceneInput } from '../showScenes.js';
 import { HostMusic } from '../hostMusic.js';
+import { FinaleEffects } from '../finaleEffects.js';
 import {
   brand,
   button,
@@ -173,6 +174,12 @@ let resyncToken = 0;
 const music = new HostMusic();
 /** The music control currently on screen, so a mute or volume change repaints it. */
 let musicNode: HTMLElement | null = null;
+/**
+ * The finale effects (Phase 6.11.2): rocket, explosion, applause and confetti on
+ * the winner podium. One instance for the page, keyed on the game id so it runs
+ * exactly once per game. Host-only: the player page never imports the module.
+ */
+const finale = new FinaleEffects();
 
 /** Stop the countdown timer, if running. */
 function stopTimer(): void {
@@ -524,6 +531,10 @@ function renderHostState(input: HostRender): void {
   // from, so music and screen can never disagree. A paused question freezes the
   // track exactly like the countdown.
   music.sync(show.currentPhase, isPausedRender(input));
+  // The finale belongs to the end phase alone. Leaving it — a new round, a new
+  // question, the lobby, or going home — cancels the canvas and silences the
+  // effects, so nothing keeps playing over the next screen (Phase 6.11.2).
+  if (show.currentPhase !== 'end') finale.stop();
   if (input.kind === 'sync') {
     autoMode = input.state.auto;
     // The authoritative background arrives with every snapshot, so a reload or a
@@ -833,6 +844,9 @@ async function resumeGame(gameId: string): Promise<void> {
 async function showHome(): Promise<void> {
   stopTimer();
   answerCountNode = null;
+  // Leaving the show cancels the finale too: the canvas is dropped and the
+  // effects are silenced before the quiz picker is drawn (Phase 6.11.2).
+  finale.stop();
   bannerNode = null;
   // No game under control: the show resets to its client-side welcome scene, the
   // AUTO mirror is cleared (the server owns it per game), and the last render is
@@ -1460,6 +1474,11 @@ function showPodium(players: PublicPlayer[]): void {
   // closing/thanks view. The outro keeps the final standing on screen and adds a
   // short closing line; no report is fetched (the report stays on the console).
   const outro = show.current === 'outro';
+
+  // The finale is keyed on the game, so stepping podium → outro, a repaint or a
+  // reconnect of the same game never replays it (Phase 6.11.2). A game without an
+  // id (should not happen) falls back to a stable key, not a random one.
+  finale.start(activeGame?.id ?? `end:${players.length}`);
 
   render(
     app,
