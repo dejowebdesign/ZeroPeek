@@ -175,6 +175,13 @@ export interface PlayerSync {
    * client, and a reconnect restores exactly the background the round is using.
    */
   background: string;
+  /**
+   * The carousel position behind that image (Phase 6.14): a catalogue id, or the
+   * `random` sentinel when the round is on a random pick. Sent so a client can
+   * describe the round the same way the host's picker does; it is never used to
+   * paint the image, which is always `background`.
+   */
+  backgroundChoice: string;
 }
 
 /**
@@ -261,6 +268,16 @@ export interface HostState {
    * indistinguishable.
    */
   background: string;
+  /**
+   * The carousel position the host picked (Phase 6.14): a catalogue id, or the
+   * `random` sentinel when the round is on a random pick.
+   *
+   * `background` stays the concrete image every client renders; this field is the
+   * *choice* behind it, so the picker can show Random while the round is on a
+   * random draw instead of naming a motif the host never selected. Always
+   * present, so a host that reloads restores the label it had.
+   */
+  backgroundChoice: string;
 }
 
 /** The host's own connection state, as shown in the control bar. */
@@ -352,9 +369,10 @@ export interface PlayerServerEvents {
    * The round's background changed (Phase 6.10). Sent to every player socket
    * when the host picks a different background. The payload is the catalogue id,
    * so a client that does not know it falls back to its default rather than
-   * showing nothing.
+   * showing nothing. `choice` carries the carousel position (Phase 6.14) so a
+   * player's status line can say "Random" rather than naming a motif.
    */
-  'game:background': (payload: { background: string }) => void;
+  'game:background': (payload: { background: string; choice: string }) => void;
 }
 
 /** Player → server events (namespace `/`). */
@@ -432,9 +450,10 @@ export interface HostServerEvents {
   /**
    * The round's background changed (Phase 6.10). Broadcast to every host socket
    * of the game, so a second host tab (or a reconnect) stays in step. The server
-   * owns the value; this event only mirrors it.
+   * owns the value; this event only mirrors it. `choice` is the carousel position
+   * (Phase 6.14), so the picker label follows the server too.
    */
-  'host:background': (payload: { background: string }) => void;
+  'host:background': (payload: { background: string; choice: string }) => void;
   /** The server's reply to a `clock:ping`, used to correct the local clock. */
   'clock:pong': (payload: ClockPong) => void;
 }
@@ -475,10 +494,14 @@ export interface HostClientEvents {
    * concrete id **once**; the ACK carries the id that is now in force, so the
    * host renders the server's choice rather than its own guess. The server
    * validates the value against the catalogue, so a hand-made id is rejected.
+   *
+   * The ACK also carries `choice` (Phase 6.14): the position the server stored,
+   * which is the sentinel when the round is on Random. The picker needs it to
+   * label the round the way the host actually chose.
    */
   'host:background': (
     payload: { gameId: string; background: string },
-    ack: Ack<{ background: string }>,
+    ack: Ack<{ background: string; choice: string }>,
   ) => void;
   /**
    * Measure the server clock (Phase 6.8.5). Fire-and-forget: the server answers

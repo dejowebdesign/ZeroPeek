@@ -3154,12 +3154,11 @@ body::before {
 }
 
 /**
- * The background picker (Phase 6.10).
+ * The background carousel (Phase 6.14).
  *
- * Sits in the lobby card above the AUTO bar, following the same width, spacing and
- * hairline rules so it reads as part of the existing controls rather than a new
- * panel. The rows wrap, so on a phone they stack into a readable list without a
- * horizontal scroll.
+ * One compact row instead of the former eleven-chip list, so the lobby card keeps
+ * its height on a projector and on a phone. The arrows are square tap targets
+ * (44px, the design-system minimum) and the position sits between them.
  */
 .show__background {
   display: flex;
@@ -3188,20 +3187,66 @@ body::before {
   font-size: var(--type-label);
 }
 
-.show__background-options {
+.show__background-carousel {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  width: 100%;
 }
 
-/* On a narrow screen the chips stack full width, so every name stays readable
-   and the tap target keeps its height. */
-@media (max-width: 640px) {
-  .show__background-options {
-    flex-direction: column;
-    align-items: stretch;
-  }
+/* The arrows are the only controls, so they get a fixed square footprint rather
+   than the text button's natural width — otherwise the row shifts as names change
+   length and the position appears to jump. */
+.show__background-carousel .btn {
+  flex: none;
+  width: var(--tap);
+  min-width: var(--tap);
+  padding-inline: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.show__background-position {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  text-align: center;
+}
+
+.show__background-name {
+  max-width: 100%;
+  font-weight: var(--weight-card);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.show__background-index {
+  font-size: var(--type-help);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The QR block in the join view: sits under the PIN so a phone can be pointed at
+   the same card that shows the code. White plate is deliberate — a dark code on
+   a dark glass panel is what makes QR scans fail on a projector. */
+.lobby__qr {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-3);
+}
+
+.lobby__qr svg {
+  display: block;
+  width: clamp(132px, 22vmin, 200px);
+  height: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: #fff;
 }
 
 /* The lobby-phase scenes: welcome, join and participants share one card. */

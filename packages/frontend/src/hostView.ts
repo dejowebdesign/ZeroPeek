@@ -11,8 +11,11 @@
  */
 
 import {
-  BACKGROUND_CATALOGUE,
-  backgroundName,
+  BACKGROUND_CHOICES,
+  backgroundChoiceName,
+  findBackground,
+  RANDOM_BACKGROUND,
+  stepBackground,
   type GamePhase,
   type HostConnectionStatus,
   type HostReveal,
@@ -223,47 +226,81 @@ export function autoHint(auto: boolean): string {
 }
 
 /**
- * The label of the background picker (Phase 6.10).
+ * The label of the background carousel (Phase 6.14).
  *
- * The server owns the value, so the label names the background that is actually
- * in force — not the one the host last clicked. An unknown id still shows the
- * default's name (the shared helper falls back), so the label can never be blank.
+ * The server owns the *position*, so the label names the position the host is
+ * actually on — `Random` when the round is on a random pick, otherwise the
+ * motif's name. The image behind it is always a concrete id, which is why the
+ * two are separate values rather than one.
+ *
+ * It resolves through `backgroundSelection` rather than `backgroundChoiceName`
+ * alone, so an unknown position reads `Random` here exactly as it does in the
+ * carousel — one fallback, not two that can drift apart.
  */
-export function backgroundLabel(background: string): string {
-  return `Background: ${backgroundName(background)}`;
+export function backgroundLabel(choice: string): string {
+  return `Background: ${backgroundSelection(choice).name}`;
 }
 
 /**
- * The one-line description shown under the picker, so the host knows the choice
- * is round-wide before changing it mid-show.
+ * The one-line description shown under the carousel, so the host knows the
+ * choice is round-wide before changing it mid-show.
  */
 export function backgroundHint(): string {
-  return 'The chosen background is shown on every screen and stays for the whole round.';
-}
-
-/** One row of the picker: the catalogue entry plus whether it is in force. */
-export interface BackgroundChoice {
-  id: string;
-  name: string;
-  file: string;
-  active: boolean;
+  return 'Applies to every screen and stays for the whole round.';
 }
 
 /**
- * The picker's rows: the whole catalogue, with the active background flagged.
+ * The carousel's current position: the name in force plus where it sits in the
+ * list, so the host can see that the arrows wrap.
  *
- * The catalogue is always complete (never filtered by availability), so the host
- * sees every supplied image, and `active` is decided by the server's current
- * value alone. The filename is carried through so the host can identify a motif
- * without a visual preview.
+ * `position` is 1-based for display and `total` counts the Random entry, so
+ * "3 / 11" matches the eleven stops the arrows actually step through.
  */
-export function backgroundChoices(active: string): BackgroundChoice[] {
-  return BACKGROUND_CATALOGUE.map((item) => ({
-    id: item.id,
-    name: item.name,
-    file: item.file,
-    active: item.id === active,
-  }));
+export interface BackgroundSelection {
+  /** The id or sentinel at this position. */
+  choice: string;
+  /** The display name, `Random` for the sentinel. */
+  name: string;
+  /** The image file, empty for the sentinel (which has no single file). */
+  file: string;
+  /** 1-based position in the carousel. */
+  position: number;
+  /** Number of stops in the carousel, including Random. */
+  total: number;
+  /** Whether this position is the random sentinel. */
+  random: boolean;
+}
+
+/**
+ * Resolve a stored position to everything the carousel renders.
+ *
+ * An unknown position falls back to Random — the same fallback the server uses
+ * on restore — so the label and the painted image can never disagree about where
+ * the host is.
+ */
+export function backgroundSelection(choice: string): BackgroundSelection {
+  const index = BACKGROUND_CHOICES.indexOf(choice);
+  const resolved = index === -1 ? RANDOM_BACKGROUND : choice;
+  const position = index === -1 ? 1 : index + 1;
+  return {
+    choice: resolved,
+    name: backgroundChoiceName(resolved),
+    file: resolved === RANDOM_BACKGROUND ? '' : (findBackground(resolved)?.file ?? ''),
+    position,
+    total: BACKGROUND_CHOICES.length,
+    random: resolved === RANDOM_BACKGROUND,
+  };
+}
+
+/**
+ * The position one step to the left or right, wrapping at both ends.
+ *
+ * The page uses this to label the arrow buttons with the destination, so the
+ * host knows what a click will select before making it — a carousel that only
+ * reveals the next stop *after* the click is a guessing game on a projector.
+ */
+export function backgroundNeighbour(choice: string, step: -1 | 1): BackgroundSelection {
+  return backgroundSelection(stepBackground(choice, step));
 }
 
 /** The events a host socket delivers, as consumed by the page. */
@@ -278,7 +315,7 @@ export interface HostEventHandlers {
   paused: (payload: { questionId: string; remainingMs: number }) => void;
   resumed: (payload: { questionId: string; remainingMs: number }) => void;
   auto: (payload: { auto: boolean }) => void;
-  background: (payload: { background: string }) => void;
+  background: (payload: { background: string; choice: string }) => void;
 }
 
 /**

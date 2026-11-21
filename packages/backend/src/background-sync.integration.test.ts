@@ -184,6 +184,9 @@ describe.skipIf(!available)('round background synchronisation', () => {
   it('1 – a new game starts on a background from the supplied catalogue', async () => {
     const { host, state } = await createGame();
     expect(BACKGROUND_IDS).toContain(state.background);
+    // The picture is concrete, but the carousel starts on the Random position
+    // (Phase 6.14) — the two values are deliberately different.
+    expect(state.backgroundChoice).toBe(RANDOM_BACKGROUND);
     host.disconnect();
   }, 20_000);
 
@@ -192,11 +195,13 @@ describe.skipIf(!available)('round background synchronisation', () => {
 
     // Every supplied background must be selectable, not just a subset.
     for (const id of BACKGROUND_IDS) {
-      const { background } = await request<{ background: string }>(host, 'host:background', {
+      const ack = await request<{ background: string; choice: string }>(host, 'host:background', {
         gameId,
         background: id,
       });
-      expect(background).toBe(id);
+      expect(ack.background).toBe(id);
+      // A concrete pick moves the carousel onto that entry.
+      expect(ack.choice).toBe(id);
     }
 
     const state = await request<HostState>(host, 'host:join', { gameId });
@@ -208,23 +213,28 @@ describe.skipIf(!available)('round background synchronisation', () => {
   it('3 – a random choice resolves to exactly one catalogue id and is then fixed', async () => {
     const { host, gameId } = await createGame();
 
-    const { background } = await request<{ background: string }>(host, 'host:background', {
+    const first = await request<{ background: string; choice: string }>(host, 'host:background', {
       gameId,
       background: RANDOM_BACKGROUND,
     });
-    // The sentinel must never be stored: the host receives a concrete id.
-    expect(BACKGROUND_IDS).toContain(background);
+    // The sentinel must never be stored as the image: the host receives a
+    // concrete id, while the carousel position stays Random.
+    expect(BACKGROUND_IDS).toContain(first.background);
+    expect(first.choice).toBe(RANDOM_BACKGROUND);
 
-    // Asking again returns the same value: the random pick happened once and the
-    // engine treats an unchanged value as a no-op, so nothing re-rolls.
-    const again = await request<{ background: string }>(host, 'host:background', {
+    // Re-selecting the *image* is a no-op: the random pick happened once, so
+    // nothing re-rolls behind the host's back.
+    const again = await request<{ background: string; choice: string }>(host, 'host:background', {
       gameId,
-      background,
+      background: first.background,
     });
-    expect(again.background).toBe(background);
+    expect(again.background).toBe(first.background);
 
+    // The position follows the *choice* the host sent: re-selecting the image
+    // puts the carousel on that entry, which is what the host now sees.
     const state = await request<HostState>(host, 'host:join', { gameId });
-    expect(state.background).toBe(background);
+    expect(state.background).toBe(first.background);
+    expect(state.backgroundChoice).toBe(first.background);
 
     host.disconnect();
   }, 20_000);
@@ -235,9 +245,9 @@ describe.skipIf(!available)('round background synchronisation', () => {
     const bob = await joinPlayer(pin, 'Bob');
 
     // Two player sockets plus the host all observe the change.
-    const adaEvent = once<{ background: string }>(ada.socket, 'game:background');
-    const bobEvent = once<{ background: string }>(bob.socket, 'game:background');
-    const hostEvent = once<{ background: string }>(host, 'host:background');
+    const adaEvent = once<{ background: string; choice: string }>(ada.socket, 'game:background');
+    const bobEvent = once<{ background: string; choice: string }>(bob.socket, 'game:background');
+    const hostEvent = once<{ background: string; choice: string }>(host, 'host:background');
 
     const target = BACKGROUND_IDS.find((id) => id !== created.background)!;
     await request(host, 'host:background', { gameId, background: target });
@@ -245,6 +255,8 @@ describe.skipIf(!available)('round background synchronisation', () => {
     expect((await hostEvent).background).toBe(target);
     expect((await adaEvent).background).toBe(target);
     expect((await bobEvent).background).toBe(target);
+    // The carousel position rides along, so every screen labels it the same way.
+    expect((await adaEvent).choice).toBe(target);
 
     // And the authoritative snapshots agree with the broadcast.
     const hostState = await request<HostState>(host, 'host:join', { gameId });
@@ -297,6 +309,9 @@ describe.skipIf(!available)('round background synchronisation', () => {
     const reloaded = await hostSocket();
     const state = await request<HostState>(reloaded, 'host:join', { gameId });
     expect(state.background).toBe(target);
+    // The carousel position is in the same event, so the picker comes back on the
+    // entry the host chose rather than on Random (Phase 6.14).
+    expect(state.backgroundChoice).toBe(target);
 
     host.disconnect();
     reloaded.disconnect();

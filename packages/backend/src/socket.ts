@@ -342,7 +342,9 @@ export function attachSocketIO(
         // hand-made id is rejected there rather than silently stored.
         const background = asString(payload?.background, 'background');
         await assertHost(gameId);
-        return { background: await engine.setBackground(gameId, background) };
+        // The ACK carries the stored position too (Phase 6.14), so the picker
+        // labels the round with what the server chose — Random stays Random.
+        return engine.setBackground(gameId, background);
       });
     });
 
@@ -556,11 +558,13 @@ export function attachSocketIO(
     hosts.to(hostRoom(gameId)).emit('host:auto', { auto });
   });
 
-  engine.on('background', ({ gameId, background }) => {
+  engine.on('background', ({ gameId, background, choice }) => {
     // The background is a show-wide setting (Phase 6.10): every client renders
-    // the same image, so both namespaces receive the change.
-    hosts.to(hostRoom(gameId)).emit('host:background', { background });
-    players.to(playerRoom(gameId)).emit('game:background', { background });
+    // the same image, so both namespaces receive the change. The carousel
+    // position rides along (Phase 6.14) so the host picker and a player's status
+    // line describe the round the same way.
+    hosts.to(hostRoom(gameId)).emit('host:background', { background, choice });
+    players.to(playerRoom(gameId)).emit('game:background', { background, choice });
   });
 
   engine.on('board', ({ gameId, players: list, ranks, hasNext }) => {

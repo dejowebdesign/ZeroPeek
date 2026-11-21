@@ -7,6 +7,7 @@
  * play flow itself stays server-authoritative.
  */
 
+import { isValidPin, normalizePin, PIN_LENGTH } from '@zeropeek/shared';
 import type { HostPresence, PlayerSync, PublicPlayer, PublicQuestion } from '@zeropeek/shared';
 
 import { el } from './dom.js';
@@ -137,6 +138,25 @@ export function lobbyRoster(players: PublicPlayer[], meId?: string): HTMLElement
  */
 export function joinIdentityHint(username: string): HTMLElement {
   return notice(`Joining as ${username}. Your avatar will be shown in the game.`, 'info');
+}
+
+/**
+ * The PIN carried by a `?pin=` query parameter, or `''` when there is none.
+ *
+ * The host lobby's QR code points at `/?pin=ABC234` (Phase 6.14), so the join
+ * form can prefill instead of making a player retype what they just scanned.
+ *
+ * The check is deliberately strict: the value must already be exactly one PIN
+ * long and drawn from the shared alphabet. A scanned code is machine-generated,
+ * so anything else is a stale or hand-edited link — and `normalizePin` would
+ * happily turn a seven-character value into a *different* six-character PIN,
+ * which would prefill a lobby nobody meant to join. A rejected value seeds
+ * nothing instead. The server still validates the PIN on join.
+ */
+export function pinFromQuery(search: string): string {
+  const value = new URLSearchParams(search).get('pin')?.trim().toUpperCase();
+  if (!value || value.length !== PIN_LENGTH || !isValidPin(value)) return '';
+  return normalizePin(value);
 }
 
 /**

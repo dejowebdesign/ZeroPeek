@@ -19,6 +19,7 @@ import {
   hostStatusChip,
   joinIdentityHint,
   lobbyRoster,
+  pinFromQuery,
   registerOffer,
   screenForSync,
 } from './playerView.js';
@@ -190,6 +191,7 @@ describe('screenForSync', () => {
       skipped: false,
       lead: null,
       background: 'synthwave_skyline',
+      backgroundChoice: 'synthwave_skyline',
       ...overrides,
     };
   }
@@ -266,5 +268,37 @@ describe('answerDeadlineRemainingMs (Phase 6.9.5)', () => {
 
   it('has no deadline for a slide', () => {
     expect(answerDeadlineRemainingMs({ ...open, type: 'slide' }, 1000)).toBeNull();
+  });
+});
+
+describe('pinFromQuery (Phase 6.14)', () => {
+  it('prefills the PIN a scanned lobby QR carries', () => {
+    expect(pinFromQuery('?pin=ACD234')).toBe('ACD234');
+  });
+
+  it('upper-cases a scanned value, so it matches the seated PIN', () => {
+    expect(pinFromQuery('?pin=acd234')).toBe('ACD234');
+  });
+
+  it('rejects a padded value rather than silently shortening it', () => {
+    // A generated code never contains separators, and normalising "ACD-234"
+    // would quietly turn a seven-character value into a different valid PIN.
+    expect(pinFromQuery('?pin=ACD-234')).toBe('');
+  });
+
+  it('ignores a missing parameter, so the form stays empty', () => {
+    expect(pinFromQuery('')).toBe('');
+    expect(pinFromQuery('?other=1')).toBe('');
+  });
+
+  it('rejects an incomplete or unreadable PIN instead of prefilling it', () => {
+    // A stale or hand-edited link must not seed a value the server would refuse.
+    expect(pinFromQuery('?pin=ABC')).toBe('');
+    expect(pinFromQuery('?pin=ACD2345')).toBe('');
+    expect(pinFromQuery('?pin=ACD23O')).toBe('');
+  });
+
+  it('reads the parameter even when it is not first in the query', () => {
+    expect(pinFromQuery('?utm=x&pin=ACD234')).toBe('ACD234');
   });
 });

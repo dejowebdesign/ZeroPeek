@@ -16,15 +16,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BACKGROUND_CATALOGUE,
+  BACKGROUND_CHOICES,
   BACKGROUND_IDS,
   DEFAULT_BACKGROUND_ID,
   RANDOM_BACKGROUND,
+  backgroundChoiceName,
   backgroundName,
   backgroundPath,
   findBackground,
   isBackgroundId,
   pickRandomBackground,
   resolveBackgroundChoice,
+  stepBackground,
 } from './backgrounds.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -182,5 +185,44 @@ describe('host background choice', () => {
     expect(resolveBackgroundChoice(undefined)).toBeUndefined();
     expect(resolveBackgroundChoice(42)).toBeUndefined();
     expect(resolveBackgroundChoice(null)).toBeUndefined();
+  });
+});
+
+describe('carousel positions (Phase 6.14)', () => {
+  it('leads with Random and then follows the catalogue delivery order', () => {
+    expect(BACKGROUND_CHOICES[0]).toBe(RANDOM_BACKGROUND);
+    expect(BACKGROUND_CHOICES.slice(1)).toEqual(BACKGROUND_IDS);
+  });
+
+  it('names the sentinel Random instead of falling back to the first motif', () => {
+    // `backgroundName('random')` would answer with the first catalogue entry,
+    // which would label a random round with a motif the host never chose.
+    expect(backgroundChoiceName(RANDOM_BACKGROUND)).toBe('Random');
+    expect(backgroundName(RANDOM_BACKGROUND)).toBe(BACKGROUND_CATALOGUE[0]!.name);
+  });
+
+  it('defers to the catalogue name for a real id', () => {
+    expect(backgroundChoiceName('synthwave_skyline')).toBe('Skyline');
+  });
+
+  it('steps forward and wraps from the last entry back to Random', () => {
+    expect(stepBackground(RANDOM_BACKGROUND, 1)).toBe(BACKGROUND_IDS[0]);
+    expect(stepBackground(BACKGROUND_IDS.at(-1)!, 1)).toBe(RANDOM_BACKGROUND);
+  });
+
+  it('steps backward and wraps from Random to the last entry', () => {
+    expect(stepBackground(RANDOM_BACKGROUND, -1)).toBe(BACKGROUND_IDS.at(-1)!);
+  });
+
+  it('starts an unknown position from Random, so a stale id cannot throw', () => {
+    expect(stepBackground('gone', 1)).toBe(BACKGROUND_IDS[0]);
+    expect(stepBackground(undefined, -1)).toBe(BACKGROUND_IDS.at(-1)!);
+  });
+
+  it('normalises a step larger than the list', () => {
+    expect(stepBackground(RANDOM_BACKGROUND, BACKGROUND_CHOICES.length)).toBe(RANDOM_BACKGROUND);
+    expect(stepBackground(RANDOM_BACKGROUND, BACKGROUND_CHOICES.length + 1)).toBe(
+      BACKGROUND_IDS[0],
+    );
   });
 });

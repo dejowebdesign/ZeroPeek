@@ -174,6 +174,16 @@ describe('design-system components', () => {
     'lobby__welcome',
     'lobby__participants',
     'lobby__join',
+    // Join QR and the compact background carousel (Phase 6.14).
+    'lobby__qr',
+    'show__background',
+    'show__background-head',
+    'show__background-label',
+    'show__background-hint',
+    'show__background-carousel',
+    'show__background-position',
+    'show__background-name',
+    'show__background-index',
     'lobby--wide',
     'participants',
     'participant',
@@ -944,7 +954,10 @@ describe('player game surface (Phase 6.14)', () => {
 
   it('only styles player classes the renderer actually emits', () => {
     const player = read('pages/player.ts');
-    const block = tokens.slice(tokens.indexOf('Phase 6.14'));
+    // Anchored on the section heading, not on the bare phase number: other
+    // Phase 6.14 sections (the host lobby) also mention it, and slicing from the
+    // first match would pull unrelated rules into this guard.
+    const block = tokens.slice(tokens.indexOf('Phase 6.14 – player game surface'));
     const classes = new Set(block.match(/\.player-[a-z0-9_-]+/g) ?? []);
     const missing = [...classes].filter((name) => !player.includes(name.slice(1)));
     expect(missing).toEqual([]);

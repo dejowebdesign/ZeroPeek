@@ -53,24 +53,23 @@ function entry(file: string, name: string): BackgroundEntry {
 /**
  * The ten supplied backgrounds, in delivery order.
  *
- * Names are a readable rendering of each filename. Where the filename carries a
- * qualifier (`muted`, `minimal`, `detail`, `ohne_boden`, `v3`) it is kept in the
- * display name so the host can tell similar motifs apart without seeing them.
+ * Display names are short on purpose (Phase 6.14): the host picks from a
+ * one-line carousel, so a long label would wrap or truncate. Only the label
+ * changed — ids, filenames and paths are still derived from the delivered files
+ * and are untouched, so stored games and every client keep resolving the same
+ * image. The filename stays available on each entry for traceability.
  */
 export const BACKGROUND_CATALOGUE: readonly BackgroundEntry[] = [
-  entry('zeropeek_palmen_tron_background.webp', 'Palmen Tron'),
-  entry('zeropeek_synthwave_bruecke_zwei_berge.webp', 'Synthwave – Brücke zwei Berge'),
-  entry(
-    'zeropeek_synthwave_forschungsstation_muted.webp',
-    'Synthwave – Forschungsstation (gedämpft)',
-  ),
-  entry('zeropeek_synthwave_lagerhalle_minimal.webp', 'Synthwave – Lagerhalle (minimal)'),
-  entry('zeropeek_synthwave_megacity_detail.webp', 'Synthwave – Megacity (detailliert)'),
-  entry('zeropeek_synthwave_raumstation_ohne_boden.webp', 'Synthwave – Raumstation (ohne Boden)'),
-  entry('zeropeek_synthwave_skyline.webp', 'Synthwave – Skyline'),
-  entry('zeropeek_synthwave_unterwasser_v3.webp', 'Synthwave – Unterwasser'),
-  entry('zeropeek_synthwave_weltraum.webp', 'Synthwave – Weltraum'),
-  entry('zeropeek_synthwave_wueste.webp', 'Synthwave – Wüste'),
+  entry('zeropeek_palmen_tron_background.webp', 'Palm Trees'),
+  entry('zeropeek_synthwave_bruecke_zwei_berge.webp', 'Mountain Bridge'),
+  entry('zeropeek_synthwave_forschungsstation_muted.webp', 'Research Station'),
+  entry('zeropeek_synthwave_lagerhalle_minimal.webp', 'Warehouse'),
+  entry('zeropeek_synthwave_megacity_detail.webp', 'Megacity'),
+  entry('zeropeek_synthwave_raumstation_ohne_boden.webp', 'Space Station'),
+  entry('zeropeek_synthwave_skyline.webp', 'Skyline'),
+  entry('zeropeek_synthwave_unterwasser_v3.webp', 'Underwater'),
+  entry('zeropeek_synthwave_weltraum.webp', 'Space'),
+  entry('zeropeek_synthwave_wueste.webp', 'Desert'),
 ];
 
 /** Every catalogue id, in catalogue order. */
@@ -114,13 +113,23 @@ export function backgroundName(id: string | null | undefined): string {
  * when a game is created and again only on an explicit host action, never per
  * render and never per client. That is what makes the choice stable for the whole
  * round and identical on every screen.
+ *
+ * `exclude` lets a caller ask for a *different* id than the one already showing.
+ * Re-rolling the Random position must never be a dead click, and without this a
+ * 1-in-10 roll could land on the current image and look like nothing happened.
+ * If the catalogue holds only the excluded id, the exclusion is dropped rather
+ * than looping forever.
  */
-export function pickRandomBackground(random: () => number = Math.random): string {
-  const index = Math.floor(random() * BACKGROUND_CATALOGUE.length);
+export function pickRandomBackground(random: () => number = Math.random, exclude?: string): string {
+  const pool =
+    exclude !== undefined && BACKGROUND_CATALOGUE.length > 1
+      ? BACKGROUND_CATALOGUE.filter((item) => item.id !== exclude)
+      : BACKGROUND_CATALOGUE;
+  const index = Math.floor(random() * pool.length);
   // Guard against a `random()` of exactly 1 (or a negative value), so the pick
-  // can never fall outside the catalogue.
-  const safeIndex = Math.min(Math.max(index, 0), BACKGROUND_CATALOGUE.length - 1);
-  return BACKGROUND_CATALOGUE[safeIndex]!.id;
+  // can never fall outside the pool.
+  const safeIndex = Math.min(Math.max(index, 0), pool.length - 1);
+  return pool[safeIndex]!.id;
 }
 
 /**
@@ -129,11 +138,62 @@ export function pickRandomBackground(random: () => number = Math.random): string
  * `RANDOM_BACKGROUND` triggers one random pick; a known id is kept as sent; an
  * unknown value is a client error and yields `undefined`, so the caller can
  * reject it rather than silently storing a background nobody supplied.
+ *
+ * `current` is the id in force right now. A random pick avoids it, so pressing
+ * the Random position again always changes the image instead of sometimes
+ * re-rolling the same one.
  */
 export function resolveBackgroundChoice(
   choice: unknown,
   random: () => number = Math.random,
+  current?: string,
 ): string | undefined {
-  if (choice === RANDOM_BACKGROUND) return pickRandomBackground(random);
+  if (choice === RANDOM_BACKGROUND) return pickRandomBackground(random, current);
   return isBackgroundId(choice) ? choice : undefined;
+}
+
+/**
+ * The carousel positions, in display order (Phase 6.14).
+ *
+ * `Random` leads, then the catalogue in delivery order, which is exactly the
+ * cycle the host steps through: Random → Palm Trees → … → Desert → Random. The
+ * list holds ids (and the `random` sentinel), never labels, so the display name
+ * stays a lookup and a rename can never reorder the carousel.
+ */
+export const BACKGROUND_CHOICES: readonly string[] = [RANDOM_BACKGROUND, ...BACKGROUND_IDS];
+
+/**
+ * The display name of a carousel position.
+ *
+ * The `random` sentinel is not in the catalogue, so `backgroundName` would fall
+ * back to the first entry's name and label a random round with a concrete motif.
+ * This helper names the sentinel explicitly and defers to `backgroundName` for
+ * every real id, including its fallback for an unknown one.
+ */
+export function backgroundChoiceName(choice: string | null | undefined): string {
+  if (choice === RANDOM_BACKGROUND) return 'Random';
+  return backgroundName(choice);
+}
+
+/**
+ * The carousel position `step` places away from `current`, wrapping at both ends
+ * (Phase 6.14).
+ *
+ * The two arrows are the only caller: `-1` is "previous", `+1` is "next", and the
+ * wrap is what makes the last entry lead back to the first. An unknown `current`
+ * starts from the Random position, so a stale id cannot throw or land outside the
+ * list. `step` is normalised, so a caller may pass `±10` or a negative value
+ * larger than the list.
+ */
+export function stepBackground(current: string | null | undefined, step: number): string {
+  const length = BACKGROUND_CHOICES.length;
+  if (length === 0) return '';
+  const start = BACKGROUND_CHOICES.indexOf(current ?? '');
+  // A missing or unknown current resolves to the Random position, which is where
+  // a fresh lobby starts, so the carousel and the server never disagree.
+  const from = start === -1 ? 0 : start;
+  const offset = Math.trunc(step) % length;
+  // `+ length` before the modulo keeps a negative step positive.
+  const next = (((from + offset) % length) + length) % length;
+  return BACKGROUND_CHOICES[next]!;
 }

@@ -19,6 +19,7 @@ import { EventEmitter } from 'node:events';
 import type { Prisma } from '@prisma/client';
 
 import {
+  BACKGROUND_CHOICES,
   DEFAULT_BACKGROUND_ID,
   correctnessOf,
   findBackground,
@@ -27,6 +28,7 @@ import {
   isSuspiciouslyFast,
   questionDisplay,
   pickRandomBackground,
+  RANDOM_BACKGROUND,
   rankPlayers,
   resolveBackgroundChoice,
   scoreAnswer,
@@ -109,6 +111,17 @@ interface RuntimeGame {
    * question change. Persisted in the event log, so a restart restores it.
    */
   background: string;
+  /**
+   * The carousel position the host picked (Phase 6.14): a catalogue id, or the
+   * `random` sentinel when the round was left on Random.
+   *
+   * This is separate from `background` on purpose. `background` must stay a
+   * concrete id, because every client renders that image and a sentinel would be
+   * meaningless to them. But the picker has to show *Random* while the round is
+   * on a random pick — otherwise the label would name a motif the host never
+   * chose. A new game starts on Random, so the default is the sentinel.
+   */
+  backgroundChoice: string;
   /** Server timestamp (ms) the `lead` countdown started, or null. */
   leadStartedAt: number | null;
   /** Server timestamp (ms) the `lead` countdown ends, or null. */
@@ -133,7 +146,7 @@ export interface EngineEvents {
   /** The AUTO mode changed (Phase 6.9.3), broadcast to every host socket. */
   auto: [{ gameId: string; auto: boolean }];
   /** The round's background changed (Phase 6.10), broadcast to every client. */
-  background: [{ gameId: string; background: string }];
+  background: [{ gameId: string; background: string; choice: string }];
 }
 
 /**
@@ -318,8 +331,11 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       auto: false,
       // The background is decided once, here, and then held for the round: a
       // random pick at creation means every client that joins later sees the
-      // same image, and nothing re-rolls it per render or per join.
+      // same image, and nothing re-rolls it per render or per join. The round
+      // starts on the *Random position* (Phase 6.14), so the picker says Random
+      // while the image is the concrete id that roll produced.
       background: pickRandomBackground(),
+      backgroundChoice: RANDOM_BACKGROUND,
       leadStartedAt: null,
       leadEndsAt: null,
       players: new Map(),
@@ -328,7 +344,12 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     };
     this.games.set(row.id, runtime);
     await logEvent(row.id, 'created', { quizId });
-    await logEvent(row.id, 'background', { background: runtime.background });
+    // The event records the concrete image **and** the position the host is on,
+    // so a restart restores both the picture and the carousel label (Phase 6.14).
+    await logEvent(row.id, 'background', {
+      background: runtime.background,
+      choice: runtime.backgroundChoice,
+    });
     return runtime;
   }
 
@@ -371,6 +392,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       skippedQuestionId: null,
       auto: false,
       background: DEFAULT_BACKGROUND_ID,
+      backgroundChoice: RANDOM_BACKGROUND,
       leadStartedAt: null,
       leadEndsAt: null,
       players: new Map(),
@@ -455,6 +477,11 @@ export class GameEngine extends EventEmitter<EngineEvents> {
     // catalogue default, so a restart never renders a broken image. The value is
     // validated against the catalogue, so a hand-edited event log cannot make
     // the engine serve a background that was never supplied.
+    //
+    // The carousel *position* travels in the same event (Phase 6.14). It is
+    // validated against the carousel list, so an old event written before the
+    // field existed — or a tampered one — falls back to Random rather than
+    // labelling the round with a position the host never picked.
     const backgroundEvents = events
       .filter((event) => event.type === 'background')
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
@@ -463,6 +490,11 @@ export class GameEngine extends EventEmitter<EngineEvents> {
         .map((event) => (event.data as { background?: unknown }).background)
         .filter((value): value is string => findBackground(value as string) !== undefined)
         .at(-1) ?? DEFAULT_BACKGROUND_ID;
+    runtime.backgroundChoice =
+      backgroundEvents
+        .map((event) => (event.data as { choice?: unknown }).choice)
+        .filter((value): value is string => BACKGROUND_CHOICES.includes(value as string))
+        .at(-1) ?? RANDOM_BACKGROUND;
 
     // The start countdown (Phase 6.9.1). Its window is rebuilt from the `lead`
     // event's server `endsAt`, so a restart mid-countdown re-arms for the
@@ -1015,21 +1047,37 @@ export class GameEngine extends EventEmitter<EngineEvents> {
    * id is rejected rather than persisted.
    *
    * A change is broadcast to every client (host, players, beamer) and appended to
-   * the event log, which is what makes it survive a restart. Setting the value
+   * the event log, which is what makes it survive a restart. Re-picking the value
    * that is already in force is a no-op: it neither re-rolls a random pick nor
    * writes an event, so a duplicate click cannot swap the image under the show.
+   * Choosing Random when the round is *not* already on Random does re-roll, which
+   * is the point of the position — see `resolveBackgroundChoice`.
    */
-  async setBackground(gameId: string, choice: string): Promise<string> {
+  async setBackground(
+    gameId: string,
+    choice: string,
+  ): Promise<{ background: string; choice: string }> {
     return this.withPhaseLock(gameId, async () => {
       const game = await this.get(gameId);
-      const resolved = resolveBackgroundChoice(choice);
+      // The current image is passed as the exclusion, so choosing Random again
+      // always produces a different picture instead of sometimes re-rolling the
+      // one already showing — a dead click would read as a broken control.
+      const resolved = resolveBackgroundChoice(choice, Math.random, game.background);
       if (!resolved) throw badRequest('That background is not available.');
-      if (game.background === resolved) return game.background;
+
+      // The *position* changes even when the image does not (Random can never
+      // land on the current image, but a concrete re-pick can name it), so the
+      // no-op test uses both: the label has to move, and so does the picture.
+      const sameChoice = game.backgroundChoice === choice;
+      if (game.background === resolved && sameChoice) {
+        return { background: game.background, choice: game.backgroundChoice };
+      }
 
       game.background = resolved;
-      await logEvent(gameId, 'background', { background: resolved });
-      this.emit('background', { gameId, background: resolved });
-      return game.background;
+      game.backgroundChoice = choice;
+      await logEvent(gameId, 'background', { background: resolved, choice });
+      this.emit('background', { gameId, background: resolved, choice });
+      return { background: game.background, choice: game.backgroundChoice };
     });
   }
 
@@ -1208,6 +1256,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       skipped: false,
       lead: null,
       background: game.background,
+      backgroundChoice: game.backgroundChoice,
     };
 
     // The start countdown (Phase 6.9.1): a player who reconnects during it sees
@@ -1311,6 +1360,7 @@ export class GameEngine extends EventEmitter<EngineEvents> {
       ranks: null,
       hasNext: false,
       background: game.background,
+      backgroundChoice: game.backgroundChoice,
     };
 
     // The start countdown (Phase 6.9.1): a host that reconnects mid-countdown

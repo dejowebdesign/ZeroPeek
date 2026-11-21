@@ -11,15 +11,16 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { BACKGROUND_CATALOGUE } from '@zeropeek/shared';
+import { BACKGROUND_CATALOGUE, BACKGROUND_CHOICES, RANDOM_BACKGROUND } from '@zeropeek/shared';
 
 import type { HostReveal, HostState } from '@zeropeek/shared';
 
 import {
   attachHostHandlers,
-  backgroundChoices,
   backgroundHint,
   backgroundLabel,
+  backgroundNeighbour,
+  backgroundSelection,
   autoHint,
   autoLabel,
   canAct,
@@ -55,6 +56,7 @@ function state(overrides: Partial<HostState> = {}): HostState {
     ranks: null,
     hasNext: false,
     background: 'synthwave_skyline',
+    backgroundChoice: 'synthwave_skyline',
     ...overrides,
   };
 }
@@ -492,39 +494,51 @@ describe('revealBody (Phase 6.5.3, decision B)', () => {
   });
 });
 
-describe('background picker (Phase 6.10)', () => {
-  it('names the background that is actually in force', () => {
-    expect(backgroundLabel('synthwave_skyline')).toBe('Background: Synthwave – Skyline');
+describe('background carousel (Phase 6.14)', () => {
+  it('labels the position the server stored, Random included', () => {
+    expect(backgroundLabel('synthwave_skyline')).toBe('Background: Skyline');
+    // The sentinel must read as Random, not as the first catalogue entry, which
+    // is what a bare `backgroundName('random')` fallback would produce.
+    expect(backgroundLabel(RANDOM_BACKGROUND)).toBe('Background: Random');
   });
 
-  it('falls back to the default name for an unknown id, never a blank label', () => {
-    expect(backgroundLabel('gone')).toBe(`Background: ${BACKGROUND_CATALOGUE[0]!.name}`);
+  it('falls back to Random for an unknown position, never a blank label', () => {
+    expect(backgroundLabel('gone')).toBe('Background: Random');
   });
 
-  it('lists the whole catalogue, so no supplied image is hidden from the host', () => {
-    const choices = backgroundChoices('synthwave_skyline');
-    expect(choices).toHaveLength(BACKGROUND_CATALOGUE.length);
-    expect(choices.map((choice) => choice.id)).toEqual(BACKGROUND_CATALOGUE.map((item) => item.id));
+  it('counts Random as a stop, so the position matches what the arrows step', () => {
+    const first = backgroundSelection(RANDOM_BACKGROUND);
+    expect(first.position).toBe(1);
+    expect(first.total).toBe(BACKGROUND_CHOICES.length);
+    expect(first.total).toBe(BACKGROUND_CATALOGUE.length + 1);
+    expect(first.random).toBe(true);
+    expect(first.file).toBe('');
   });
 
-  it('flags exactly the active background', () => {
-    const active = backgroundChoices('synthwave_wueste').filter((choice) => choice.active);
-    expect(active).toHaveLength(1);
-    expect(active[0]!.id).toBe('synthwave_wueste');
+  it('resolves a catalogue position to its name and file', () => {
+    const selection = backgroundSelection('synthwave_skyline');
+    expect(selection.name).toBe('Skyline');
+    expect(selection.file).toBe('zeropeek_synthwave_skyline.webp');
+    expect(selection.random).toBe(false);
+    expect(selection.position).toBe(BACKGROUND_CHOICES.indexOf('synthwave_skyline') + 1);
   });
 
-  it('flags nothing when the active id is unknown', () => {
-    // The layer still falls back to the default, but the picker must not claim a
-    // row is in force when the server value matches none of them.
-    expect(backgroundChoices('gone').filter((choice) => choice.active)).toHaveLength(0);
+  it('steps to the neighbour and wraps at both ends', () => {
+    expect(backgroundNeighbour(RANDOM_BACKGROUND, 1).choice).toBe(BACKGROUND_CATALOGUE[0]!.id);
+    expect(backgroundNeighbour(RANDOM_BACKGROUND, -1).choice).toBe(BACKGROUND_CATALOGUE.at(-1)!.id);
+    expect(backgroundNeighbour(BACKGROUND_CATALOGUE.at(-1)!.id, 1).choice).toBe(RANDOM_BACKGROUND);
   });
 
-  it('carries the filename so the host can identify a motif without a preview', () => {
-    const row = backgroundChoices('synthwave_skyline').find(
-      (choice) => choice.id === 'synthwave_skyline',
-    )!;
-    expect(row.file).toBe('zeropeek_synthwave_skyline.webp');
-    expect(row.name).toBe('Synthwave – Skyline');
+  it('walks the whole carousel back to its start, so no stop is unreachable', () => {
+    let choice = RANDOM_BACKGROUND;
+    const seen = [choice];
+    for (let i = 0; i < BACKGROUND_CHOICES.length; i += 1) {
+      choice = backgroundNeighbour(choice, 1).choice;
+      seen.push(choice);
+    }
+    // A full cycle returns to the start, and every stop was visited exactly once.
+    expect(choice).toBe(RANDOM_BACKGROUND);
+    expect(new Set(seen).size).toBe(BACKGROUND_CHOICES.length);
   });
 
   it('tells the host the choice is round-wide', () => {

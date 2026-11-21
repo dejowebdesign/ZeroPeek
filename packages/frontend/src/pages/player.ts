@@ -33,6 +33,7 @@ import {
   hostStatusChip,
   joinIdentityHint,
   lobbyRoster,
+  pinFromQuery,
   screenForSync,
 } from '../playerView.js';
 import {
@@ -216,12 +217,16 @@ const app: HTMLElement = appElement;
   function showJoin(message?: string): void {
     stopLeadTimer();
     stopQuestionTimer();
+    // A scanned lobby QR carries `?pin=` (Phase 6.14), so the field starts filled
+    // and the player only confirms. An unusable value is ignored, never shown.
+    const prefilled = pinFromQuery(location.search);
     const pin = el('input', {
       class: 'input',
       inputmode: 'numeric',
       maxlength: '6',
       placeholder: '000000',
       autocomplete: 'off',
+      value: prefilled,
     });
     const nickname = el('input', {
       class: 'input',
@@ -289,7 +294,9 @@ const app: HTMLElement = appElement;
         ),
       ),
     );
-    pin.focus();
+    // Focus the first field the player actually has to fill: with a prefilled PIN
+    // that is the nickname, otherwise the PIN itself.
+    (prefilled && !account ? nickname : pin).focus();
   }
 
   /** Show the waiting room until the host starts. */
