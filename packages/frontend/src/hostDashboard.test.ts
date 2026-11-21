@@ -29,14 +29,16 @@ function emptyData(): DashboardData {
 const text = (node: Element): string => node.textContent ?? '';
 
 describe('host dashboard – content comes from the server', () => {
-  it('shows a dash instead of a capacity when no game is open', () => {
+  it('shows a dash instead of a player count when no game is open', () => {
     const node = hostDashboard(emptyData(), handlers);
     const cards = [...node.querySelectorAll('.dash-stat')].map(text);
 
-    // The player figure is unknown, so it is a dash — never a made-up "0 / 25".
-    expect(cards[0]).toContain('—');
+    // The seated figure is unknown, so it is a dash. The limit itself is a
+    // product constant and is always shown — what must never be invented is a
+    // *count* (a fabricated "0 / 50" would claim a lobby nobody opened).
+    expect(cards[0]).toContain('— / 50');
     expect(cards[0]).toContain('No game open');
-    expect(text(node)).not.toMatch(/\d+\s*\/\s*\d+/);
+    expect(text(node)).not.toMatch(/\b\d+\s*\/\s*50/);
   });
 
   it('names the open game with its real pin and player count', () => {
@@ -181,6 +183,82 @@ describe('host dashboard – actions are reported, never decided locally', () =>
 
     expect(handlers.onResume).toHaveBeenCalledWith('g7');
     expect(handlers.onStart).not.toHaveBeenCalled();
+  });
+});
+
+describe('host dashboard – lobby capacity', () => {
+  /** A dashboard with `count` players seated in one open lobby. */
+  function withPlayers(count: number): Element {
+    const roster = Array.from({ length: count }, (_, index) => ({
+      id: `p${index}`,
+      nickname: `Player ${index}`,
+      avatar: '',
+    }));
+    return hostDashboard(
+      {
+        quizzes: [{ id: 'q1', title: 'Quiz', questionCount: 3 }],
+        selectedQuizId: 'q1',
+        openGames: [
+          {
+            id: 'g1',
+            pin: '1234',
+            quizTitle: 'Quiz',
+            playerCount: count,
+            phase: 'lobby',
+          },
+        ],
+        roster,
+        rosterGame: {
+          id: 'g1',
+          pin: '1234',
+          quizTitle: 'Quiz',
+          playerCount: count,
+          phase: 'lobby',
+        },
+      },
+      handlers,
+    );
+  }
+
+  it('shows the real count against the shared limit', () => {
+    const shown = text(withPlayers(18));
+    expect(shown).toContain('18 / 50');
+    expect(shown).toContain('32 places free');
+  });
+
+  it('stays in the normal state below 40 players', () => {
+    const card = withPlayers(39).querySelector('.dash-stat')!;
+    expect(card.getAttribute('data-capacity')).toBe('normal');
+    expect(card.className).toContain('dash-stat--normal');
+  });
+
+  it('warns from 40 players on, without calling the lobby full', () => {
+    const card = withPlayers(40).querySelector('.dash-stat')!;
+    expect(card.getAttribute('data-capacity')).toBe('high');
+    expect(text(card)).toContain('10 places free');
+    expect(text(card)).not.toContain('Lobby full');
+  });
+
+  it('reports a full lobby at exactly 50', () => {
+    const card = withPlayers(50).querySelector('.dash-stat')!;
+    expect(card.getAttribute('data-capacity')).toBe('full');
+    expect(text(card)).toContain('50 / 50');
+    expect(text(card)).toContain('Lobby full');
+    // The side column repeats the state so it is visible without the top row.
+    expect(text(withPlayers(50))).toContain('Lobby full');
+    expect(text(withPlayers(50))).toContain('Free places');
+  });
+
+  it('never renders a negative number of free places', () => {
+    // The server refuses a 51st seat, so this is defensive only — but a bad
+    // payload must not produce "-1 places free".
+    expect(text(withPlayers(51))).not.toContain('-1');
+  });
+
+  it('exposes the fill as an accessible progressbar', () => {
+    const meter = withPlayers(25).querySelector('[role="progressbar"]')!;
+    expect(meter.getAttribute('aria-valuemax')).toBe('50');
+    expect(meter.getAttribute('aria-valuenow')).toBe('25');
   });
 });
 
