@@ -52,6 +52,9 @@ beforeEach(() => {
     arc: () => undefined,
     fill: () => undefined,
     fillRect: () => undefined,
+    moveTo: () => undefined,
+    lineTo: () => undefined,
+    stroke: () => undefined,
     save: () => undefined,
     restore: () => undefined,
     translate: () => undefined,
@@ -59,6 +62,10 @@ beforeEach(() => {
     scale: () => undefined,
     set globalAlpha(_value: number) {},
     set fillStyle(_value: string) {},
+    set strokeStyle(_value: string) {},
+    set lineWidth(_value: number) {},
+    set lineCap(_value: string) {},
+    set globalCompositeOperation(_value: string) {},
   } as unknown as CanvasRenderingContext2D);
 });
 
@@ -316,9 +323,51 @@ describe('finale on the host surface', () => {
     instance.start('game-1');
     for (let ms = 0; ms <= 5000; ms += 16) advance(instance, ms);
     // The cap is an implementation detail, but it must exist: a runaway count
-    // is what turns a projector into a slideshow.
+    // is what turns a projector into a slideshow. Phase 6.11.3 raised it from
+    // 420 to 900 because the display now has seven bursts instead of one, and
+    // the ceiling is the frame budget rather than the old single-burst shape.
     const particles = (instance as unknown as { particles: unknown[] }).particles;
-    expect(particles.length).toBeLessThanOrEqual(420);
+    expect(particles.length).toBeLessThanOrEqual(900);
+    // It must still be a real ceiling, not "whatever the display happened to
+    // spawn": a full volley has to be large enough to cover the stage.
+    expect(particles.length).toBeGreaterThan(200);
+  });
+
+  it('fires the whole main volley at 1.5 s, not one burst', () => {
+    const instance = effects();
+    instance.start('game-1');
+    const spawned = () => (instance as unknown as { particles: unknown[] }).particles.length;
+
+    advance(instance, EXPLOSION_MS - 1);
+    const beforeBurst = spawned();
+
+    advance(instance, EXPLOSION_MS);
+    // The volley is several bursts, so the jump in particle count is an order of
+    // magnitude larger than one burst would be.
+    expect(spawned() - beforeBurst).toBeGreaterThan(300);
+  });
+
+  it('spreads the bursts across the frame instead of stacking them in the middle', () => {
+    const instance = effects();
+    instance.start('game-1');
+    advance(instance, EXPLOSION_MS);
+
+    const sparks = (
+      instance as unknown as { particles: { x: number; y: number; kind: string }[] }
+    ).particles.filter((particle) => particle.kind === 'spark');
+    expect(sparks.length).toBeGreaterThan(0);
+
+    // jsdom has no layout, so the canvas reports 0 and `width()`/`height()` fall
+    // back to the 1024×768 window. The volley must therefore already occupy both
+    // halves of the frame and the upper area at the moment it fires.
+    const width = window.innerWidth;
+    const left = sparks.filter((particle) => particle.x < width * 0.4).length;
+    const right = sparks.filter((particle) => particle.x > width * 0.6).length;
+    const upper = sparks.filter((particle) => particle.y < window.innerHeight * 0.45).length;
+
+    expect(left).toBeGreaterThan(0);
+    expect(right).toBeGreaterThan(0);
+    expect(upper).toBeGreaterThan(0);
   });
 });
 
