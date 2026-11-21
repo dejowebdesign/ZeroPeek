@@ -249,6 +249,9 @@ describe.skipIf(!available)('lobby synchronisation and game start', () => {
 
   it('6 – a join that races the start leaves a consistent state', async () => {
     const { host, gameId, pin } = await createGame();
+    // Registered before Ada joins, so the final roster the host was broadcast
+    // before the start is captured whichever way the race goes.
+    const lobbies = collect<{ players: PublicPlayer[] }>(host, 'host:lobby');
     await joinPlayer(pin, 'Ada');
 
     const events = collect<unknown>(host, 'host:question');
@@ -270,10 +273,25 @@ describe.skipIf(!available)('lobby synchronisation and game start', () => {
     // Either Bob got in before the start (and is in the roster) or he was
     // rejected as too late — never a half-join. And a rejected join must not
     // leave a phantom row behind.
+    //
+    // The roster is read from `host:lobby`, not from `host:join`: in the
+    // `question` phase the host state deliberately carries `players: null`
+    // (the host screen renders the question, not a roster), so a `host:join`
+    // snapshot cannot answer "is Bob in the roster?" at all. Reading it there
+    // made this assertion fail whenever the join legitimately won the race.
+    // `host:lobby` is the last roster the host was actually broadcast, and
+    // `emitLobby` never fires once the game has left the lobby — so if Bob is
+    // in it, his seat really was accepted before the start.
     const bobRow = await prisma.gamePlayer.findFirst({ where: { gameId, nickname: 'Bob' } });
-    const bobInRoster = (state.players ?? []).some((player) => player.nickname === 'Bob');
-    expect(bobInRoster).toBe(results[1]!.status === 'fulfilled');
-    expect(Boolean(bobRow)).toBe(bobInRoster);
+    const joined = results[1]!.status === 'fulfilled';
+    const lastLobby = lobbies.at(-1);
+    expect(lastLobby).toBeDefined();
+    const bobInRoster = (lastLobby?.players ?? []).some((player) => player.nickname === 'Bob');
+    expect(bobInRoster).toBe(joined);
+    expect(Boolean(bobRow)).toBe(joined);
+    // A join that won the race must actually be counted in the round; a join
+    // that lost it must not inflate the roster.
+    expect(state.answers?.total).toBe(joined ? 2 : 1);
     host.disconnect();
   }, 20_000);
 
