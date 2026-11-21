@@ -656,6 +656,20 @@ describe('auth surface and starfield (Phase 6.3)', () => {
     expect(backdrop).toContain('.starfield--calm .starfield__meteor');
   });
 
+  it('holds the show starfield at a measured opacity, not an arbitrary one', () => {
+    // The stars sit over the round background image. Measured against a rendered
+    // frame, 0.30 keeps every star that is distinguishable at full opacity (peak
+    // 24/255 either way) while 0.15 flattens the field to 11/255, so the value is
+    // pinned inside the band that still reads as a night sky.
+    const block = backdrop.slice(
+      backdrop.indexOf('.centered::before {'),
+      backdrop.indexOf('@keyframes star-drift {'),
+    );
+    const opacity = Number(/opacity: ([0-9.]+);/.exec(block)?.[1]);
+    expect(opacity).toBeGreaterThanOrEqual(0.25);
+    expect(opacity).toBeLessThanOrEqual(0.35);
+  });
+
   it('centres a single glass card over the field', () => {
     const block = tokens.slice(tokens.indexOf('.auth {'), tokens.indexOf('.auth__card'));
     expect(block).toContain('place-items: center');
@@ -739,20 +753,35 @@ describe('round background layer (Phase 6.10)', () => {
     expect(base).toContain('z-index: -3');
   });
 
-  it('keeps the quiz surface readable with a dark scrim over the image', () => {
-    // The brief requires a dark, readable quiz surface over the background. The
-    // scrim is a gradient of the existing surface colour, so contrast never
-    // depends on the motif, and the image itself is held well below full opacity.
+  it('keeps the quiz surface readable with a light scrim over the image', () => {
+    // The brief requires a readable quiz surface over the background. Contrast is
+    // carried by the `.card` glass fill (and the opaque `--glass-fallback` when
+    // `backdrop-filter` is unavailable), so the scrim stays a light vignette: it
+    // must not become the opaque overlay the brief forbids.
     expect(round).toContain('[data-round-background]::after');
     expect(round).toContain('linear-gradient');
-    expect(round).toMatch(/opacity: 0\.5;/);
+    expect(round).toMatch(/opacity: 0\.38;/);
+    const scrim = round.slice(round.indexOf('::after'));
+    for (const match of scrim.matchAll(/rgba\(6, 8, 20, ([0-9.]+)\)/g)) {
+      expect(Number(match[1])).toBeLessThanOrEqual(0.46);
+    }
+  });
+
+  it('keeps the image recognisable inside the brief’s opacity band', () => {
+    const base = round.slice(
+      round.indexOf('[data-round-background] {'),
+      round.indexOf('[data-round-background]::after'),
+    );
+    const opacity = Number(/opacity: ([0-9.]+);/.exec(base)?.[1]);
+    expect(opacity).toBeGreaterThanOrEqual(0.25);
+    expect(opacity).toBeLessThanOrEqual(0.45);
   });
 
   it('dims further on a phone and without transparency support', () => {
     const small = round.slice(round.indexOf('@media (max-width: 767px)'));
-    expect(small).toContain('opacity: 0.4');
+    expect(small).toContain('opacity: 0.32');
     const reduce = round.slice(round.indexOf('@media (prefers-reduced-transparency: reduce)'));
-    expect(reduce).toContain('opacity: 0.28');
+    expect(reduce).toContain('opacity: 0.26');
   });
 
   it('does not restyle any existing quiz surface', () => {
