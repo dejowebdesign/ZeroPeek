@@ -115,6 +115,17 @@ const TWINKLE_DEPTH = 0.38;
 const CALM_SPEED = 0.35;
 
 /**
+ * Overall opacity of the star layer, multiplied into every star's own alpha.
+ *
+ * The stars sit *over* the round background image, so their brightness is what
+ * decides how much of the motif survives. `0.9` is 10 % down from full: the field
+ * still reads as a sky, and the image underneath gains contrast. Applying one
+ * factor at the single draw site keeps both profiles, every breakpoint and the
+ * calm variant on the same level; density, speed and twinkle stay untouched.
+ */
+const LAYER_OPACITY = 0.9;
+
+/**
  * The animated starfield.
  *
  * One instance per surface. `start` is the only way the loop begins and `stop`
@@ -233,7 +244,7 @@ export class StarfieldCanvas {
       const alpha = Math.max(0, Math.min(1, star.alpha + pulse));
       if (alpha <= 0.01) continue;
 
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = alpha * LAYER_OPACITY;
       ctx.fillStyle = star.colour;
       ctx.beginPath();
       ctx.arc(px, py, star.radius, 0, Math.PI * 2);
