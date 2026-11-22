@@ -21,10 +21,48 @@
  *
  * Two profiles, because the two surfaces have different jobs: the host drives a
  * projector and can afford a richer field, a player phone cannot.
+ *
+ * Phase 6.15 adds the space effects — shooting stars, rare comets, faint light
+ * pulses, drifting motes and the nebula veils — but not a second renderer: the
+ * geometry and the caps live in `starfieldEffects.ts` and are drawn from the
+ * `tick()` below, inside the loop that already exists. Draw order is the brief's
+ * visual priority: nebula, motes, stars, then the rare events on top.
  */
 
+import {
+  COMET_MAX,
+  DOUBLE_METEOR_CHANCE,
+  DOUBLE_METEOR_DELAY,
+  FLARE_DEPTH,
+  METEOR_MAX,
+  MOTE_COUNT,
+  NEBULA_ALPHA,
+  NEBULA_BLOBS,
+  NEBULA_SCALE,
+  PULSE_INTERVAL,
+  PULSE_MAX,
+  cometInterval,
+  emptyMeteor,
+  launchComet,
+  launchMeteor,
+  launchPulse,
+  makeMotes,
+  meteorAlive,
+  meteorHead,
+  meteorInterval,
+  meteorLife,
+  moteAt,
+  sampleInterval,
+  starFlare,
+  type Comet,
+  type EffectProfile,
+  type Meteor,
+  type Mote,
+  type Pulse,
+} from './starfieldEffects.js';
+
 /** How the field is sized and how much it animates. */
-export type StarfieldProfile = 'host' | 'player';
+export type StarfieldProfile = EffectProfile;
 
 export interface StarfieldCanvasOptions {
   /** Which surface this field is for. Defaults to `player`. */
@@ -146,6 +184,19 @@ export class StarfieldCanvas {
   private unsubscribeVisibility: (() => void) | null = null;
   /** Reused per frame so a tick allocates nothing. */
   private readonly scratch = { x: 0, y: 0 };
+  /** Fixed-size effect pools: allocated once, never grown. */
+  private readonly meteors: Meteor[] = [];
+  private readonly comets: Comet[] = [];
+  private readonly pulses: Pulse[] = [];
+  private motes: Mote[] = [];
+  /** Elapsed seconds of the next allowed spawn, per effect kind. */
+  private nextMeteorAt = 0;
+  private nextCometAt = 0;
+  private nextPulseAt = 0;
+  /** A second star of a pair, or `0` when none is pending. */
+  private pendingMeteorAt = 0;
+  /** The pre-rendered nebula, rebuilt on resize. */
+  private nebula: HTMLCanvasElement | null = null;
 
   constructor(private readonly options: StarfieldCanvasOptions = {}) {}
 
@@ -162,6 +213,11 @@ export class StarfieldCanvas {
   /** How many stars are being drawn. */
   get starCount(): number {
     return this.stars.length;
+  }
+
+  /** How many drifting motes the current frame holds. */
+  get moteCount(): number {
+    return this.motes.length;
   }
 
   /** The canvas backing-store size, for the tests and diagnostics. */
@@ -185,6 +241,7 @@ export class StarfieldCanvas {
     this.hidden = false;
     this.startedAt = this.clock();
     this.seedStars();
+    this.seedEffects();
     this.observe();
     this.schedule();
     return true;
@@ -205,6 +262,11 @@ export class StarfieldCanvas {
     this.canvas = null;
     this.context = null;
     this.stars = [];
+    this.motes = [];
+    this.nebula = null;
+    for (const meteor of this.meteors) meteor.alive = false;
+    for (const comet of this.comets) comet.alive = false;
+    for (const pulse of this.pulses) pulse.alive = false;
   }
 
   /** Draw one frame. Exposed for the scheduler and the tests. */
@@ -228,6 +290,35 @@ export class StarfieldCanvas {
     // frozen dots is the static texture this module exists to replace.
     const twinkle = calm ? TWINKLE_DEPTH * 0.45 : TWINKLE_DEPTH;
 
+    // Reduced motion freezes the whole effect layer: the veils stay, the motes
+    // and the streaks are not drawn, and nothing spawns. The stars keep their
+    // existing behaviour, which is what the surface already promised.
+    const still = this.isStill();
+
+    // The nebula goes down first: it is air behind the field, not paint on top.
+    this.paintNebula(ctx, elapsed, still);
+    if (!still) this.paintMotes(ctx, elapsed, speed);
+    this.paintStars(ctx, elapsed, width, height, speed, twinkle);
+
+    // The rare events come last, so a shooting star is never hidden by a star.
+    // Calm only spaces them further apart; reduced motion removes them.
+    if (!still) {
+      this.advanceMeteors(ctx, elapsed, width, height);
+      this.advanceComets(ctx, elapsed, width, height);
+      this.advancePulses(ctx, elapsed);
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  private paintStars(
+    ctx: CanvasRenderingContext2D,
+    elapsed: number,
+    width: number,
+    height: number,
+    speed: number,
+    twinkle: number,
+  ): void {
     for (const star of this.stars) {
       // Drift is applied as a wrapped offset from the elapsed time, not by
       // mutating `x`: the position stays a pure function of time, so a paused
@@ -241,7 +332,10 @@ export class StarfieldCanvas {
       if (py < 0) py += height;
 
       const pulse = Math.sin(star.phase + elapsed * star.rate) * twinkle;
-      const alpha = Math.max(0, Math.min(1, star.alpha + pulse));
+      // A rare, brief flare on top of the even twinkle: the field gains depth
+      // without any star blinking in sync with another.
+      const flare = starFlare(star.phase, star.rate, elapsed, FLARE_DEPTH);
+      const alpha = Math.max(0, Math.min(1, star.alpha + pulse + flare));
       if (alpha <= 0.01) continue;
 
       ctx.globalAlpha = alpha * LAYER_OPACITY;
@@ -250,14 +344,304 @@ export class StarfieldCanvas {
       ctx.arc(px, py, star.radius, 0, Math.PI * 2);
       ctx.fill();
     }
-
-    ctx.globalAlpha = 1;
   }
 
   private isCalm(): boolean {
     if (this.options.calm !== undefined) return this.options.calm;
     if (this.options.reducedMotion !== undefined) return this.options.reducedMotion;
     return false;
+  }
+
+  /**
+   * Whether the operating system asked for reduced motion.
+   *
+   * This is deliberately *not* the same flag as `calm`. The brief separates them:
+   * the calm preference quietens the sky (fewer shooting stars, slower drift),
+   * while reduced motion removes everything that moves on its own. Folding the two
+   * together would either leave a reduced-motion user with moving streaks or take
+   * the shooting stars away from a calm user who still wants them.
+   */
+  private isStill(): boolean {
+    return this.options.reducedMotion === true;
+  }
+
+  /**
+   * Allocate the effect pools and the first spawn times.
+   *
+   * The pools are fixed-length: a flight always reuses a dead slot, so the arrays
+   * never grow and a long session cannot leak. The first shooting star is due
+   * inside the normal window rather than immediately, so the page opens calm.
+   */
+  private seedEffects(): void {
+    const calm = this.isCalm();
+    this.meteors.length = 0;
+    for (let index = 0; index < METEOR_MAX; index += 1) this.meteors.push(emptyMeteor());
+    this.comets.length = 0;
+    for (let index = 0; index < COMET_MAX; index += 1) this.comets.push(emptyMeteor());
+    this.pulses.length = 0;
+    for (let index = 0; index < PULSE_MAX; index += 1) {
+      this.pulses.push({
+        alive: false,
+        bornAt: 0,
+        x: 0,
+        y: 0,
+        radius: 0,
+        alpha: 0,
+        colour: '',
+      });
+    }
+    this.motes = makeMotes(MOTE_COUNT[this.profile()], () => this.random());
+    this.pendingMeteorAt = 0;
+    this.nextMeteorAt = sampleInterval(meteorInterval(calm), () => this.random());
+    this.nextCometAt = sampleInterval(cometInterval(calm), () => this.random());
+    // A ring is the rarest event; the calm variant drops it entirely, because it
+    // is the only effect that reads as a "light impulse".
+    this.nextPulseAt =
+      calm || this.isStill()
+        ? Number.POSITIVE_INFINITY
+        : sampleInterval(PULSE_INTERVAL, () => this.random());
+  }
+
+  /** The first dead slot, or `null` when every slot is in flight. */
+  private freeMeteor(): Meteor | null {
+    for (const meteor of this.meteors) if (!meteor.alive) return meteor;
+    return null;
+  }
+
+  private freeComet(): Comet | null {
+    for (const comet of this.comets) if (!comet.alive) return comet;
+    return null;
+  }
+
+  private freePulse(): Pulse | null {
+    for (const pulse of this.pulses) if (!pulse.alive) return pulse;
+    return null;
+  }
+
+  /**
+   * Spawn and draw shooting stars.
+   *
+   * Spawning is driven by an absolute due time, not by a per-frame probability, so
+   * a slow frame cannot multiply the rate: one spawn per due time, and the next
+   * due time is sampled fresh. The cap is structural — a slot that is still flying
+   * is simply not available, so the sky can never hold more than `METEOR_MAX`.
+   */
+  private advanceMeteors(
+    ctx: CanvasRenderingContext2D,
+    elapsed: number,
+    width: number,
+    height: number,
+  ): void {
+    if (this.pendingMeteorAt > 0 && elapsed >= this.pendingMeteorAt) {
+      this.pendingMeteorAt = 0;
+      const slot = this.freeMeteor();
+      if (slot) launchMeteor(slot, () => this.random(), width, height, elapsed);
+    }
+
+    if (elapsed >= this.nextMeteorAt) {
+      const slot = this.freeMeteor();
+      if (slot) {
+        launchMeteor(slot, () => this.random(), width, height, elapsed);
+        // Occasionally a second star follows shortly after the first. It is
+        // scheduled, not spawned at once, so the pair reads as a sequence.
+        if (this.random() < DOUBLE_METEOR_CHANCE) {
+          this.pendingMeteorAt = elapsed + DOUBLE_METEOR_DELAY;
+        }
+      }
+      this.nextMeteorAt =
+        elapsed + sampleInterval(meteorInterval(this.isCalm()), () => this.random());
+    }
+
+    for (const meteor of this.meteors) {
+      if (!meteorAlive(meteor, elapsed)) {
+        meteor.alive = false;
+        continue;
+      }
+      this.paintStreak(ctx, meteor, elapsed);
+    }
+  }
+
+  /** Spawn and draw the rare comets. Same geometry, slower and longer. */
+  private advanceComets(
+    ctx: CanvasRenderingContext2D,
+    elapsed: number,
+    width: number,
+    height: number,
+  ): void {
+    if (elapsed >= this.nextCometAt) {
+      const slot = this.freeComet();
+      if (slot) launchComet(slot, () => this.random(), width, height, elapsed);
+      this.nextCometAt =
+        elapsed + sampleInterval(cometInterval(this.isCalm()), () => this.random());
+    }
+
+    for (const comet of this.comets) {
+      if (!meteorAlive(comet, elapsed)) {
+        comet.alive = false;
+        continue;
+      }
+      this.paintStreak(ctx, comet, elapsed);
+    }
+  }
+
+  /** Spawn and draw the faint expanding rings. */
+  private advancePulses(ctx: CanvasRenderingContext2D, elapsed: number): void {
+    if (elapsed >= this.nextPulseAt) {
+      const slot = this.freePulse();
+      if (slot) launchPulse(slot, () => this.random(), this.width, this.height, elapsed);
+      this.nextPulseAt = elapsed + sampleInterval(PULSE_INTERVAL, () => this.random());
+    }
+
+    const life = 2.6;
+    for (const pulse of this.pulses) {
+      if (!pulse.alive) continue;
+      const age = elapsed - pulse.bornAt;
+      if (age < 0 || age > life) {
+        pulse.alive = false;
+        continue;
+      }
+      // A slow bloom that fades as it widens: no flash, no strobe.
+      const progress = age / life;
+      const fade = Math.sin(progress * Math.PI);
+      ctx.globalAlpha = pulse.alpha * fade * NEBULA_ALPHA;
+      ctx.strokeStyle = `rgb(${pulse.colour})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(pulse.x, pulse.y, pulse.radius * (0.6 + progress * 0.6), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Draw one shooting star or comet: a fading tail and a small bright head.
+   *
+   * The tail is a single linear gradient rather than a chain of dots, so a flight
+   * costs one stroke instead of dozens of arcs. The head fades in and out over the
+   * flight, so a star enters and leaves instead of popping.
+   */
+  private paintStreak(ctx: CanvasRenderingContext2D, streak: Meteor, elapsed: number): void {
+    meteorHead(streak, elapsed, this.scratch);
+    const headX = this.scratch.x;
+    const headY = this.scratch.y;
+
+    // The head must be inside the frame; the tail may still be outside.
+    if (headX < -streak.length || headX > this.width + streak.length) return;
+    if (headY < -streak.length || headY > this.height + streak.length) return;
+
+    const life = meteorLife(streak);
+    const age = elapsed - streak.bornAt;
+    const progress = Math.min(1, Math.max(0, age / life));
+    // Fade in over the first fifth, out over the last third.
+    const fade = progress < 0.2 ? progress / 0.2 : progress > 0.67 ? (1 - progress) / 0.33 : 1;
+    const alpha = streak.alpha * Math.max(0, Math.min(1, fade)) * LAYER_OPACITY;
+    if (alpha <= 0.01) return;
+
+    const tailX = headX - streak.dx * streak.length;
+    const tailY = headY - streak.dy * streak.length;
+
+    const gradient = ctx.createLinearGradient(headX, headY, tailX, tailY);
+    gradient.addColorStop(0, `rgba(${streak.colour}, ${alpha.toFixed(3)})`);
+    gradient.addColorStop(0.35, `rgba(${streak.colour}, ${(alpha * 0.35).toFixed(3)})`);
+    gradient.addColorStop(1, `rgba(${streak.colour}, 0)`);
+
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = streak.radius * 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(headX, headY);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `rgb(${streak.colour})`;
+    ctx.beginPath();
+    ctx.arc(headX, headY, streak.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /**
+   * Draw the nebula veils.
+   *
+   * The blobs are radial gradients, which are expensive to build, so they are
+   * pre-rendered once into a small offscreen canvas and then scaled up. A cheap
+   * breathing transform (a fraction of a percent) keeps them from reading as a
+   * still image without a second animation loop.
+   */
+  private paintNebula(ctx: CanvasRenderingContext2D, elapsed: number, calm: boolean): void {
+    const canvas = this.nebula;
+    if (!canvas) return;
+    // Reduced motion keeps the veils but stops the breathing entirely.
+    const breath = calm ? 0 : Math.sin(elapsed * 0.07) * 0.012;
+    const scale = 1 + breath;
+    const drawWidth = this.width * scale;
+    const drawHeight = this.height * scale;
+    const offsetX = (this.width - drawWidth) / 2;
+    const offsetY = (this.height - drawHeight) / 2;
+
+    ctx.globalAlpha = NEBULA_ALPHA;
+    ctx.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight);
+  }
+
+  /** Build the nebula layer for the current frame size. */
+  private buildNebula(): void {
+    if (typeof document === 'undefined' || this.width <= 0 || this.height <= 0) {
+      this.nebula = null;
+      return;
+    }
+    try {
+      const scale = NEBULA_SCALE;
+      const width = Math.max(1, Math.round(this.width * scale));
+      const height = Math.max(1, Math.round(this.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext ? canvas.getContext('2d') : null;
+      if (!ctx || typeof ctx.createRadialGradient !== 'function') {
+        this.nebula = null;
+        return;
+      }
+      const longer = Math.max(width, height);
+      for (const blob of NEBULA_BLOBS) {
+        const radius = blob.radius * longer;
+        const gradient = ctx.createRadialGradient(
+          blob.x * width,
+          blob.y * height,
+          0,
+          blob.x * width,
+          blob.y * height,
+          radius,
+        );
+        const [r, g, b] = blob.colour;
+        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${blob.alpha})`);
+        gradient.addColorStop(0.55, `rgba(${r}, ${g}, ${b}, ${blob.alpha * 0.35})`);
+        gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(blob.x * width, blob.y * height, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      this.nebula = canvas;
+    } catch {
+      // A context without gradients (jsdom, an exotic browser) simply gets no
+      // nebula. The star field is the layer that must never fail.
+      this.nebula = null;
+    }
+  }
+
+  /** Draw the drifting motes: dust that gives the field a near plane. */
+  private paintMotes(ctx: CanvasRenderingContext2D, elapsed: number, speed: number): void {
+    for (const mote of this.motes) {
+      moteAt(mote, elapsed, this.width, this.height, speed, this.scratch);
+      const shimmer = Math.sin(mote.phase + elapsed * mote.rate);
+      const alpha = mote.alpha * (0.6 + shimmer * 0.4) * LAYER_OPACITY;
+      if (alpha <= 0.005) continue;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = `rgb(${mote.colour})`;
+      ctx.beginPath();
+      ctx.arc(this.scratch.x, this.scratch.y, mote.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   private clock(): number {
@@ -317,8 +701,10 @@ export class StarfieldCanvas {
       this.context.setTransform(ratio, 0, 0, ratio, 0, 0);
     }
     // The field is sized to the frame, so a resize rebuilds it; keeping the old
-    // positions would cluster every star into the top-left after a shrink.
+    // positions would cluster every star into the top-left after a shrink. The
+    // nebula is a scaled bitmap, so it has to be re-rendered at the new size too.
     this.seedStars();
+    this.buildNebula();
   }
 
   /** Build the star field for the current frame size. */
