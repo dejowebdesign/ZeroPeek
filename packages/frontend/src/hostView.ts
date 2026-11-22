@@ -226,30 +226,6 @@ export function autoHint(auto: boolean): string {
 }
 
 /**
- * The label of the background carousel (Phase 6.14).
- *
- * The server owns the *position*, so the label names the position the host is
- * actually on — `Random` when the round is on a random pick, otherwise the
- * motif's name. The image behind it is always a concrete id, which is why the
- * two are separate values rather than one.
- *
- * It resolves through `backgroundSelection` rather than `backgroundChoiceName`
- * alone, so an unknown position reads `Random` here exactly as it does in the
- * carousel — one fallback, not two that can drift apart.
- */
-export function backgroundLabel(choice: string): string {
-  return `Background: ${backgroundSelection(choice).name}`;
-}
-
-/**
- * The one-line description shown under the carousel, so the host knows the
- * choice is round-wide before changing it mid-show.
- */
-export function backgroundHint(): string {
-  return 'Applies to every screen and stays for the whole round.';
-}
-
-/**
  * The carousel's current position: the name in force plus where it sits in the
  * list, so the host can see that the arrows wrap.
  *

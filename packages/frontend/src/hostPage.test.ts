@@ -590,8 +590,8 @@ describe('host page – destructive controls and the leaderboard advance', () =>
 describe('host page – background carousel (Phase 6.14)', () => {
   /** The carousel currently on screen, or null when it is not offered. */
   const picker = (): HTMLElement | null => app().querySelector<HTMLElement>('.show__background');
-  const pickerLabel = (): string =>
-    picker()?.querySelector('.show__background-label')?.textContent?.trim() ?? '';
+  /** The whole carousel's text, so a test can prove no description came back. */
+  const pickerText = (): string => picker()?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
   /** The carousel's position line, e.g. "Skyline" plus "7 / 11". */
   const positionName = (): string =>
     picker()?.querySelector('.show__background-name')?.textContent?.trim() ?? '';
@@ -619,9 +619,21 @@ describe('host page – background carousel (Phase 6.14)', () => {
   it('is offered in the lobby and names the server background', async () => {
     await enterLobby();
     expect(picker()).not.toBeNull();
-    expect(pickerLabel()).toBe('Background: Skyline');
     expect(positionName()).toBe('Skyline');
     expect(positionIndex()).toBe('8 / 11');
+  });
+
+  it('carries no description above the row, only the arrows, name and position', async () => {
+    await enterLobby();
+    // The former "Background: … Applies to every screen …" line cost height on a
+    // projector without telling the host anything the row does not already say.
+    // Guarding the whole text is what keeps a future "just one small hint" out.
+    // Adjacent nodes have no text between them — the spacing is CSS `gap` — so the
+    // concatenation is exactly the three controls and nothing else.
+    expect(pickerText()).toBe('‹Skyline8 / 11›');
+    expect(pickerText()).not.toContain('Background:');
+    expect(pickerText()).not.toContain('whole round');
+    expect(picker()?.querySelector('.show__background-head')).toBeNull();
   });
 
   it('paints the supplied file, not a placeholder', async () => {
@@ -648,7 +660,8 @@ describe('host page – background carousel (Phase 6.14)', () => {
         throw new Error('layer not repainted from the ACK');
       }
     });
-    expect(pickerLabel()).toBe('Background: Underwater');
+    expect(positionName()).toBe('Underwater');
+    expect(positionIndex()).toBe('9 / 11');
   });
 
   it('repaints from the broadcast, so a second host stays in step', async () => {
@@ -662,7 +675,7 @@ describe('host page – background carousel (Phase 6.14)', () => {
         throw new Error('broadcast not applied');
       }
     });
-    expect(pickerLabel()).toBe('Background: Space');
+    expect(positionName()).toBe('Space');
   });
 
   it('reaches Random by stepping left from the first catalogue entry', async () => {
@@ -689,7 +702,7 @@ describe('host page – background carousel (Phase 6.14)', () => {
     await vi.waitFor(() => {
       if (!screen().includes('1234')) throw new Error('lobby not rendered');
     });
-    expect(pickerLabel()).toBe('Background: Random');
+    expect(positionName()).toBe('Random');
 
     let sent: unknown = null;
     fake.routes.set('host:background', (payload) => {
@@ -743,7 +756,7 @@ describe('host page – background carousel (Phase 6.14)', () => {
       }
     });
     expect(picker()).not.toBeNull();
-    expect(pickerLabel()).toBe('Background: Underwater');
+    expect(positionName()).toBe('Underwater');
   });
 });
 

@@ -3159,32 +3159,16 @@ body::before {
  * One compact row instead of the former eleven-chip list, so the lobby card keeps
  * its height on a projector and on a phone. The arrows are square tap targets
  * (44px, the design-system minimum) and the position sits between them.
+ *
+ * The row is the whole control: the motif's name and its position already say
+ * which background is in force, so there is no heading or description above it —
+ * a single block, no column gap, no dead space between hairline and arrows.
  */
 .show__background {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
   width: 100%;
   margin-top: var(--space-2);
   padding-top: var(--space-3);
   border-top: var(--hairline) solid var(--border);
-}
-
-.show__background-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: center;
-  gap: var(--space-2);
-  text-align: center;
-}
-
-.show__background-label {
-  font-weight: var(--weight-card);
-}
-
-.show__background-hint {
-  font-size: var(--type-label);
 }
 
 .show__background-carousel {
