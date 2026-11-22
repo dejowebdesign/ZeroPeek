@@ -730,7 +730,11 @@ den gelieferten Hintergrunddateien.
 
 Report: `docs/reports/phase-6-14-host-lobby-qr-carousel.md`.
 
-**Status: umgesetzt auf `feat/phase-6-14-host-lobby-qr-background-selector`, Freigabe offen.**
+**Status: gemergt (PR #66, Merge `f9572a0`).** Nacharbeit auf
+`feat/phase-6-14-clean-background-carousel`: die Beschreibungszeile über dem Karussell
+(`Background: … Applies to every screen …`) ist entfallen, der Block ist jetzt eine Zeile
+(57 px statt 114 px, gemessen). Karussell, Pfeile, Position, Zyklik, Random und die
+Server-Synchronisation sind unverändert.
 
 ---
 

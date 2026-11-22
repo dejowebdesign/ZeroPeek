@@ -150,3 +150,38 @@ one-question quiz were created, and the lobby was driven through the real socket
 
 Work complete on the branch. **No push, no pull request, no merge, no deploy** — awaiting the
 owner's decision.
+
+## 11. Nachtrag (2026-11-04) – Beschreibungszeile über dem Karussell entfernt
+
+Der Abschnitt oben beschreibt den Stand von PR #66. Auf Wunsch des Projektverantwortlichen ist die
+Zeile `Background: … Applies to every screen and stays for the whole round.` **über** dem Karussell
+wieder entfallen — sie kostete Höhe, ohne etwas zu sagen, was Name und Position nicht schon sagen.
+
+Was sich geändert hat:
+
+- `backgroundLabel()` und `backgroundHint()` sind aus `hostView.ts` entfernt, ebenso der
+  `backgroundLabelNode`-Zustand und der `show__background-head`-Wrapper in `pages/host.ts`.
+- Die CSS-Regeln `.show__background-head`, `.show__background-label` und
+  `.show__background-hint` sind entfernt; `.show__background` ist jetzt ein einfacher Block ohne
+  Spalten-Gap. Der Abstand zwischen Trennlinie und Pfeilen ist dadurch 0 px statt 57 px.
+- **Unverändert:** Karussell mit `‹`/`›`, mittiger Name, Positionsanzeige `n / 11`, zyklische
+  Navigation, `Random` als erste Position, `host:background`-Roundtrip und der Server als einzige
+  Autorität. QR, PIN, Join-URL, Lautstärke, Mute und Start-Button sind nicht berührt.
+
+Gemessen mit echtem CSS in Chromium (nicht geschätzt):
+
+| Messwert                    | vorher   | nachher  |
+| --------------------------- | -------- | -------- |
+| Höhe des Hintergrund-Blocks | 114,4 px | 57,4 px  |
+| Kartenhöhe (Ausschnitt)     | 172,4 px | 115,4 px |
+| Abstand Trennlinie → Pfeile | 57,0 px  | 0,0 px   |
+| Pfeilfläche                 | 44 × 44  | 44 × 44  |
+| Name mittig (Abweichung)    | 0,01 px  | 0,01 px  |
+| Überlauf horizontal         | 0        | 0        |
+
+Zusätzlich bei Kartenbreiten 320 / 360 / 390 / 768 / 1440 px geprüft: Pfeile bleiben innerhalb der
+Karte, kein Name wird abgeschnitten, kein horizontaler Überlauf.
+
+Neuer Test `hostPage.test.ts` → „carries no description above the row": prüft den **gesamten**
+Textinhalt des Blocks (`‹Skyline8 / 11›`), damit eine später „nur kleine" Hilfszeile nicht
+unbemerkt zurückkehrt.

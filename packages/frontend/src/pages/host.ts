@@ -41,8 +41,6 @@ import {
   attachHostHandlers,
   autoHint,
   autoLabel,
-  backgroundHint,
-  backgroundLabel,
   backgroundNeighbour,
   backgroundSelection,
   canAct,
@@ -161,8 +159,6 @@ let autoNode: HTMLButtonElement | null = null;
  * never this value.
  */
 let backgroundChoice: string = RANDOM_BACKGROUND;
-/** The carousel's label node, so a change can repaint it in place. */
-let backgroundLabelNode: HTMLElement | null = null;
 /** The carousel's position line, repainted without rebuilding the arrows. */
 let backgroundPositionNode: HTMLElement | null = null;
 /** The carousel's arrows, so their destination labels follow the position. */
@@ -730,14 +726,17 @@ function autoToggle(): HTMLElement | null {
  * replaces the former list of every background, which grew to eleven buttons and
  * pushed the lobby controls off a projector screen.
  *
+ * There is no separate heading or description above it: the motif's name and the
+ * position between the arrows already say which background is in force, and the
+ * extra line only cost height on a projector.
+ *
  * Two rules keep it honest:
  *   - The server owns the position. An arrow only *sends* the neighbouring id;
- *     the `host:background` broadcast repaints the label, exactly as before.
+ *     the `host:background` broadcast repaints the row, exactly as before.
  *   - The arrows carry the destination in their accessible name ("Next:
  *     Skyline"), so a host on a projector knows what a click selects.
  */
 function backgroundPicker(): HTMLElement | null {
-  backgroundLabelNode = null;
   backgroundPositionNode = null;
   backgroundPrevNode = null;
   backgroundNextNode = null;
@@ -749,12 +748,6 @@ function backgroundPicker(): HTMLElement | null {
     lastRender.kind === 'lobby' ||
     (lastRender.kind === 'sync' && hostScreen(lastRender.state) === 'lobby');
   if (!inLobby) return null;
-
-  backgroundLabelNode = el(
-    'span',
-    { class: 'show__background-label' },
-    backgroundLabel(backgroundChoice),
-  );
 
   const prev = button('‹', {
     variant: 'ghost',
@@ -778,12 +771,6 @@ function backgroundPicker(): HTMLElement | null {
   return el(
     'div',
     { class: 'show__background' },
-    el(
-      'div',
-      { class: 'show__background-head' },
-      backgroundLabelNode,
-      el('span', { class: 'muted show__background-hint' }, backgroundHint()),
-    ),
     el(
       'div',
       { class: 'show__background-carousel', role: 'group', 'aria-label': 'Background' },
@@ -858,7 +845,6 @@ async function chooseBackground(choice: string): Promise<void> {
 function setBackground(background: string, choice: string): void {
   backgroundChoice = choice;
   applyRoundBackground(background);
-  if (backgroundLabelNode) backgroundLabelNode.textContent = backgroundLabel(choice);
   paintCarousel();
 }
 
@@ -954,7 +940,6 @@ async function showHome(): Promise<void> {
   // Leaving the show drops the round background too, so an image from a previous
   // game cannot linger behind the quiz picker (Phase 6.10).
   backgroundChoice = RANDOM_BACKGROUND;
-  backgroundLabelNode = null;
   backgroundPositionNode = null;
   backgroundPrevNode = null;
   backgroundNextNode = null;

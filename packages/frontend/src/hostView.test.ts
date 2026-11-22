@@ -17,8 +17,6 @@ import type { HostReveal, HostState } from '@zeropeek/shared';
 
 import {
   attachHostHandlers,
-  backgroundHint,
-  backgroundLabel,
   backgroundNeighbour,
   backgroundSelection,
   autoHint,
@@ -495,17 +493,6 @@ describe('revealBody (Phase 6.5.3, decision B)', () => {
 });
 
 describe('background carousel (Phase 6.14)', () => {
-  it('labels the position the server stored, Random included', () => {
-    expect(backgroundLabel('synthwave_skyline')).toBe('Background: Skyline');
-    // The sentinel must read as Random, not as the first catalogue entry, which
-    // is what a bare `backgroundName('random')` fallback would produce.
-    expect(backgroundLabel(RANDOM_BACKGROUND)).toBe('Background: Random');
-  });
-
-  it('falls back to Random for an unknown position, never a blank label', () => {
-    expect(backgroundLabel('gone')).toBe('Background: Random');
-  });
-
   it('counts Random as a stop, so the position matches what the arrows step', () => {
     const first = backgroundSelection(RANDOM_BACKGROUND);
     expect(first.position).toBe(1);
@@ -539,9 +526,5 @@ describe('background carousel (Phase 6.14)', () => {
     // A full cycle returns to the start, and every stop was visited exactly once.
     expect(choice).toBe(RANDOM_BACKGROUND);
     expect(new Set(seen).size).toBe(BACKGROUND_CHOICES.length);
-  });
-
-  it('tells the host the choice is round-wide', () => {
-    expect(backgroundHint()).toContain('whole round');
   });
 });

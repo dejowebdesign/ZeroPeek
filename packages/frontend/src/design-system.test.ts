@@ -177,9 +177,6 @@ describe('design-system components', () => {
     // Join QR and the compact background carousel (Phase 6.14).
     'lobby__qr',
     'show__background',
-    'show__background-head',
-    'show__background-label',
-    'show__background-hint',
     'show__background-carousel',
     'show__background-position',
     'show__background-name',
