@@ -19,6 +19,7 @@ import { isCalm } from './starfield.js';
 let instance: StarfieldCanvas | null = null;
 let activeProfile: StarfieldProfile | null = null;
 let activeCalm: boolean | null = null;
+let activeStill: boolean | null = null;
 
 /** Whether the operating system asks for reduced motion. */
 function prefersReducedMotion(): boolean {
@@ -32,20 +33,29 @@ function prefersReducedMotion(): boolean {
 /**
  * Start the field for a surface.
  *
- * Idempotent per profile *and* per calm state: calling it again with the same
- * settings leaves the running field alone, so a re-render or a re-sync cannot
- * stack a second canvas. A different profile replaces the field, because the two
- * have different star budgets; a changed calm state replaces it too, which is how
- * the user's switch takes effect without a reload.
+ * Idempotent per profile, calm state and motion preference: calling it again
+ * with the same settings leaves the running field alone, so a re-render or a
+ * re-sync cannot stack a second canvas. A different profile replaces the field,
+ * because the two have different star budgets; a changed calm state replaces it
+ * too, which is how the user's switch takes effect without a reload.
+ *
+ * `calm` and `reducedMotion` are passed through as two separate flags. The calm
+ * preference quietens the sky; reduced motion removes everything that moves on
+ * its own. Merging them would either leave a reduced-motion user with drifting
+ * streaks or deny a calm user the shooting stars they asked to keep.
  */
 export function startStarfield(profile: StarfieldProfile): StarfieldCanvas {
-  const calm = isCalm() || prefersReducedMotion();
-  if (instance && activeProfile === profile && activeCalm === calm) return instance;
+  const calm = isCalm();
+  const still = prefersReducedMotion();
+  if (instance && activeProfile === profile && activeCalm === calm && activeStill === still) {
+    return instance;
+  }
   instance?.stop();
-  instance = new StarfieldCanvas({ profile, calm });
+  instance = new StarfieldCanvas({ profile, calm, reducedMotion: still });
   instance.start();
   activeProfile = profile;
   activeCalm = calm;
+  activeStill = still;
   return instance;
 }
 
@@ -55,6 +65,7 @@ export function stopStarfield(): void {
   instance = null;
   activeProfile = null;
   activeCalm = null;
+  activeStill = null;
 }
 
 /** The live instance, or `null`. Exposed for diagnostics and tests. */

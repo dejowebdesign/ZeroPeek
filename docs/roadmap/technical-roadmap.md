@@ -738,6 +738,46 @@ Server-Synchronisation sind unverändert.
 
 ---
 
+### 9.10 Raum-Effekte im Sternenfeld: Sternschnuppen, Kometen, Motes, Nebel (Phase 6.15)
+
+Rein additive Erweiterung des bestehenden Canvas-Feldes aus 6.13. **Keine** zweite Engine, **kein**
+zweiter `requestAnimationFrame`-Loop, **keine** Schemaänderung, **keine** Änderung an
+Hintergrundbildern, Scrim, Vignette, Feuerwerk oder Audio.
+
+| Punkt                  | Inhalt                                                                                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ziel**               | Das Feld wirkt atmosphärischer, ohne den Motivkontrast zu senken.                                                                                                                   |
+| **Betroffene Dateien** | `packages/frontend/src/starfieldCanvas.ts` (Zeichenreihenfolge + Pools), neu `starfieldEffects.ts` (reine Geometrie, Intervalle, Caps), `starfieldLayer.ts` (calm ≠ reduced motion) |
+| **Datenmodelle**       | keine                                                                                                                                                                               |
+| **API-Änderungen**     | keine                                                                                                                                                                               |
+| **Abhängigkeiten**     | 6.13 (Canvas-Feld), PR #68 (`LAYER_OPACITY = 0.9`)                                                                                                                                  |
+| **Risiken**            | Motiv wird überdeckt; Dauerlast auf schwachen Geräten; widersprüchliche Calm-/Reduced-Motion-Semantik                                                                               |
+| **Teststrategie**      | Unit für Geometrie/Caps/Intervalle (`starfieldEffects.test.ts`), Canvas-Tests für Pools, Calm, Reduced Motion, Hidden-Tab, `LAYER_OPACITY`; Pixelmessung gegen `main`               |
+| **Abnahmekriterien**   | Motivkontrast unverändert bis leicht besser; ≤ 2 Sternschnuppen, ≤ 1 Komet, ≤ 1 Ring gleichzeitig; Reduced Motion ohne bewegte Effekte; Frame-Zeit im Budget                        |
+| **Aufwand**            | klein bis mittel                                                                                                                                                                    |
+
+**Zeitmodell:** Ein Effekt speichert seinen Geburtszeitpunkt; Position ist eine reine Funktion der
+verstrichenen Zeit — wie bei den Sternen. Ein versteckter Tab, ein verspäteter Frame oder ein
+langsamer Rechner kann daher weder einen Sprung noch einen Nachhol-Schwall auslösen.
+
+**Draw-Reihenfolge** (entspricht der visuellen Priorität des Briefings): Nebel → Motes → Sterne →
+Sternschnuppen/Kometen/Ringe.
+
+**Gemessen (Chromium, 1920×1080, deterministischer Seed):** Frame-Zeit 0,43 → 0,47 ms (Median aus
+5 Läufen; 16,7 ms Budget); Telefon 390×844: 0,13 → 0,19 ms. Motivband +3,9 Luminanz im Mittel
+(p99 +5,1) — der Nebel hebt das Bild leicht an, statt es zu verdecken. Sternschnuppe: Kopf-Alpha 235,
+Schweif monoton 235 → 20, Breite 2–4 px.
+
+**Offener Punkt:** Das Budget in §16 nennt „Sternenhimmel-Partikel ≤ 120 (Mobil ≤ 60)". Phase 6.13
+zeichnet bereits 420–539 Sterne pro Frame; diese Zahl stammt aus der CSS-Kachelzeit und wurde nie
+auf das Canvas-Feld angepasst. Die Effekte halten sich an harte Caps (2 / 1 / 1 / 16 Motes), die
+Gesamtzahl der Sterne ist unverändert. Eine Budgetanpassung ist eine Produktentscheidung und bleibt
+offen.
+
+Report: `docs/reports/phase-6-15-space-effects.md`.
+
+---
+
 ## 10. Phase 6.9 – Game-Show-Modus (in der bestehenden Host-Ansicht)
 
 **Status: umgesetzt und vollständig gemergt (6.9.1–6.9.5).** 6.9.1 PR #47 (`31a7783`), 6.9.2
