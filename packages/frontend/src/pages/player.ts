@@ -427,6 +427,16 @@ const app: HTMLElement = appElement;
 
     const me = loadSession();
     const myEntry = myBoardEntry();
+
+    // Derive rank and score from the actual leaderboard the server sent.
+    // `PublicPlayer` carries no `rank` field — the rank is the entry's
+    // position in `currentBoard` (the server's leaderboard, in rank order),
+    // and the score is read from the entry itself. A missing entry falls back
+    // to a neutral 0 / no rank.
+    const boardIndex = myEntry ? currentBoard.indexOf(myEntry) : -1;
+    const myRank = boardIndex >= 0 ? boardIndex + 1 : 0;
+    const myScore = myEntry?.score ?? 0;
+    
     render(
       app,
       shell(
@@ -434,7 +444,7 @@ const app: HTMLElement = appElement;
         el(
           'section',
           { class: 'centered player-game' },
-          playerHeader(me?.nickname ?? 'player', me?.avatar, myEntry),
+          playerHeader(me?.nickname ?? 'player', me?.avatar, myEntry, myRank, myScore),
           el(
             'div',
             { class: 'player-question' },
@@ -447,10 +457,11 @@ const app: HTMLElement = appElement;
                 el(
                   'span',
                   { class: 'player-question__topic' },
-                  // The wireframe asks for the quiz name here. `PlayerSync` carries
-                  // no quiz title, so the question's own category is shown when the
-                  // author set one; otherwise the type is named. Nothing is invented.
-                  question.category ?? (question.type === 'slide' ? 'Info' : 'Question'),
+                  question.category
+                    ? `⚖️ ${question.category}`
+                    : question.type === 'slide'
+                      ? 'ℹ️ Info'
+                      : '❓ Question',
                 ),
                 el(
                   'span',
@@ -459,7 +470,7 @@ const app: HTMLElement = appElement;
                 ),
               ),
               el('h2', { class: 'player-question__prompt' }, question.text),
-              el('div', { class: 'player-question__rule' }),
+              el('div', { class: 'host-live__divider' }),
               question.paused ? notice('The host paused the game.', 'info') : null,
               input,
               feedback,
@@ -485,11 +496,12 @@ const app: HTMLElement = appElement;
     if (openedAt === null || limitMs <= 0) return null;
     const ring = countdown(Math.ceil(limitMs / 1000), 1);
     const value = ring.querySelector<HTMLElement>('.countdown__value');
+    ring.classList.add('countdown--host');
     const wrap = el(
       'div',
       { class: 'player-timer' },
       ring,
-      el('span', { class: 'player-timer__label' }, 'Seconds left'),
+      el('span', { class: 'player-timer__label' }, 'Zeit'),
     );
     startRing(wrap, value, openedAt, limitMs);
     return wrap;
@@ -514,9 +526,10 @@ const app: HTMLElement = appElement;
     nickname: string,
     avatar: string | null | undefined,
     mine: PublicPlayer | null,
+    rank: number = 0,
+    score: number = 0,
   ): HTMLElement {
     const bar = myProgress ? levelProgress(myProgress.xp) : null;
-    const rank = mine ? currentBoard.indexOf(mine) + 1 : null;
     return el(
       'header',
       { class: 'player-head' },
@@ -556,19 +569,22 @@ const app: HTMLElement = appElement;
       el(
         'div',
         { class: 'player-head__status' },
-        rank === null
-          ? null
-          : el(
+        rank > 0
+          ? el(
               'div',
               { class: 'player-stat' },
               el('span', { class: 'player-stat__value' }, `#${rank}`),
               el('span', { class: 'player-stat__label' }, 'Rank'),
-            ),
+            )
+          : null,
+        // The points figure is read from the real board entry, so a player on the
+        // board shows their actual score (including a legitimate 0); a player
+        // not yet on the board shows neither rank nor points.
         mine
           ? el(
               'div',
               { class: 'player-stat' },
-              el('span', { class: 'player-stat__value' }, String(mine.score)),
+              el('span', { class: 'player-stat__value' }, String(score)),
               el('span', { class: 'player-stat__label' }, 'Points'),
             )
           : null,
