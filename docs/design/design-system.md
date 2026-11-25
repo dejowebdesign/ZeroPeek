@@ -3,7 +3,9 @@
 This is the working reference for the design system that Phase 6.1 implements. It records what was
 actually built, where it lives, and which rules apply. It is the implementation counterpart to
 [`../concept/design-concept.md`](../concept/design-concept.md): the concept explains the intent, this
-document explains the code.
+document explains the code. The binding Player and combined Host/Beamer in-game visual references are
+specified separately in [`dashboard-reference.md`](dashboard-reference.md), with the unmodified
+originals in [`references/`](references/).
 
 **Style direction:** _Dark Retro-Futuristic Wireframe & Glassmorphism_. Depth comes from lines and
 perspective (a receding floor grid, a horizon) plus a small number of frosted-glass surfaces — not
