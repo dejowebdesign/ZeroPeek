@@ -966,6 +966,17 @@ describe('player game surface (Phase 6.14)', () => {
     expect(tokens).toContain('.show__options {');
     expect(tokens).not.toMatch(/\.show\s+\.player-question/);
   });
+
+  it('uses the brand gradient for the player timer without overriding low-time warning', () => {
+    const start = tokens.indexOf('.player-timer .countdown:not(.player-timer--low)::before');
+    const end = tokens.indexOf('\n}', start);
+    const ring = tokens.slice(start, end);
+    expect(ring).toContain('var(--brand-cyan)');
+    expect(ring).toContain('var(--brand-violet)');
+    expect(ring).toContain('var(--brand-magenta)');
+    expect(ring).toContain('calc(var(--progress) * 360deg)');
+    expect(tokens).toContain('.countdown.player-timer--low::before');
+  });
 });
 
 describe('answer lettering (Phase 6.14)', () => {
