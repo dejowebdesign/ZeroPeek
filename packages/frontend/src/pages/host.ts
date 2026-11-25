@@ -133,6 +133,8 @@ let clock: ClockSync | null = null;
 let answerCountNode: HTMLElement | null = null;
 /** Players seen in the lobby, used to seed the answer count before the first answer. */
 let lobbyPlayerCount = 0;
+/** Last authoritative roster; question events do not repeat player identities. */
+let livePlayers: PublicPlayer[] = [];
 /** The game currently being controlled, so a reconnect can re-request its state. */
 let activeGame: HostGame | null = null;
 /**
@@ -553,6 +555,7 @@ function renderHostState(input: HostRender): void {
   if (show.currentPhase !== 'end') finale.stop();
   if (input.kind === 'sync') {
     autoMode = input.state.auto;
+    livePlayers = input.state.players ?? livePlayers;
     // The authoritative background arrives with every snapshot, so a reload or a
     // reconnect restores exactly the image the round is using (Phase 6.10) and the
     // carousel position it was picked from (Phase 6.14).
@@ -571,6 +574,7 @@ function renderHostState(input: HostRender): void {
 
   switch (input.kind) {
     case 'lobby':
+      livePlayers = input.players;
       return showLobby(input.pin, input.players);
     case 'lead':
       return showLead(input.lead);
@@ -579,8 +583,10 @@ function renderHostState(input: HostRender): void {
     case 'reveal':
       return showReveal(input.reveal);
     case 'board':
+      livePlayers = input.players;
       return showBoard(input.players, input.hasNext);
     default:
+      livePlayers = input.players;
       return showPodium(input.players);
   }
 }
@@ -1115,6 +1121,143 @@ async function showHome(): Promise<void> {
 }
 
 /**
+ * Reframe the existing, server-driven show DOM as the combined Host/Beamer
+ * dashboard. This only relocates nodes and adds navigation/status presentation;
+ * phase transitions, timer ownership and host controls remain unchanged.
+ */
+function decorateHostShow(): void {
+  const section = app.querySelector<HTMLElement>('.centered.show');
+  const board = section?.querySelector<HTMLElement>('.show__board');
+  if (!section || !board || section.classList.contains('show--dashboard')) return;
+  section.classList.add('show--dashboard');
+
+  const phase = show.currentPhase;
+  const phaseLabels: Record<GamePhase, string> = {
+    lobby: 'Lobby',
+    lead: 'Get ready',
+    question: 'Question live',
+    reveal: 'Answer reveal',
+    board: 'Leaderboard',
+    end: 'Final results',
+  };
+  const phaseLabel = phase ? phaseLabels[phase] : 'Waiting for game state';
+  const questionProgress = currentQuestion
+    ? `Question ${currentQuestion.index + 1} of ${currentQuestion.total}`
+    : phaseLabel;
+
+  const nav = el(
+    'nav',
+    { class: 'show-dash__nav', 'aria-label': 'Host navigation' },
+    el('div', { class: 'show-dash__brand' }, brand()),
+    el('a', { class: 'show-dash__nav-link', href: './host.html' }, 'Overview'),
+    el(
+      'a',
+      { class: 'show-dash__nav-link is-active', href: '#live-show', 'aria-current': 'page' },
+      'Live show',
+    ),
+    el('a', { class: 'show-dash__nav-link', href: './editor.html' }, 'Quiz editor'),
+  );
+  const stats = el(
+    'div',
+    { class: 'show-dash__stats', 'aria-label': 'Game status' },
+    el(
+      'div',
+      { class: 'show-dash__stat' },
+      el('span', {}, 'Players'),
+      el('strong', {}, livePlayers.length ? String(livePlayers.length) : '—'),
+    ),
+    el(
+      'div',
+      { class: 'show-dash__stat' },
+      el('span', {}, 'Game PIN'),
+      el('strong', {}, activeGame?.pin ?? '—'),
+    ),
+    el(
+      'div',
+      { class: 'show-dash__stat' },
+      el('span', {}, 'Progress'),
+      el('strong', {}, questionProgress),
+    ),
+  );
+  const players = livePlayers.length
+    ? el(
+        'ul',
+        { class: 'show-dash__players' },
+        ...livePlayers.map((player) =>
+          el(
+            'li',
+            { class: 'show-dash__player' },
+            playerAvatar(player.nickname, player.avatar, { size: 'sm' }),
+            el('span', { class: 'show-dash__player-name' }, player.nickname),
+            el(
+              'span',
+              {
+                class: `show-dash__connection${player.connected ? ' is-connected' : ''}`,
+                role: 'img',
+                'aria-label': player.connected ? 'Connected' : 'Disconnected',
+              },
+              player.connected ? '✓' : '·',
+            ),
+          ),
+        ),
+      )
+    : el(
+        'p',
+        { class: 'muted show-dash__empty' },
+        'Player details are not in the current server state.',
+      );
+  const roster = el(
+    'section',
+    { class: 'show-dash__panel' },
+    el('h2', { class: 'show-dash__panel-title' }, `Lobby · ${livePlayers.length || '—'}`),
+    players,
+  );
+  const timeline = el(
+    'section',
+    { class: 'show-dash__panel' },
+    el('h2', { class: 'show-dash__panel-title' }, 'Game flow'),
+    el(
+      'ol',
+      { class: 'show-dash__phases' },
+      ...(['lead', 'question', 'reveal', 'board'] as const).map((step) =>
+        el(
+          'li',
+          {
+            class: `show-dash__phase${phase === step ? ' is-current' : ''}`,
+            ...(phase === step ? { 'aria-current': 'step' } : {}),
+          },
+          phaseLabels[step],
+        ),
+      ),
+    ),
+  );
+  const aside = el(
+    'aside',
+    { class: 'show-dash__aside', 'aria-label': 'Live game information' },
+    roster,
+    timeline,
+  );
+  const main = el('main', { class: 'show-dash__main' });
+  const footer = el('footer', { class: 'show-dash__controls' });
+  const timer = board.querySelector<HTMLElement>(':scope > .countdown');
+  const controls = board.querySelector<HTMLElement>(':scope > .show__controls');
+  const auto = board.querySelector<HTMLElement>(':scope > .show__auto');
+  const musicControlNode = board.querySelector<HTMLElement>(':scope > .music');
+  if (timer) footer.append(el('div', { class: 'show-dash__timer' }, timer));
+  if (auto) footer.append(auto);
+  if (musicControlNode) footer.append(musicControlNode);
+  if (controls) footer.append(controls);
+  main.append(
+    section.querySelector('.host-connection') ?? connectionBanner(),
+    stats,
+    board,
+    footer,
+  );
+  section.append(nav, main, aside);
+  section.id = 'live-show';
+}
+
+/**
  * The connection banner every game screen shows. Kept in one node that
  * `setConnection` repaints, so a dropped socket is visible immediately and a
  * recovered one is announced without re-rendering the screen.
@@ -1387,6 +1530,7 @@ function showLead(lead: LeadState): void {
   );
 
   startLeadTimer(timer, lead);
+  decorateHostShow();
   setConnection(connection);
 }
 
@@ -1470,6 +1614,7 @@ function showQuestion(
     // continues the same countdown instead of restarting it.
     startTimer(timer, question.openedAt, question.timeLimit);
   }
+  decorateHostShow();
   setConnection(connection);
 }
 
@@ -1508,11 +1653,13 @@ function showReveal(reveal: HostReveal): void {
       ),
     ),
   );
+  decorateHostShow();
   setConnection(connection);
 }
 
 /** The leaderboard screen. */
 function showBoard(players: PublicPlayer[], hasNext = true): void {
+  livePlayers = players;
   stopTimer();
   answerCountNode = null;
   const scene = show.current;
@@ -1541,11 +1688,13 @@ function showBoard(players: PublicPlayer[], hasNext = true): void {
       ),
     ),
   );
+  decorateHostShow();
   setConnection(connection);
 }
 
 /** The final results: a podium for the top three plus the full ranking. */
 function showPodium(players: PublicPlayer[]): void {
+  livePlayers = players;
   stopTimer();
   answerCountNode = null;
   const [first, second, third, ...rest] = players;
@@ -1591,6 +1740,7 @@ function showPodium(players: PublicPlayer[]): void {
       ),
     ),
   );
+  decorateHostShow();
   setConnection(connection);
 }
 
