@@ -133,6 +133,8 @@ let clock: ClockSync | null = null;
 let answerCountNode: HTMLElement | null = null;
 /** Players seen in the lobby, used to seed the answer count before the first answer. */
 let lobbyPlayerCount = 0;
+/** The actual lobby players, so the live dashboard lists real names — never invented. */
+let lobbyPlayers: PublicPlayer[] = [];
 /** The game currently being controlled, so a reconnect can re-request its state. */
 let activeGame: HostGame | null = null;
 /**
@@ -226,6 +228,39 @@ function startTimer(node: HTMLElement, openedAt: number, seconds: number): void 
     if (value) value.textContent = label;
     else node.textContent = label;
     node.style.setProperty('--progress', String(seconds > 0 ? left / seconds : 0));
+    if (left === 0) stopTimer();
+  };
+  tick();
+  timerHandle = window.setInterval(tick, 250);
+}
+
+/**
+ * Drive the shared countdown ring and the live dashboard's timer bar from a
+ * single interval, measured against the server clock (Phase 6.8.5) exactly like
+ * `startTimer`. The bar mirrors the ring's progress and remaining seconds. The
+ * interval is stored in the shared `timerHandle`, so `stopTimer` (called on
+ * reveal, end, pause or screen change) cleans it up — no second timer, no
+ * orphaned listeners.
+ */
+function runIntegratedTimer(
+  ring: HTMLElement,
+  fill: HTMLElement,
+  label: HTMLElement,
+  openedAt: number,
+  seconds: number,
+): void {
+  stopTimer();
+  const value = ring.querySelector<HTMLElement>('.countdown__value');
+  const tick = (): void => {
+    const now = clock ? clock.serverNow() : Date.now();
+    const elapsed = Math.floor((now - openedAt) / 1000);
+    const left = Math.max(0, seconds - elapsed);
+    const shown = `${left}s`;
+    if (value) value.textContent = shown;
+    else ring.textContent = shown;
+    ring.style.setProperty('--progress', String(seconds > 0 ? left / seconds : 0));
+    fill.style.width = `${seconds > 0 ? (left / seconds) * 100 : 0}%`;
+    label.textContent = shown;
     if (left === 0) stopTimer();
   };
   tick();
@@ -1227,6 +1262,7 @@ function showLobby(pin: string, initialPlayers: PublicPlayer[] = []): void {
   const players = el('ul', { class: 'lobby__players' });
   const paint = (list: PublicPlayer[]): void => {
     lobbyPlayerCount = list.length;
+    lobbyPlayers = list;
     players.replaceChildren(
       ...list.map((player) =>
         el(
@@ -1401,74 +1437,211 @@ function showQuestion(
   const timer = countdown(question.timeLimit, 1);
   const count = el('p', { class: 'show__answers muted' }, '0 answers');
   answerCountNode = count;
-  // Prefer the server's count from a reconnect; otherwise seed the total from
-  // the lobby size so the wording is stable before the first answer arrives.
   if (answers) count.textContent = `${answers.answered} / ${answers.total} answers`;
   else if (lobbyPlayerCount) count.textContent = `0 / ${lobbyPlayerCount} answers`;
 
   const options = questionDisplayOptions(question);
-  // The three question-phase scenes emphasise a different part of the same
-  // board (Phase 6.9.2): the full board (default), the options without the ring,
-  // or the ring without the options. Same data, same game — only the framing
-  // changes.
   const scene = show.current;
   const showOptions = options.length > 0 && scene !== 'countdown';
   const showTimer = scene !== 'answers';
 
-  render(
-    app,
-    el(
-      'section',
-      { class: 'centered show' },
+  // Build the 3-column live dashboard layout.
+  // Left: navigation rail. The show is server-authoritative (the host steers the
+  // game through `controlsFor` and the server's phase events), so these items are
+  // display-only phase indicators — they carry no click action and never call a
+  // scene step that the server has not authorised.
+  const navItems: Array<{ id: string; label: string; icon: string; active: boolean }> = [
+    { id: 'overview', label: 'Übersicht', icon: '📊', active: true },
+    { id: 'control', label: 'Spiel steuern', icon: '🎮', active: false },
+    { id: 'quiz', label: 'Quiz & Fragen', icon: '❓', active: true },
+    { id: 'backgrounds', label: 'Hintergründe', icon: '🖼️', active: false },
+    { id: 'players', label: 'Spieler & Lobby', icon: '👥', active: true },
+    { id: 'inventory', label: 'Inventar & Avatare', icon: '🎒', active: false },
+    { id: 'reports', label: 'Auswertung', icon: '📈', active: false },
+    { id: 'end', label: 'Beenden', icon: '🏁', active: false },
+  ];
+  const navNodes = navItems.map(
+    (item) =>
       el(
         'div',
-        { class: `show__board card question anim-fade-in` },
-        connectionBanner(),
-        el(
-          'div',
-          { class: 'question__meta muted' },
-          `Question ${question.index + 1} of ${question.total}`,
-        ),
-        el('h2', { class: 'question__prompt' }, question.text),
-        question.paused ? el('p', { class: 'show__paused' }, chip('Paused', 'warn', true)) : null,
-        showTimer ? timer : null,
-        count,
-        showOptions
-          ? el(
-              'div',
-              { class: 'show__options' },
-              ...options.map((label, index) =>
-                el(
-                  'div',
-                  { class: 'show__option' },
-                  el('span', { class: 'option__key' }, optionLetter(index)),
-                  el('span', { class: 'show__option-label' }, label),
-                ),
-              ),
-            )
-          : null,
-        autoToggle(),
-        musicControl(),
-        controlsFor('question', question.paused, question.type),
+        {
+          class: `host-live__nav-item${item.active ? ' host-live__nav-item--active' : ''}`,
+          role: 'presentation',
+        },
+        el('span', { class: 'host-live__nav-icon' }, item.icon),
+        el('span', { class: 'host-live__nav-label' }, item.label),
+      ),
+  );
+
+  const leftNav = el('nav', { class: 'host-live__nav' }, ...navNodes);
+
+  // Center: status cards + question card
+  const playerCount = lobbyPlayerCount;
+
+  const statusCards = el(
+    'div',
+    { class: 'host-live__stats' },
+    el(
+      'div',
+      { class: 'host-live__stat' },
+      el('div', { class: 'host-live__stat-caption' }, 'Spieler in der Lobby'),
+      el('div', { class: 'host-live__stat-value' }, `${playerCount}`),
+      el('div', { class: 'host-live__stat-hint muted' }, 'kapazität unbegrenzt'),
+    ),
+    el(
+      'div',
+      { class: 'host-live__stat' },
+      el('div', { class: 'host-live__stat-caption' }, 'Aktuelle Frage'),
+      el(
+        'div',
+        { class: 'host-live__stat-value' },
+        question.text.length > 30 ? `${question.text.slice(0, 30)}…` : question.text,
+      ),
+      el('div', { class: 'host-live__stat-hint muted' }, 'Quiz aktiv'),
+    ),
+    el(
+      'div',
+      { class: 'host-live__stat' },
+      el('div', { class: 'host-live__stat-caption' }, 'Fortschritt'),
+      el('div', { class: 'host-live__stat-value' }, `Frage ${question.index + 1} / ${question.total}`),
+      el(
+        'div',
+        { class: 'host-live__stat-hint muted' },
+        `${Math.round(((question.index + 1) / question.total) * 100)} %`,
       ),
     ),
   );
 
+  const questionCard = el(
+    'div',
+    { class: 'host-live__question' },
+    el('h3', { class: 'host-live__question-title' }, 'Aktuelle Frage'),
+    el('div', { class: 'host-live__divider' }),
+    el('h2', { class: 'question__prompt' }, question.text),
+    question.paused ? el('p', { class: 'show__paused' }, chip('Paused', 'warn', true)) : null,
+    showTimer ? timer : null,
+    count,
+    showOptions
+      ? el(
+          'div',
+          { class: 'host-live__options' },
+          ...options.map((label, index) =>
+            el(
+              'div',
+              { class: 'host-live__option' },
+              el('span', { class: 'option__key' }, optionLetter(index)),
+              el('span', { class: 'show__option-label' }, label),
+            ),
+          ),
+        )
+      : null,
+  );
+
+  const centerColumn = el('div', { class: 'host-live__main' }, statusCards, questionCard);
+
+  // Right: sidebar with real lobby players and the current game phases. The
+  // player list is built from the actual lobby roster the server last sent —
+  // never from invented names.
+  const playerItems = lobbyPlayers.map((player) =>
+    el(
+      'li',
+      { class: 'host-live__player' },
+      el('span', { class: 'host-live__player-dot', style: { background: 'var(--ok)' } }),
+      el('span', { class: 'host-live__player-name' }, player.nickname),
+    ),
+  );
+  const emptyPlayers = lobbyPlayers.length === 0 ? el('li', { class: 'host-live__player-empty muted' }, 'Keine Spieler') : null;
+
+  // The phase list is a static reference of the conceptual game flow. It does
+  // not mirror the server's scene (those are not one-to-one) and is not
+  // interactive; the host steers the game through `controlsFor` and the
+  // server's authoritative phase events.
+  const phases = [
+    { label: 'Frage läuft', num: '1' },
+    { label: 'Antworten sammeln', num: '2' },
+    { label: 'Auflösung', num: '3' },
+    { label: 'Nächste Frage', num: '4' },
+  ].map(
+    (phase) =>
+      el(
+        'li',
+        { class: 'host-live__phase' },
+        el('span', { class: 'host-live__phase-num' }, phase.num),
+        el('span', {}, phase.label),
+      ),
+  );
+
+  const rightSidebar = el(
+    'aside',
+    { class: 'host-live__side' },
+    el(
+      'div',
+      { class: 'host-live__side-block' },
+      el('h4', { class: 'host-live__side-title' }, 'Lobby – Spieler'),
+      el('ul', { class: 'host-live__players' }, ...playerItems, emptyPlayers),
+    ),
+    el(
+      'div',
+      { class: 'host-live__side-block' },
+      el('h4', { class: 'host-live__side-title' }, 'Spielablauf'),
+      el('ul', { class: 'host-live__phases' }, ...phases),
+    ),
+  );
+
+  // Bottom control bar with the timer fill, the existing controls, AUTO and
+  // the music control.
+  const timerFill = el('div', { class: 'host-live__timer-fill' });
+  const timerLabel = el('span', { class: 'host-live__timer-label' }, '0s');
+  const timerWrap = el(
+    'div',
+    { class: 'host-live__timer-wrap' },
+    el('div', { class: 'host-live__timer-bar' }, timerFill),
+    timerLabel,
+  );
+
+  const controlButtons = controlsFor('question', question.paused, question.type);
+  const autoBtn = autoToggle();
+  const musicBtn = musicControl();
+
+  const bottomBar = el(
+    'div',
+    { class: 'host-live__controls' },
+    connectionBanner(),
+    timerWrap,
+    ...Array.from(controlButtons.children),
+    autoBtn,
+    musicBtn,
+  );
+
+  // Render the full 3-column layout
+  render(
+    app,
+    el(
+      'section',
+      { class: 'host-live' },
+      leftNav,
+      centerColumn,
+      rightSidebar,
+      bottomBar,
+    ),
+  );
+
+  // Keep the existing server-authoritative countdown in sync with the new bar.
+  // A paused question is frozen at the server's remaining time, so the bar
+  // reflects that snapshot and no interval runs. While the question is open a
+  // single interval drives both the ring and the bar from the server clock, and
+  // it is cleaned up by the shared `stopTimer`.
   if (question.paused) {
-    // Frozen at the server's remaining time: no interval runs, so the clock
-    // cannot move while the game is paused.
     const remaining = Math.ceil((question.remainingMs ?? 0) / 1000);
     const value = timer.querySelector<HTMLElement>('.countdown__value');
-    const limit = question.timeLimit * 1000;
+    const limitMs = question.timeLimit * 1000;
     if (value) value.textContent = `${remaining}s`;
-    timer.style.setProperty(
-      '--progress',
-      String(limit > 0 ? (question.remainingMs ?? 0) / limit : 0),
-    );
+    const progress = limitMs > 0 ? (question.remainingMs ?? 0) / limitMs : 0;
+    timer.style.setProperty('--progress', String(progress));
+    timerFill.style.width = `${progress * 100}%`;
+    timerLabel.textContent = `${remaining}s`;
   } else {
-    // The timer is derived from the server's original `openedAt`, so a reconnect
-    // continues the same countdown instead of restarting it.
-    startTimer(timer, question.openedAt, question.timeLimit);
+    runIntegratedTimer(timer, timerFill, timerLabel, question.openedAt, question.timeLimit);
   }
   setConnection(connection);
 }
