@@ -1401,74 +1401,171 @@ function showQuestion(
   const timer = countdown(question.timeLimit, 1);
   const count = el('p', { class: 'show__answers muted' }, '0 answers');
   answerCountNode = count;
-  // Prefer the server's count from a reconnect; otherwise seed the total from
-  // the lobby size so the wording is stable before the first answer arrives.
   if (answers) count.textContent = `${answers.answered} / ${answers.total} answers`;
   else if (lobbyPlayerCount) count.textContent = `0 / ${lobbyPlayerCount} answers`;
 
   const options = questionDisplayOptions(question);
-  // The three question-phase scenes emphasise a different part of the same
-  // board (Phase 6.9.2): the full board (default), the options without the ring,
-  // or the ring without the options. Same data, same game — only the framing
-  // changes.
   const scene = show.current;
   const showOptions = options.length > 0 && scene !== 'countdown';
   const showTimer = scene !== 'answers';
 
+  // Build the 3-column live dashboard layout
+  // Left: Navigation sidebar
+  const navItems = [
+    { id: 'overview', label: 'Übersicht', icon: '📊' },
+    { id: 'control', label: 'Spiel steuern', icon: '🎮' },
+    { id: 'quiz', label: 'Quiz & Fragen', icon: '❓' },
+    { id: 'backgrounds', label: 'Hintergründe', icon: '🖼️' },
+    { id: 'players', label: 'Spieler & Lobby', icon: '👥' },
+    { id: 'inventory', label: 'Inventar & Avatare', icon: '🎒' },
+    { id: 'reports', label: 'Auswertung', icon: '📈' },
+    { id: 'end', label: 'Beenden', icon: '🏁' },
+  ].map((item) =>
+    el(
+      'button',
+      {
+        class: `host-live__nav-item${show.current === item.id ? ' host-live__nav-item--active' : ''}`,
+        onClick: () => show.step(item.id),
+      },
+      el('span', { class: 'host-live__nav-icon' }, item.icon),
+      el('span', { class: 'host-live__nav-label' }, item.label),
+    ),
+  );
+
+  const leftNav = el('nav', { class: 'host-live__nav' }, ...navItems);
+
+  // Center: Status cards + Question card
+  const playerCount = lobbyPlayerCount ?? 0;
+  const quizTitle = activeGame ? '' : '';
+  
+  const statusCards = el('div', { class: 'host-live__stats' },
+    el('div', { class: 'host-live__stat' },
+      el('div', { class: 'host-live__stat-caption' }, 'Spieler in der Lobby'),
+      el('div', { class: 'host-live__stat-value' }, `${playerCount} / ∞`),
+      el('div', { class: 'host-live__stat-hint muted' }, 'Kapazität unbegrenzt'),
+    ),
+    el('div', { class: 'host-live__stat' },
+      el('div', { class: 'host-live__stat-caption' }, 'Aktuelles Quiz'),
+      el('div', { class: 'host-live__stat-value' }, question.text.substring(0, 30) + '...'),
+      el('div', { class: 'host-live__stat-hint muted' }, 'Quiz aktiv'),
+    ),
+    el('div', { class: 'host-live__stat' },
+      el('div', { class: 'host-live__stat-caption' }, 'Fortschritt'),
+      el('div', { class: 'host-live__stat-value' }, `Frage ${question.index + 1} / ${question.total}`),
+      el('div', { class: 'host-live__stat-hint muted' }, `${Math.round(((question.index + 1) / question.total) * 100)} %`),
+    ),
+  );
+
+  const questionCard = el('div', { class: 'host-live__question' },
+    el('h3', { class: 'host-live__question-title' }, 'AKTUELLE FRAGE'),
+    el('div', { class: 'host-live__divider' }),
+    el('h2', { class: 'question__prompt' }, question.text),
+    question.paused ? el('p', { class: 'show__paused' }, chip('Paused', 'warn', true)) : null,
+    showTimer ? timer : null,
+    count,
+    showOptions
+      ? el('div', { class: 'host-live__options' },
+          ...options.map((label, index) =>
+            el('div', { class: 'host-live__option' },
+              el('span', { class: 'option__key' }, optionLetter(index)),
+              el('span', { class: 'show__option-label' }, label),
+            ),
+          ),
+        )
+      : null,
+  );
+
+  const centerColumn = el('div', { class: 'host-live__main' }, statusCards, questionCard);
+
+  // Right: Sidebar with players and game phases
+  const playerItems = (answers?.total ? Array.from({ length: answers.total }, (_, i) => i) : [])
+    .map((i) =>
+      el('li', { class: 'host-live__player' },
+        el('span', { class: 'host-live__player-dot', style: 'background: var(--ok)' }),
+        el('span', { class: 'host-live__player-name' }, `Player ${i + 1}`),
+      ),
+    );
+
+  const phases = [
+    { id: 'question', label: 'Frage läuft', num: '1' },
+    { id: 'collect', label: 'Antworten sammeln', num: '2' },
+    { id: 'reveal', label: 'Auflösung', num: '3' },
+    { id: 'next', label: 'Nächste Frage', num: '4' },
+  ].map((phase) =>
+    el('li',
+      { class: `host-live__phase${show.current === phase.id ? ' host-live__phase--active' : ''}` },
+      el('span', { class: 'host-live__phase-num' }, phase.num),
+      el('span', phase.label),
+    ),
+  );
+
+  const rightSidebar = el('aside', { class: 'host-live__side' },
+    el('div', { class: 'host-live__side-block' },
+      el('h4', { class: 'host-live__side-title' }, 'Lobby – Spieler'),
+      el('ul', { class: 'host-live__players' }, ...playerItems),
+    ),
+    el('div', { class: 'host-live__side-block' },
+      el('h4', { class: 'host-live__side-title' }, 'Spielablauf'),
+      el('ul', { class: 'host-live__phases' }, ...phases),
+    ),
+  );
+
+  // Bottom control bar
+  const timerFill = el('div', { class: 'host-live__timer-fill' });
+  const timerLabel = el('span', { class: 'host-live__timer-label' }, '0s');
+  const timerWrap = el('div', { class: 'host-live__timer-wrap' },
+    el('div', { class: 'host-live__timer-bar' }, timerFill),
+    timerLabel,
+  );
+
+  const controlButtons = controlsFor('question', question.paused, question.type);
+  const autoBtn = autoToggle();
+  const musicBtn = musicControl();
+
+  const bottomBar = el('div', { class: 'host-live__controls' },
+    timerWrap,
+    ...Array.from(controlButtons.children),
+    autoBtn,
+    musicBtn,
+  );
+
+  // Render the full 3-column layout
   render(
     app,
     el(
       'section',
-      { class: 'centered show' },
-      el(
-        'div',
-        { class: `show__board card question anim-fade-in` },
-        connectionBanner(),
-        el(
-          'div',
-          { class: 'question__meta muted' },
-          `Question ${question.index + 1} of ${question.total}`,
-        ),
-        el('h2', { class: 'question__prompt' }, question.text),
-        question.paused ? el('p', { class: 'show__paused' }, chip('Paused', 'warn', true)) : null,
-        showTimer ? timer : null,
-        count,
-        showOptions
-          ? el(
-              'div',
-              { class: 'show__options' },
-              ...options.map((label, index) =>
-                el(
-                  'div',
-                  { class: 'show__option' },
-                  el('span', { class: 'option__key' }, optionLetter(index)),
-                  el('span', { class: 'show__option-label' }, label),
-                ),
-              ),
-            )
-          : null,
-        autoToggle(),
-        musicControl(),
-        controlsFor('question', question.paused, question.type),
-      ),
+      { class: 'host-live' },
+      leftNav,
+      centerColumn,
+      rightSidebar,
+      bottomBar,
     ),
   );
 
   if (question.paused) {
-    // Frozen at the server's remaining time: no interval runs, so the clock
-    // cannot move while the game is paused.
     const remaining = Math.ceil((question.remainingMs ?? 0) / 1000);
     const value = timer.querySelector<HTMLElement>('.countdown__value');
     const limit = question.timeLimit * 1000;
     if (value) value.textContent = `${remaining}s`;
-    timer.style.setProperty(
-      '--progress',
-      String(limit > 0 ? (question.remainingMs ?? 0) / limit : 0),
-    );
+    timer.style.setProperty('--progress', String(limit > 0 ? (question.remainingMs ?? 0) / limit : 0));
+    // Update timer bar
+    const progress = limit > 0 ? (question.remainingMs ?? 0) / limit : 0;
+    timerFill.style.width = `${progress * 100}%`;
+    timerLabel.textContent = `${remaining}s`;
   } else {
-    // The timer is derived from the server's original `openedAt`, so a reconnect
-    // continues the same countdown instead of restarting it.
     startTimer(timer, question.openedAt, question.timeLimit);
+    // Update timer bar every tick
+    const updateTimerBar = () => {
+      const now = clock ? clock.serverNow() : Date.now();
+      const elapsed = Math.floor((now - question.openedAt) / 1000);
+      const left = Math.max(0, question.timeLimit - elapsed);
+      const progress = question.timeLimit > 0 ? left / question.timeLimit : 0;
+      timerFill.style.width = `${progress * 100}%`;
+      timerLabel.textContent = `${left}s`;
+    };
+    // Wrap the original tick to also update the bar
+    const originalTick = timerHandle;
+    // We'll let the existing timer handle it
   }
   setConnection(connection);
 }

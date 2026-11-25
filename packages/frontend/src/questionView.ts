@@ -54,12 +54,13 @@ export function questionInput(
     case 'single':
     case 'poll': {
       const options = display<string[]>(question, 'options', []);
+      wrap.classList.add('host-live__options');
       options.forEach((label, index) => {
         wrap.append(
           el(
             'button',
             {
-              class: 'option',
+              class: 'option host-live__option',
               type: 'button',
               onclick: () => answer(index),
             },

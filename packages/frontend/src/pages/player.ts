@@ -427,6 +427,11 @@ const app: HTMLElement = appElement;
 
     const me = loadSession();
     const myEntry = myBoardEntry();
+    
+    // Build rank and score from currentBoard
+    const myRank = myEntry?.rank ?? 0;
+    const myScore = myEntry?.score ?? 0;
+    
     render(
       app,
       shell(
@@ -434,7 +439,7 @@ const app: HTMLElement = appElement;
         el(
           'section',
           { class: 'centered player-game' },
-          playerHeader(me?.nickname ?? 'player', me?.avatar, myEntry),
+          playerHeader(me?.nickname ?? 'player', me?.avatar, myEntry, myRank, myScore),
           el(
             'div',
             { class: 'player-question' },
@@ -447,10 +452,11 @@ const app: HTMLElement = appElement;
                 el(
                   'span',
                   { class: 'player-question__topic' },
-                  // The wireframe asks for the quiz name here. `PlayerSync` carries
-                  // no quiz title, so the question's own category is shown when the
-                  // author set one; otherwise the type is named. Nothing is invented.
-                  question.category ?? (question.type === 'slide' ? 'Info' : 'Question'),
+                  question.category
+                    ? `⚖️ ${question.category}`
+                    : question.type === 'slide'
+                      ? 'ℹ️ Info'
+                      : '❓ Question',
                 ),
                 el(
                   'span',
@@ -459,7 +465,7 @@ const app: HTMLElement = appElement;
                 ),
               ),
               el('h2', { class: 'player-question__prompt' }, question.text),
-              el('div', { class: 'player-question__rule' }),
+              el('div', { class: 'host-live__divider' }),
               question.paused ? notice('The host paused the game.', 'info') : null,
               input,
               feedback,
@@ -485,11 +491,12 @@ const app: HTMLElement = appElement;
     if (openedAt === null || limitMs <= 0) return null;
     const ring = countdown(Math.ceil(limitMs / 1000), 1);
     const value = ring.querySelector<HTMLElement>('.countdown__value');
+    ring.classList.add('countdown--host');
     const wrap = el(
       'div',
       { class: 'player-timer' },
       ring,
-      el('span', { class: 'player-timer__label' }, 'Seconds left'),
+      el('span', { class: 'player-timer__label' }, 'Zeit'),
     );
     startRing(wrap, value, openedAt, limitMs);
     return wrap;
@@ -514,9 +521,10 @@ const app: HTMLElement = appElement;
     nickname: string,
     avatar: string | null | undefined,
     mine: PublicPlayer | null,
+    rank: number = 0,
+    score: number = 0,
   ): HTMLElement {
     const bar = myProgress ? levelProgress(myProgress.xp) : null;
-    const rank = mine ? currentBoard.indexOf(mine) + 1 : null;
     return el(
       'header',
       { class: 'player-head' },
@@ -556,19 +564,19 @@ const app: HTMLElement = appElement;
       el(
         'div',
         { class: 'player-head__status' },
-        rank === null
-          ? null
-          : el(
+        rank > 0
+          ? el(
               'div',
               { class: 'player-stat' },
               el('span', { class: 'player-stat__value' }, `#${rank}`),
               el('span', { class: 'player-stat__label' }, 'Rank'),
-            ),
-        mine
+            )
+          : null,
+        score > 0
           ? el(
               'div',
               { class: 'player-stat' },
-              el('span', { class: 'player-stat__value' }, String(mine.score)),
+              el('span', { class: 'player-stat__value' }, String(score)),
               el('span', { class: 'player-stat__label' }, 'Points'),
             )
           : null,
