@@ -447,6 +447,7 @@ const app: HTMLElement = appElement;
                 el(
                   'span',
                   { class: 'player-question__topic' },
+                  el('span', { class: 'player-question__topic-icon', 'aria-hidden': 'true' }, '⚖'),
                   // The wireframe asks for the quiz name here. `PlayerSync` carries
                   // no quiz title, so the question's own category is shown when the
                   // author set one; otherwise the type is named. Nothing is invented.
@@ -488,8 +489,12 @@ const app: HTMLElement = appElement;
     const wrap = el(
       'div',
       { class: 'player-timer' },
-      ring,
-      el('span', { class: 'player-timer__label' }, 'Seconds left'),
+      el(
+        'div',
+        { class: 'player-timer__dial', role: 'timer', 'aria-label': 'Time remaining' },
+        ring,
+        el('span', { class: 'player-timer__label', 'aria-hidden': 'true' }, 'Time'),
+      ),
     );
     startRing(wrap, value, openedAt, limitMs);
     return wrap;
@@ -523,7 +528,7 @@ const app: HTMLElement = appElement;
       el(
         'div',
         { class: 'player-head__profile' },
-        playerAvatar(nickname, avatar, { size: 'sm' }),
+        playerAvatar(nickname, avatar, { size: 'lg' }),
         el(
           'div',
           { class: 'player-head__body' },
@@ -547,7 +552,7 @@ const app: HTMLElement = appElement;
             ? el(
                 'span',
                 { class: 'player-head__xp-label' },
-                `${bar.xpToNextLevel} XP to next level`,
+                `XP ${bar.xpIntoLevel.toLocaleString()} / ${bar.xpForThisLevel.toLocaleString()}`,
               )
             : null,
         ),
@@ -561,29 +566,30 @@ const app: HTMLElement = appElement;
           : el(
               'div',
               { class: 'player-stat' },
+              el('span', { class: 'player-stat__icon', 'aria-hidden': 'true' }, '🏆'),
               el('span', { class: 'player-stat__value' }, `#${rank}`),
-              el('span', { class: 'player-stat__label' }, 'Rank'),
+              el('span', { class: 'player-stat__label' }, 'Place'),
             ),
         mine
           ? el(
               'div',
               { class: 'player-stat' },
+              el('span', { class: 'player-stat__icon', 'aria-hidden': 'true' }, '★'),
               el('span', { class: 'player-stat__value' }, String(mine.score)),
               el('span', { class: 'player-stat__label' }, 'Points'),
             )
           : null,
-        // Wireframe A asks for a settings entry in the right zone. There is no
-        // settings page yet, so it is shown as a non-clickable "soon" control,
-        // exactly like the navigation does — no page is pretended to exist.
+        // The reference includes a separate settings glyph. Keep it decorative
+        // until a real player settings action exists; do not imply a dead control.
         el(
           'span',
           {
             class: 'player-head__settings',
             'aria-disabled': 'true',
-            title: 'Settings – coming soon',
+            'aria-label': 'Settings unavailable during the quiz',
+            title: 'Settings unavailable during the quiz',
           },
-          el('span', { class: 'nav__icon', 'aria-hidden': 'true' }, '⚙'),
-          el('span', { class: 'player-head__settings-label' }, 'Settings'),
+          el('span', { 'aria-hidden': 'true' }, '⚙'),
         ),
       ),
     );
