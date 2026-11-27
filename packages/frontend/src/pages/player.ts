@@ -433,7 +433,7 @@ const app: HTMLElement = appElement;
         'questions',
         el(
           'section',
-          { class: 'centered player-game' },
+          { class: 'centered player-game player-arena', 'aria-label': 'Live quiz arena' },
           playerHeader(me?.nickname ?? 'player', me?.avatar, myEntry),
           el(
             'div',
