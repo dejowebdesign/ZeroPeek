@@ -383,9 +383,8 @@ describe('game-show skeleton (Phase 6.9.2 / 6.9.3)', () => {
     );
     expect(fade).toContain('opacity');
     expect(fade).not.toContain('transform');
-    const reduce = tokens.slice(tokens.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
-    expect(reduce).toContain('.show__board');
-    expect(reduce).toContain('animation: none');
+    const showBoardMotion = tokens.slice(tokens.indexOf('.show__board {'));
+    expect(showBoardMotion).toContain('animation: none');
   });
 
   it('lays the participants grid out responsively', () => {
@@ -976,6 +975,37 @@ describe('player game surface (Phase 6.14)', () => {
     expect(ring).toContain('var(--brand-magenta)');
     expect(ring).toContain('calc(var(--progress) * 360deg)');
     expect(tokens).toContain('.countdown.player-timer--low::before');
+  });
+});
+
+describe('player immersive arena (Phase 2)', () => {
+  const arena = tokens.slice(tokens.indexOf('Player dashboard – Phase 2 immersive quiz arena'));
+
+  it('limits navigation removal to the live player arena', () => {
+    expect(arena).toContain('.shell--player:has(.player-arena) > .shell__side');
+    expect(arena).toContain('.shell--player:has(.player-arena) > .nav--bottom');
+    expect(arena).not.toContain('.shell--host:has(.player-arena)');
+  });
+
+  it('creates a static perspective floor and layered arena lighting', () => {
+    expect(arena).toContain('.player-arena::after');
+    expect(arena).toContain('perspective(560px) rotateX(62deg)');
+    expect(arena).toContain('repeating-linear-gradient(to right');
+    expect(arena).toContain('repeating-linear-gradient(to bottom');
+    expect(arena).not.toContain('@keyframes');
+  });
+
+  it('keeps the question and timer in a desktop two-column composition', () => {
+    expect(arena).toContain('grid-template-columns: minmax(0, 1fr) clamp(190px, 18vw, 280px)');
+  });
+
+  it('stacks controls for narrow screens and honors reduced motion', () => {
+    expect(arena).toContain('@media (max-width: 640px)');
+    expect(arena).toContain("grid-template-areas: 'profile status' 'logo logo'");
+    expect(arena).toContain('.player-arena .player-question .question__input:has(> .option)');
+    expect(arena).toContain('grid-template-columns: minmax(0, 1fr)');
+    expect(arena).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(arena).toContain('transition: none');
   });
 });
 

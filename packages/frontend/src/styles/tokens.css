@@ -4633,3 +4633,528 @@ body::before {
     font-size: clamp(1.3rem, 5vw, 1.8rem);
   }
 }
+
+/* ===========================================================================
+   Player dashboard – Phase 2 immersive quiz arena
+   ---------------------------------------------------------------------------
+   Scoped to the live player question only. Lobby, result, profile, and every
+   host/beamer surface retain their existing shell and navigation.
+   =========================================================================== */
+
+/* In-game is a focused participant surface, not an application-navigation page.
+   Navigation remains available on lobby and other player pages. */
+.shell--player:has(.player-arena) {
+  display: block;
+  min-height: 100dvh;
+}
+
+.shell--player:has(.player-arena) > .shell__side,
+.shell--player:has(.player-arena) > .nav--bottom {
+  display: none;
+}
+
+.shell--player:has(.player-arena) > .shell__body {
+  min-height: 100dvh;
+}
+
+.shell--player:has(.player-arena) .shell__main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.shell--player .centered.player-arena {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: clamp(var(--space-4), 3vh, var(--space-7));
+  width: 100%;
+  max-width: none;
+  min-height: 100dvh;
+  padding: clamp(var(--space-3), 2.2vw, var(--space-7)) clamp(var(--space-3), 3.2vw, var(--space-7));
+  overflow: clip;
+  background:
+    radial-gradient(ellipse at 50% 8%, rgba(21, 219, 238, 0.13), transparent 38%),
+    radial-gradient(ellipse at 82% 44%, rgba(124, 92, 255, 0.12), transparent 36%),
+    radial-gradient(ellipse at 16% 52%, rgba(222, 78, 241, 0.08), transparent 32%),
+    linear-gradient(180deg, rgba(4, 10, 20, 0.28), rgba(4, 8, 18, 0.08) 50%, rgba(4, 8, 18, 0.3));
+}
+
+/* Side architecture: restrained neon outlines sit at the edge of the visual
+   field, leaving the centre calm for the question and answers. */
+.player-arena::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 14% 21%, rgba(255, 255, 255, 0.72) 0 55%, transparent 100%),
+    radial-gradient(1px 1px at 78% 15%, rgba(34, 211, 238, 0.55) 0 55%, transparent 100%),
+    radial-gradient(1px 1px at 88% 39%, rgba(255, 255, 255, 0.5) 0 55%, transparent 100%),
+    linear-gradient(
+      138deg,
+      transparent 0 47%,
+      rgba(21, 219, 238, 0.52) 47.15% 47.35%,
+      transparent 47.5%
+    ),
+    linear-gradient(
+      42deg,
+      transparent 0 44%,
+      rgba(21, 219, 238, 0.35) 44.15% 44.35%,
+      transparent 44.5%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0 64%,
+      rgba(21, 219, 238, 0.5) 64.15% 64.3%,
+      transparent 64.5%
+    ),
+    linear-gradient(
+      0deg,
+      transparent 0 17%,
+      rgba(21, 219, 238, 0.28) 17.1% 17.25%,
+      transparent 17.4%
+    ),
+    radial-gradient(ellipse at 50% 100%, rgba(34, 211, 238, 0.13), transparent 42%);
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    28% 48%,
+    32% 34%,
+    100% 100%,
+    100% 100%,
+    100% 100%;
+  background-position:
+    center,
+    center,
+    center,
+    left center,
+    right center,
+    center,
+    center,
+    center;
+  background-repeat: no-repeat;
+  opacity: 0.72;
+}
+
+/* A static, low-contrast perspective floor ties the player arena to the
+   existing wireframe system without adding a canvas or frame-by-frame work. */
+.player-arena::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: -18%;
+  right: -18%;
+  bottom: -28%;
+  height: 62%;
+  pointer-events: none;
+  transform: perspective(560px) rotateX(62deg);
+  transform-origin: 50% 100%;
+  background-image:
+    repeating-linear-gradient(to right, rgba(21, 219, 238, 0.25) 0 1px, transparent 1px 68px),
+    repeating-linear-gradient(to bottom, rgba(21, 219, 238, 0.23) 0 1px, transparent 1px 48px),
+    linear-gradient(to top, rgba(21, 219, 238, 0.2), transparent 74%);
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.6) 48%, transparent 92%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.6) 48%, transparent 92%);
+  opacity: 0.72;
+}
+
+.player-arena > * {
+  position: relative;
+  z-index: 0;
+}
+
+.player-arena .player-head {
+  width: min(100%, 1600px);
+  max-width: 1600px;
+  min-height: clamp(88px, 11vh, 132px);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.9fr) minmax(0, 1fr);
+  gap: clamp(var(--space-2), 2vw, var(--space-6));
+  padding: 0;
+}
+
+.player-arena .player-head__profile {
+  width: fit-content;
+  max-width: 100%;
+  min-width: min(300px, 100%);
+  padding: clamp(var(--space-2), 1.2vw, var(--space-3));
+  border-color: rgba(34, 211, 238, 0.2);
+  background: linear-gradient(120deg, rgba(10, 39, 52, 0.78), rgba(12, 20, 35, 0.78));
+  box-shadow:
+    inset 0 1px 0 var(--inset-light),
+    0 12px 40px -28px rgba(34, 211, 238, 0.68);
+}
+
+.player-arena .player-head__logo .brand__logo {
+  display: block;
+  width: clamp(220px, 26vw, 420px);
+  height: auto;
+  max-width: 100%;
+}
+
+.player-arena .player-head__status {
+  justify-self: end;
+}
+
+.player-arena .player-stat {
+  grid-template-columns: auto auto;
+  grid-template-areas: 'icon value' 'label label';
+  min-width: clamp(72px, 8vw, 118px);
+  padding: clamp(var(--space-2), 1vw, var(--space-3));
+  border-color: rgba(34, 211, 238, 0.16);
+  background: linear-gradient(145deg, rgba(18, 38, 53, 0.84), rgba(12, 19, 34, 0.84));
+}
+
+.player-arena .player-stat__icon {
+  color: var(--warn);
+  text-shadow: 0 0 12px rgba(245, 158, 11, 0.36);
+}
+
+.player-arena .player-head__settings {
+  flex: none;
+  border-color: rgba(34, 211, 238, 0.2);
+  background: linear-gradient(145deg, rgba(18, 38, 53, 0.84), rgba(12, 19, 34, 0.84));
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 var(--inset-light),
+    0 0 20px -12px var(--brand-cyan);
+}
+
+.player-arena .player-question {
+  grid-template-columns: minmax(0, 1fr) clamp(190px, 18vw, 280px);
+  align-items: center;
+  gap: clamp(var(--space-4), 2.4vw, var(--space-7));
+  width: min(100%, 1380px);
+  max-width: 1380px;
+  margin: clamp(1rem, 3.5vh, 3.25rem) auto 0;
+}
+
+.player-arena .player-question__card {
+  gap: clamp(var(--space-3), 1.8vh, var(--space-5));
+  padding: clamp(var(--space-4), 2.5vw, var(--space-7));
+  border: 1px solid rgba(194, 225, 255, 0.58);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(34, 211, 238, 0.11), transparent 58%),
+    linear-gradient(145deg, rgba(19, 31, 54, 0.94), rgba(7, 28, 38, 0.93));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 24px 76px -36px rgba(34, 211, 238, 0.58),
+    0 20px 70px -44px rgba(222, 78, 241, 0.48),
+    var(--shadow);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.player-arena .player-question__head {
+  font-size: clamp(var(--type-body), 1.15vw, 1.25rem);
+  color: var(--text);
+}
+
+.player-arena .player-question__topic {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: var(--weight-card);
+}
+
+.player-arena .player-question__counter {
+  font-weight: var(--weight-card);
+}
+
+.player-arena .player-question__prompt {
+  font-size: clamp(1.7rem, 2.7vw, 3.05rem);
+  line-height: 1.18;
+  font-weight: var(--weight-section);
+  letter-spacing: -0.025em;
+}
+
+.player-arena .player-question__rule {
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--brand-cyan),
+    var(--brand-violet) 52%,
+    var(--brand-magenta)
+  );
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.32);
+  opacity: 0.95;
+}
+
+.player-arena .player-question .question__input:has(> .option) {
+  gap: clamp(var(--space-2), 1.35vw, var(--space-4));
+}
+
+.player-arena .player-question .option {
+  min-height: clamp(76px, 9vh, 112px);
+  padding: clamp(var(--space-3), 1.4vw, var(--space-5));
+  border: 1px solid rgba(147, 196, 220, 0.47);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(145deg, rgba(91, 128, 151, 0.35), rgba(19, 42, 57, 0.67)), var(--glass-raised);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 10px 24px -20px rgba(34, 211, 238, 0.48);
+  font-size: clamp(var(--type-body), 1.35vw, 1.4rem);
+  line-height: 1.35;
+  transition:
+    transform var(--dur-fast) var(--ease),
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.player-arena .player-question .option:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-cyan);
+  background:
+    linear-gradient(145deg, rgba(21, 219, 238, 0.2), rgba(62, 50, 112, 0.38)), var(--glass-raised);
+  box-shadow:
+    0 0 24px -10px var(--brand-cyan),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.player-arena .player-question .option:focus-visible {
+  outline: var(--focus-width) solid var(--brand-cyan);
+  outline-offset: 3px;
+  border-color: var(--brand-cyan);
+  box-shadow:
+    0 0 0 4px rgba(21, 219, 238, 0.18),
+    0 0 22px -8px var(--brand-cyan);
+}
+
+.player-arena .player-question .option:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+  transform: none;
+}
+
+.player-arena .player-question .option--chosen {
+  border-color: var(--brand-cyan);
+  background: linear-gradient(135deg, rgba(21, 219, 238, 0.24), rgba(124, 92, 255, 0.22));
+  box-shadow:
+    0 0 0 1px rgba(21, 219, 238, 0.4) inset,
+    0 0 22px -8px var(--brand-cyan);
+}
+
+.player-arena .player-question .option__key {
+  width: clamp(42px, 4.2vw, 62px);
+  height: clamp(42px, 4.2vw, 62px);
+  border-radius: 15px;
+  background: linear-gradient(145deg, rgba(165, 112, 232, 0.45), rgba(106, 75, 172, 0.42));
+  color: #f4dfff;
+  font-size: clamp(1.2rem, 1.8vw, 1.75rem);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 18px -10px var(--brand-magenta);
+}
+
+.player-arena .player-timer__dial {
+  width: clamp(190px, 17vw, 270px);
+  filter: drop-shadow(0 0 24px rgba(34, 211, 238, 0.16));
+}
+
+.player-arena .player-timer .countdown {
+  width: 100%;
+}
+
+.player-arena .player-timer__label {
+  top: 28%;
+  font-size: clamp(1rem, 1.4vw, 1.35rem);
+  color: var(--text);
+}
+
+.player-arena .player-timer .countdown__value {
+  font-size: clamp(2rem, 3vw, 3.25rem);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1100px) {
+  .player-arena .player-head {
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.75fr) minmax(0, 1fr);
+  }
+
+  .player-arena .player-head__profile {
+    min-width: 0;
+  }
+
+  .player-arena .player-question {
+    grid-template-columns: minmax(0, 1fr) clamp(148px, 19vw, 210px);
+    width: min(100%, 1100px);
+  }
+
+  .player-arena .player-timer__dial {
+    width: clamp(148px, 19vw, 210px);
+  }
+}
+
+@media (max-width: 900px) {
+  .shell--player .centered.player-arena {
+    gap: var(--space-4);
+    padding: var(--space-3);
+  }
+
+  .player-arena .player-head {
+    grid-template-columns: minmax(0, 1fr) minmax(160px, 0.7fr) minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .player-arena .player-head__profile {
+    gap: var(--space-2);
+  }
+
+  .player-arena .player-head__logo .brand__logo {
+    width: clamp(160px, 23vw, 260px);
+  }
+
+  .player-arena .player-question {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
+    margin-top: 0;
+  }
+
+  .player-arena .player-timer {
+    grid-row: 1;
+    justify-self: center;
+  }
+
+  .player-arena .player-timer__dial {
+    width: clamp(132px, 18vw, 180px);
+  }
+
+  .player-arena .player-question__card {
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell--player .centered.player-arena {
+    min-height: 100svh;
+    padding: max(var(--space-2), env(safe-area-inset-top)) var(--space-3)
+      max(var(--space-3), env(safe-area-inset-bottom));
+    gap: var(--space-3);
+  }
+
+  .player-arena .player-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'profile status' 'logo logo';
+    align-items: center;
+    min-height: 0;
+    gap: var(--space-2);
+  }
+
+  .player-arena .player-head__profile {
+    grid-area: profile;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .player-arena .player-head__xp-label {
+    font-size: 0.68rem;
+  }
+
+  .player-arena .player-head__logo {
+    grid-area: logo;
+    justify-self: center;
+  }
+
+  .player-arena .player-head__logo .brand__logo {
+    width: clamp(180px, 54vw, 260px);
+  }
+
+  .player-arena .player-head__status {
+    grid-area: status;
+    gap: 4px;
+  }
+
+  .player-arena .player-stat {
+    min-width: 48px;
+    padding: 5px 6px;
+  }
+
+  .player-arena .player-stat__label {
+    display: none;
+  }
+
+  .player-arena .player-head__settings {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
+
+  .player-arena .player-question {
+    gap: var(--space-2);
+  }
+
+  .player-arena .player-timer__dial {
+    width: 112px;
+  }
+
+  .player-arena .player-timer__label {
+    top: 25%;
+    font-size: 0.85rem;
+  }
+
+  .player-arena .player-timer .countdown__value {
+    font-size: 1.8rem;
+  }
+
+  .player-arena .player-question__card {
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .player-arena .player-question__head {
+    align-items: flex-start;
+    font-size: 0.82rem;
+  }
+
+  .player-arena .player-question__prompt {
+    font-size: clamp(1.35rem, 5.5vw, 1.8rem);
+  }
+
+  .player-arena .player-question .option {
+    min-height: 60px;
+    padding: var(--space-2) var(--space-3);
+    font-size: 1rem;
+  }
+
+  .player-arena .player-question .question__input:has(> .option) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .player-arena .player-question .option__key {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    font-size: 1.1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-arena .player-question .option {
+    transition: none;
+  }
+
+  .player-arena .player-question .option:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .player-arena .player-head__profile,
+  .player-arena .player-stat,
+  .player-arena .player-head__settings,
+  .player-arena .player-question__card,
+  .player-arena .player-question .option {
+    background: var(--glass-fallback);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .player-arena::before,
+  .player-arena::after {
+    opacity: 0.35;
+  }
+}
