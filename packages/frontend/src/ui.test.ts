@@ -26,7 +26,7 @@ describe('brand', () => {
     const logo = node.querySelector('img');
     expect(logo).not.toBeNull();
     // Served unchanged from the public directory; no hashing or rewriting.
-    expect(logo?.getAttribute('src')).toBe('/logo.png');
+    expect(logo?.getAttribute('src')).toBe('/logo.webp');
     expect(logo?.className).toBe('brand__logo');
   });
 
@@ -49,7 +49,7 @@ describe('brand', () => {
     expect(node.getAttribute('href')).toBe('./admin.html');
     expect(node.className).toContain('brand--link');
     expect(node.getAttribute('aria-label')).toBe('ZeroPeek home');
-    expect(node.querySelector('img')?.getAttribute('src')).toBe('/logo.png');
+    expect(node.querySelector('img')?.getAttribute('src')).toBe('/logo.webp');
   });
 });
 
