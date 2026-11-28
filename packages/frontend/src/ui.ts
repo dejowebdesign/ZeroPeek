@@ -11,7 +11,7 @@ import { ApiError } from './api.js';
 /**
  * The ZeroPeek wordmark: the logo asset on its own.
  *
- * The logo is served as-is from `public/logo.png`; its transparent areas and its
+ * The logo is served as-is from `public/logo.webp`; its transparent areas and
  * colours and shapes are not altered. It stands alone — no product name text is
  * rendered next to it — so the image carries the brand on its own.
  * `alt` stays empty on purpose: the surface's own heading names the page, and a
@@ -24,7 +24,7 @@ import { ApiError } from './api.js';
 export function brand(options: { href?: string } = {}): HTMLElement {
   const logo = el('img', {
     class: 'brand__logo',
-    src: '/logo.png',
+    src: '/logo.webp',
     alt: '',
     'aria-hidden': 'true',
     decoding: 'async',

@@ -269,9 +269,9 @@ body::before {
   letter-spacing: -0.02em;
 }
 
-/* The supplied logo is 3:1, so a fixed height keeps it proportional and lets the
-   width follow. `object-fit: contain` guarantees no distortion and keeps the
-   transparent areas intact. */
+/* The horizontal master logo is about 3.4:1, so a fixed height keeps it
+   proportional and lets the width follow. `object-fit: contain` prevents
+   distortion and keeps the transparent areas intact. */
 .brand__logo {
   display: block;
   height: 30px;
@@ -4288,6 +4288,12 @@ body::before {
 }
 
 .show-dash__brand .brand {
+  max-width: 100%;
+}
+
+.show-dash__brand .brand__logo {
+  height: clamp(36px, 3vw, 48px);
+  width: auto;
   max-width: 100%;
 }
 
